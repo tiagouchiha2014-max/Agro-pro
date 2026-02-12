@@ -1,33 +1,43 @@
-/* Agro Pro — Multiempresa / Offline-first (localStorage)
-   ✅ Página Combustível
-   ✅ Baixa automática de estoque nas Aplicações (pode ficar negativo)
-   ✅ Área aplicada (ha) por aplicação (não usa o talhão inteiro)
-*/
+/* ============================================================
+   AGRO PRO — app.js (OFFLINE / MULTIEMPRESA)
+   - Estoque de Diesel (S10/S500) com baixa automática ao abastecer
+   - Aplicações com 10 linhas de produtos
+   - Ops Center (opscenter.html) com KPIs + gráficos (Chart.js)
+   ============================================================ */
 
-const Storage = {
-  key: "agro_pro_v1",
-  load(){
-    try{
-      const raw = localStorage.getItem(this.key);
-      if(!raw) return null;
-      return JSON.parse(raw);
-    }catch(e){ return null; }
-  },
-  save(db){
-    localStorage.setItem(this.key, JSON.stringify(db));
-  }
-};
+const LS_KEY = "agropro_db_v1";
+const LS_ACTIVE_EMP = "agropro_active_empresa_v1";
 
+const PAGES = [
+  { href:"index.html",        label:"Dashboard",         key:"dashboard",    icon:"📊" },
+  { href:"opscenter.html",    label:"Operations Center", key:"opscenter",    icon:"🛰️" },
+  { href:"empresas.html",     label:"Empresas",          key:"empresas",     icon:"🏢" },
+  { href:"fazendas.html",     label:"Fazendas",          key:"fazendas",     icon:"🌾" },
+  { href:"talhoes.html",      label:"Talhões",           key:"talhoes",      icon:"🧭" },
+  { href:"produtos.html",     label:"Produtos",          key:"produtos",     icon:"🧪" },
+  { href:"estoque.html",      label:"Estoque",           key:"estoque",      icon:"📦" },
+  { href:"aplicacoes.html",   label:"Aplicações",        key:"aplicacoes",   icon:"🚜" },
+  { href:"combustivel.html",  label:"Combustível",       key:"combustivel",  icon:"⛽" },
+  { href:"clima.html",        label:"Clima/Chuva",        key:"clima",        icon:"🌧️" },
+  { href:"equipe.html",       label:"Equipe",            key:"equipe",       icon:"👷" },
+  { href:"maquinas.html",     label:"Máquinas",          key:"maquinas",     icon:"🛠️" },
+  { href:"relatorios.html",   label:"Relatórios",        key:"relatorios",   icon:"🧾" },
+  { href:"config.html",       label:"Configurações",     key:"config",       icon:"⚙️" },
+];
+
+// ---------- Utils ----------
 function uid(prefix="id"){
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
 }
 function nowISO(){
   const d = new Date();
-  const pad = n => String(n).padStart(2,"0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${yyyy}-${mm}-${dd}`;
 }
-function escapeHtml(str){
-  return String(str ?? "")
+function escapeHtml(s){
+  return String(s ?? "")
     .replaceAll("&","&amp;")
     .replaceAll("<","&lt;")
     .replaceAll(">","&gt;")
@@ -35,21 +45,14 @@ function escapeHtml(str){
     .replaceAll("'","&#039;");
 }
 function toast(title, msg){
-  const host = document.getElementById("toastHost") || (() => {
-    const h = document.createElement("div");
-    h.id = "toastHost";
-    h.className = "toastHost";
-    document.body.appendChild(h);
-    return h;
-  })();
-
+  const host = document.querySelector(".toastHost");
+  if(!host) return;
   const el = document.createElement("div");
   el.className = "toast";
   el.innerHTML = `<b>${escapeHtml(title)}</b><p>${escapeHtml(msg)}</p>`;
   host.appendChild(el);
-
-  setTimeout(()=>{ el.style.opacity="0"; el.style.transform="translateY(6px)"; }, 3200);
-  setTimeout(()=>{ el.remove(); }, 3800);
+  setTimeout(()=>{ el.style.opacity="0"; el.style.transform="translateY(4px)"; }, 2400);
+  setTimeout(()=>{ el.remove(); }, 3100);
 }
 function downloadText(filename, text){
   const blob = new Blob([text], {type:"text/plain;charset=utf-8"});
@@ -65,81 +68,134 @@ function downloadText(filename, text){
 function toCSV(rows){
   if(!rows.length) return "";
   const cols = Object.keys(rows[0]);
-  const esc = v => `"${String(v ?? "").replaceAll('"','""')}"`;
-  const header = cols.map(esc).join(",");
-  const lines = rows.map(r => cols.map(c => esc(r[c])).join(","));
-  return [header, ...lines].join("\n");
+  const esc = (v)=> `"${String(v??"").replaceAll('"','""')}"`;
+  const head = cols.map(esc).join(",");
+  const body = rows.map(r=> cols.map(c=>esc(r[c])).join(",")).join("\n");
+  return head + "\n" + body;
+}
+function onlyEmpresa(arr){
+  const eid = getEmpresaId();
+  return (arr||[]).filter(x => x.empresaId === eid);
+}
+function findById(arr, id){
+  return (arr||[]).find(x => x.id === id);
+}
+function findNameById(arr, id){
+  const o = findById(arr,id);
+  if(!o) return "";
+  return o.nome || o.nomeCurto || o.titulo || "";
 }
 
-/* ------------------ DB / Seed ------------------ */
+// ---------- DB ----------
+function getDB(){
+  const raw = localStorage.getItem(LS_KEY);
+  if(!raw){
+    const db = seedDB();
+    localStorage.setItem(LS_KEY, JSON.stringify(db));
+    localStorage.setItem(LS_ACTIVE_EMP, db.empresas[0]?.id || "");
+    return db;
+  }
+  try{
+    const db = JSON.parse(raw);
+    if(!db.empresas || !db.empresas.length) throw new Error("db inválido");
+    return db;
+  }catch{
+    const db = seedDB();
+    localStorage.setItem(LS_KEY, JSON.stringify(db));
+    localStorage.setItem(LS_ACTIVE_EMP, db.empresas[0]?.id || "");
+    return db;
+  }
+}
+function setDB(db){
+  localStorage.setItem(LS_KEY, JSON.stringify(db));
+}
+function getEmpresaId(){
+  const db = getDB();
+  let id = localStorage.getItem(LS_ACTIVE_EMP);
+  if(!id || !db.empresas.find(e=>e.id===id)){
+    id = db.empresas[0]?.id || "";
+    localStorage.setItem(LS_ACTIVE_EMP, id);
+  }
+  return id;
+}
+function setEmpresaId(id){
+  localStorage.setItem(LS_ACTIVE_EMP, id);
+}
+function resetDemo(){
+  const db = seedDB();
+  setDB(db);
+  setEmpresaId(db.empresas[0]?.id || "");
+  location.reload();
+}
+function backupCSV(){
+  const db = getDB();
+  downloadText(`agropro-backup-${new Date().toISOString()}.json`, JSON.stringify(db,null,2));
+  toast("Backup", "Arquivo .json baixado.");
+}
+
+// ---------- Seed ----------
 function seedDB(){
   const empresaId = uid("emp");
-  const fazendaId = uid("faz");
-  const talhaoId = uid("tal");
+  const empresaId2 = uid("emp");
 
-  const prd1 = uid("prd");
-  const prd2 = uid("prd");
+  const faz1 = uid("faz");
+  const tal1 = uid("tal");
+
+  // Produtos: inclui Diesel S10/S500 como Combustível (unidade L)
+  const prdDieselS10 = uid("prd");
+  const prdDieselS500 = uid("prd");
+  const prdGly = uid("prd");
 
   const db = {
-    meta: { createdAt: new Date().toISOString(), version: 1 },
-    session: { empresaId },
     empresas: [
-      {
-        id: empresaId,
-        nome: "Agro Demo LTDA",
-        cnpj: "00.000.000/0001-00",
-        responsavel: "Admin",
-        cidade: "Sorriso",
-        uf: "MT",
-        observacoes: "Ambiente de demonstração."
-      }
+      { id: empresaId, nome:"Agro Demo LTDA", cnpj:"", cidade:"", uf:"", obs:"" },
+      { id: empresaId2, nome:"Anderson lambert", cnpj:"", cidade:"", uf:"", obs:"" },
     ],
     fazendas: [
-      { id: fazendaId, empresaId, nome:"Fazenda Horizonte", cidade:"Sorriso", uf:"MT", areaHa: 1450, observacoes:"Soja/Milho safrinha" }
+      { id: faz1, empresaId, nome:"Fazenda Horizonte", municipio:"", uf:"", obs:"" },
     ],
     talhoes: [
-      { id: talhaoId, empresaId, fazendaId, nome:"T-12", areaHa: 78.5, cultura:"Soja", safra:"2025/26", solo:"Argiloso", coordenadas:"", observacoes:"" }
+      { id: tal1, empresaId, fazendaId: faz1, nome:"T-12", cultura:"Soja", areaHa: 78.5, obs:"" },
     ],
     produtos: [
-      { id: prd1, empresaId, tipo:"Herbicida", nome:"Glifosato 480", ingrediente:"Glifosato", fabricante:"Genérico", registro:"", carenciaDias: 7, reentradaHoras: 24, unidade:"L", obs:"" },
-      { id: prd2, empresaId, tipo:"Fungicida", nome:"Triazol+Estrobilurina", ingrediente:"Mistura", fabricante:"Genérico", registro:"", carenciaDias: 14, reentradaHoras: 24, unidade:"L", obs:"" }
+      { id: prdGly, empresaId, tipo:"Insumo", nome:"Glifosato 480", unidade:"L", obs:"" },
+      { id: prdDieselS10, empresaId, tipo:"Combustível", nome:"Diesel S10", unidade:"L", obs:"" },
+      { id: prdDieselS500, empresaId, tipo:"Combustível", nome:"Diesel S500", unidade:"L", obs:"" },
     ],
-    // ✅ estoque demo já com produtoId e quantidades, para testar baixa
     estoque: [
-      { id: uid("stk"), empresaId, produtoId: prd1, deposito:"Central", lote:"A1", validade:"2027-12-31", qtd: 800, unidade:"L", obs:"Demo" },
-      { id: uid("stk"), empresaId, produtoId: prd2, deposito:"Central", lote:"B1", validade:"2027-12-31", qtd: 300, unidade:"L", obs:"Demo" }
+      { id: uid("stk"), empresaId, produtoId: prdGly, qtd: 120, unidade:"L", deposito:"Galpão", lote:"", validade:"", obs:"" },
+      { id: uid("stk"), empresaId, produtoId: prdDieselS10, qtd: 2500, unidade:"L", deposito:"Tanque", lote:"", validade:"", obs:"Diesel no tanque" },
+      { id: uid("stk"), empresaId, produtoId: prdDieselS500, qtd: 900, unidade:"L", deposito:"Tanque", lote:"", validade:"", obs:"Diesel no tanque" },
     ],
     equipe: [
-      { id: uid("peq"), empresaId, nome:"Operador 1", funcao:"Tratorista", telefone:"", nr:"", obs:"" }
+      { id: uid("op"), empresaId, nome:"Operador Demo", funcao:"Aplicador", telefone:"", obs:"" },
     ],
     maquinas: [
-      { id: uid("maq"), empresaId, nome:"Pulverizador Autopropelido", placa:"", horimetro: 0, capacidadeL: 3000, bicos:"", obs:"" }
-    ],
-    clima: [
-      { id: uid("cli"), empresaId, data: nowISO(), fazendaId, talhaoId, chuvaMm: 12, tempMin: 22, tempMax: 33, umidade: 68, vento: 9, obs:"Chuva isolada à tarde" }
+      { id: uid("maq"), empresaId, nome:"Pulverizador 01", tipo:"Pulverizador", placa:"", obs:"" },
     ],
     aplicacoes: [
       {
         id: uid("apl"),
         empresaId,
         data: nowISO(),
-        fazendaId,
-        talhaoId,
-        areaHa: 10, // ✅ demo: área aplicada separada
-        cultura:"Soja",
-        alvo:"Plantas daninhas",
-        operacao:"Pulverização terrestre",
+        fazendaId: faz1,
+        talhaoId: tal1,
+        areaHa: 10,
+        alvo: "Plantas daninhas",
+        operacao: "Pulverização terrestre",
         maquinaId: "",
         operadorId: "",
-        condicoes:{ vento: 8, temp: 31, umidade: 60 },
         caldaLHa: 120,
-        velocidadeKmH: 14,
-        bico:"Leque 11002",
-        pressaoBar: 3,
+        velocidade: 14,
+        pressao: 3,
+        bico: "Leque 11002",
+        vento: 8,
+        temperatura: 30,
+        umidade: 60,
+        obs: "",
         produtos: [
-          { produtoNome:"Glifosato 480", dosePorHa: 2.0, unidade:"L/ha" }
-        ],
-        obs:"Aplicação padrão (demo)."
+          { produtoId: prdGly, produtoNome:"Glifosato 480", dosePorHa: 2.0, unidade:"L/ha" }
+        ]
       }
     ],
     combustivel: [
@@ -147,76 +203,40 @@ function seedDB(){
         id: uid("cmb"),
         empresaId,
         data: nowISO(),
+        produtoId: prdDieselS10,
         tipo: "Diesel S10",
-        posto: "Posto Exemplo",
-        maquinaId: "",
-        operadorId: "",
-        fazendaId,
-        talhaoId,
+        posto:"Posto Exemplo",
+        maquinaId:"",
+        operadorId:"",
+        fazendaId: faz1,
+        talhaoId: tal1,
         litros: 120,
         precoLitro: 6.19,
         kmOuHora: 0,
-        obs: "Abastecimento demo"
+        obs:"Abastecimento demo"
       }
-    ]
+    ],
+    chuva: [
+      { id: uid("chv"), empresaId, data: nowISO(), fazendaId: faz1, mm: 12, obs:"" }
+    ],
+    config: {
+      empresaId,
+      offlineFirst:true
+    }
   };
 
-  Storage.save(db);
+  // Baixa diesel do demo no estoque
+  try{
+    const item = db.estoque.find(s => s.empresaId===empresaId && s.produtoId===prdDieselS10);
+    if(item) item.qtd = Number(item.qtd||0) - 120;
+  }catch{}
+
   return db;
 }
 
-function getDB(){
-  let db = Storage.load();
-  if(!db) db = seedDB();
-  return db;
-}
-function setDB(db){ Storage.save(db); }
-
-function getEmpresaId(){
-  const db = getDB();
-  return db.session?.empresaId || (db.empresas[0]?.id ?? null);
-}
-function setEmpresaId(id){
-  const db = getDB();
-  db.session = db.session || {};
-  db.session.empresaId = id;
-  setDB(db);
-}
-
-/* ------------------ UI shell ------------------ */
-const PAGES = [
-  { href:"index.html", label:"Dashboard", key:"dashboard", icon:"📊" },
-  { href:"empresas.html", label:"Empresas", key:"empresas", icon:"🏢" },
-  { href:"fazendas.html", label:"Fazendas", key:"fazendas", icon:"🌾" },
-  { href:"talhoes.html", label:"Talhões", key:"talhoes", icon:"🧭" },
-  { href:"produtos.html", label:"Produtos", key:"produtos", icon:"🧪" },
-  { href:"estoque.html", label:"Estoque", key:"estoque", icon:"📦" },
-  { href:"aplicacoes.html", label:"Aplicações", key:"aplicacoes", icon:"🚜" },
-  { href:"clima.html", label:"Clima/Chuva", key:"clima", icon:"🌧️" },
-  { href:"equipe.html", label:"Equipe", key:"equipe", icon:"👷" },
-  { href:"maquinas.html", label:"Máquinas", key:"maquinas", icon:"🛠️" },
-  { href:"combustivel.html", label:"Combustível", key:"combustivel", icon:"⛽" },
-  { href:"relatorios.html", label:"Relatórios", key:"relatorios", icon:"🧾" },
-  { href:"configuracoes.html", label:"Configurações", key:"config", icon:"⚙️" },
-];
-
-function renderShell(pageKey, title, subtitle){
-  const db = getDB();
-  const empresaId = getEmpresaId();
-  const empresa = db.empresas.find(e=>e.id===empresaId);
-
-  const nav = PAGES.map(p => {
-    const active = (p.key===pageKey) ? "active" : "";
-    return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span> ${escapeHtml(p.label)}</a>`;
-  }).join("");
-
-  const empresaOptions = db.empresas.map(e => {
-    const sel = e.id===empresaId ? "selected" : "";
-    return `<option value="${e.id}" ${sel}>${escapeHtml(e.nome)}</option>`;
-  }).join("");
-
-  const root = document.getElementById("app");
-  root.innerHTML = `
+// ---------- UI Shell ----------
+function mountShell(pageKey, title, subtitle){
+  document.getElementById("app").innerHTML = `
     <div class="app">
       <aside class="sidebar">
         <div class="brand">
@@ -227,168 +247,274 @@ function renderShell(pageKey, title, subtitle){
           </div>
         </div>
 
+        <div class="row" style="justify-content:space-between; margin: 6px 0 10px;">
+          <span class="badge"><span class="dot"></span> Ambiente Offline</span>
+          <button class="btn" id="btnBackup">Backup</button>
+        </div>
+
         <div class="tenant">
-          <div class="row">
-            <span class="badge"><span class="dot"></span> Ambiente Offline</span>
-            <button class="btn noPrint" id="btnBackup">Backup</button>
-          </div>
-          <div class="hr"></div>
           <small>Empresa ativa</small>
-          <select class="select" id="empresaSelect">${empresaOptions}</select>
-          <div style="margin-top:10px" class="row">
+          <div style="height:8px"></div>
+          <select class="select" id="selEmpresa"></select>
+          <div style="height:10px"></div>
+          <div class="row">
             <button class="btn primary" id="btnNovaEmpresa">+ Nova empresa</button>
             <button class="btn danger" id="btnResetDemo">Reset demo</button>
           </div>
-          <div style="margin-top:10px" class="help">
-            Trocar a empresa muda todos os dados exibidos (fazendas, talhões, estoque, aplicações).
-          </div>
+          <div style="height:10px"></div>
+          <small>Trocar a empresa muda todos os dados exibidos (fazendas, talhões, estoque, aplicações).</small>
         </div>
 
-        <nav class="nav">${nav}</nav>
+        <nav class="nav" id="nav"></nav>
 
-        <div style="margin-top:14px" class="help">
-          <b>Dica:</b> Para gerar PDF, vá em Relatórios e use <b>Imprimir</b>.
-        </div>
+        <div style="height:14px"></div>
+        <small><b>Dica:</b> Para gerar PDF, vá em Relatórios e use Imprimir.</small>
       </aside>
 
       <main class="main">
         <div class="topbar">
           <div class="title">
             <h2>${escapeHtml(title)}</h2>
-            <p>${escapeHtml(subtitle || (empresa ? `Empresa: ${empresa.nome}` : "Selecione uma empresa"))}</p>
+            <p>${escapeHtml(subtitle)}</p>
           </div>
-          <div class="actions noPrint" id="topActions"></div>
+          <div class="actions" id="topActions"></div>
         </div>
 
-        <div id="content"></div>
+        <div id="content" style="margin-top:14px"></div>
       </main>
+
+      <div class="toastHost"></div>
     </div>
   `;
 
-  document.getElementById("empresaSelect").addEventListener("change", (e)=>{
-    setEmpresaId(e.target.value);
-    toast("Empresa alterada", "Atualizando a página…");
-    setTimeout(()=>location.reload(), 250);
+  // Populate Empresa select
+  const db = getDB();
+  const sel = document.getElementById("selEmpresa");
+  sel.innerHTML = db.empresas.map(e => `<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join("");
+  sel.value = getEmpresaId();
+  sel.addEventListener("change", ()=>{
+    setEmpresaId(sel.value);
+    toast("Empresa ativa", "Dados atualizados pela empresa selecionada.");
+    setTimeout(()=>location.reload(), 200);
   });
 
-  document.getElementById("btnResetDemo").addEventListener("click", ()=>{
-    if(!confirm("Isso vai resetar o banco local e voltar para o demo. Continuar?")) return;
-    localStorage.removeItem(Storage.key);
-    seedDB();
-    toast("Reset concluído", "Banco local restaurado para o demo.");
-    setTimeout(()=>location.reload(), 250);
-  });
+  // Nav
+  const nav = document.getElementById("nav");
+  nav.innerHTML = PAGES.map(p=>{
+    const active = p.key === pageKey ? "active" : "";
+    return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span>${escapeHtml(p.label)}</a>`;
+  }).join("");
 
-  document.getElementById("btnBackup").addEventListener("click", ()=>{
-    const db = getDB();
-    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(db, null, 2));
-    toast("Backup gerado", "Arquivo .json baixado.");
-  });
-
+  // Buttons
+  document.getElementById("btnBackup").addEventListener("click", backupCSV);
+  document.getElementById("btnResetDemo").addEventListener("click", resetDemo);
   document.getElementById("btnNovaEmpresa").addEventListener("click", ()=>{
     const nome = prompt("Nome da nova empresa:");
     if(!nome) return;
-    const db = getDB();
+    const db2 = getDB();
     const id = uid("emp");
-    db.empresas.push({ id, nome, cnpj:"", responsavel:"", cidade:"", uf:"", observacoes:"" });
-    setDB(db);
+    db2.empresas.push({ id, nome, cnpj:"", cidade:"", uf:"", obs:"" });
+    setDB(db2);
     setEmpresaId(id);
-    toast("Empresa criada", "Agora você está nessa empresa.");
-    setTimeout(()=>location.reload(), 250);
+    toast("Empresa criada", "Agora cadastre fazendas e talhões.");
+    setTimeout(()=>location.reload(), 200);
   });
 }
 
-/* ------------------ Helpers ------------------ */
-function onlyEmpresa(arr){
-  const eid = getEmpresaId();
-  return (arr||[]).filter(x => x.empresaId === eid);
-}
-function findNameById(arr, id, fallback="-"){
-  const o = (arr||[]).find(x=>x.id===id);
-  return o ? o.nome : fallback;
-}
 function setTopActions(html){
   const el = document.getElementById("topActions");
   if(el) el.innerHTML = html || "";
 }
 
-/* ------------------ Pages ------------------ */
+// ---------- CRUD Builder ----------
+function crudPage({ title, subtitle, tableKey, columns, formFields, onBeforeSave }){
+  const db = getDB();
+  const list = onlyEmpresa(db[tableKey] || []);
+  const content = document.getElementById("content");
+
+  setTopActions(`
+    <button class="btn" id="btnExport">Exportar CSV</button>
+  `);
+
+  content.innerHTML = `
+    <div class="section">
+      <div class="card">
+        <h3>Novo registro</h3>
+        <form id="formCrud">
+          <div class="formGrid">
+            ${formFields.map(f => renderField(f, db)).join("")}
+          </div>
+          <div style="height:10px"></div>
+          <button class="btn primary" type="submit">Salvar</button>
+        </form>
+        <div style="height:10px"></div>
+        <div class="help">Dica: você pode corrigir depois editando e salvando novamente.</div>
+      </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>${columns.map(c=>`<th>${escapeHtml(c.label)}</th>`).join("")}<th></th></tr>
+          </thead>
+          <tbody>
+            ${
+              list.slice().reverse().map(r=>{
+                return `<tr>
+                  ${columns.map(c=>{
+                    const v = c.render ? c.render(r, db) : (r[c.key] ?? "");
+                    const raw = !!c.raw;
+                    return raw ? `<td>${v ?? ""}</td>` : `<td>${escapeHtml(v ?? "")}</td>`;
+                  }).join("")}
+                  <td><button class="btn danger" data-del="${r.id}">Excluir</button></td>
+                </tr>`;
+              }).join("") || `<tr><td colspan="${columns.length+1}">Sem registros.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // export
+  document.getElementById("btnExport").addEventListener("click", ()=>{
+    const rows = list.map(x=>({ ...x }));
+    downloadText(`${tableKey}-${nowISO()}.csv`, toCSV(rows));
+    toast("Exportado", "CSV baixado.");
+  });
+
+  // delete
+  content.querySelectorAll("[data-del]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const id = btn.getAttribute("data-del");
+      if(!confirm("Excluir este registro?")) return;
+      const db2 = getDB();
+      db2[tableKey] = (db2[tableKey]||[]).filter(x=>x.id!==id);
+      setDB(db2);
+      toast("Excluído", "Registro removido.");
+      setTimeout(()=>location.reload(), 120);
+    });
+  });
+
+  // submit
+  const form = document.getElementById("formCrud");
+  form.addEventListener("submit", (ev)=>{
+    ev.preventDefault();
+    const fd = new FormData(form);
+    const obj = { id: uid(tableKey.slice(0,3)), empresaId: getEmpresaId() };
+
+    formFields.forEach(f=>{
+      if(f.type==="spacer") return;
+      if(f.kind==="select" || f.kind==="input" || f.kind==="number" || f.kind==="date" || f.kind==="textarea"){
+        let v = fd.get(f.name);
+        if(f.kind==="number") v = Number(v||0);
+        obj[f.name] = v ?? "";
+      }
+    });
+
+    if(onBeforeSave) onBeforeSave(obj, fd);
+
+    const db2 = getDB();
+    db2[tableKey] = db2[tableKey] || [];
+    db2[tableKey].push(obj);
+    setDB(db2);
+
+    toast("Salvo", "Registro adicionado.");
+    setTimeout(()=>location.reload(), 120);
+  });
+}
+
+function renderField(f, db){
+  if(f.type==="spacer"){
+    return `<div class="full"></div>`;
+  }
+  const label = `<small>${escapeHtml(f.label || "")}</small>`;
+  const cls = f.full ? "full" : "";
+  if(f.kind==="input"){
+    return `<div class="${cls}">${label}<input class="input" name="${escapeHtml(f.name)}" placeholder="${escapeHtml(f.placeholder||"")}" /></div>`;
+  }
+  if(f.kind==="date"){
+    return `<div class="${cls}">${label}<input class="input" type="date" name="${escapeHtml(f.name)}" value="${escapeHtml(f.value||nowISO())}" /></div>`;
+  }
+  if(f.kind==="number"){
+    return `<div class="${cls}">${label}<input class="input" type="number" step="${escapeHtml(f.step||"0.01")}" name="${escapeHtml(f.name)}" value="${escapeHtml(f.value||"")}" placeholder="${escapeHtml(f.placeholder||"")}" /></div>`;
+  }
+  if(f.kind==="textarea"){
+    return `<div class="${cls}">${label}<textarea class="textarea" name="${escapeHtml(f.name)}" placeholder="${escapeHtml(f.placeholder||"")}"></textarea></div>`;
+  }
+  if(f.kind==="select"){
+    const opts = (f.optionsFn ? f.optionsFn(db) : (f.options||[]));
+    const html = opts.map(o=> `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
+    return `<div class="${cls}">${label}<select class="select" name="${escapeHtml(f.name)}">${html}</select></div>`;
+  }
+  return "";
+}
+
+// ---------- Pages ----------
 function pageDashboard(){
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const produtos = onlyEmpresa(db.produtos);
-  const aplicacoes = onlyEmpresa(db.aplicacoes);
-  const clima = onlyEmpresa(db.clima);
-  const combustivel = onlyEmpresa(db.combustivel || []);
+  const fazendas = onlyEmpresa(db.fazendas||[]);
+  const talhoes = onlyEmpresa(db.talhoes||[]);
+  const aplic = onlyEmpresa(db.aplicacoes||[]);
+  const chuva = onlyEmpresa(db.chuva||[]);
+  const produtos = onlyEmpresa(db.produtos||[]);
+  const comb = onlyEmpresa(db.combustivel||[]);
 
   const hoje = nowISO();
-  const aplHoje = aplicacoes.filter(a=>a.data===hoje).length;
-  const chuvaHoje = clima.filter(c=>c.data===hoje).reduce((s,c)=>s+Number(c.chuvaMm||0),0);
-  const combHoje = combustivel.filter(c=>c.data===hoje).reduce((s,c)=>s+(Number(c.litros||0)*Number(c.precoLitro||0)),0);
+  const aHoje = aplic.filter(a=>a.data===hoje).length;
+  const combHoje = comb.filter(c=>c.data===hoje).reduce((s,c)=> s + (Number(c.litros||0)*Number(c.precoLitro||0)), 0);
+  const chHoje = chuva.filter(x=>x.data===hoje).reduce((s,x)=> s + Number(x.mm||0), 0);
+
+  const areaTotal = talhoes.reduce((s,t)=> s + Number(t.areaHa||0), 0);
+
+  setTopActions(`
+    <button class="btn" onclick="location.href='opscenter.html'">Abrir Ops Center</button>
+  `);
 
   const content = document.getElementById("content");
   content.innerHTML = `
     <div class="kpi">
-      <div class="card">
-        <h3>Fazendas</h3>
-        <div class="big">${fazendas.length}</div>
-        <div class="sub">Cadastradas na empresa</div>
-      </div>
-      <div class="card">
-        <h3>Talhões</h3>
-        <div class="big">${talhoes.length}</div>
-        <div class="sub">Área total: ${talhoes.reduce((s,t)=>s+Number(t.areaHa||0),0).toFixed(1)} ha</div>
-      </div>
-      <div class="card">
-        <h3>Aplicações (hoje)</h3>
-        <div class="big">${aplHoje}</div>
-        <div class="sub"><span class="pill info">Operações registradas</span></div>
-      </div>
-      <div class="card">
-        <h3>Combustível (hoje)</h3>
-        <div class="big">R$ ${combHoje.toFixed(2)}</div>
-        <div class="sub"><span class="pill ok">Custo diário</span></div>
-      </div>
+      <div class="card"><h3>Fazendas</h3><div class="big">${fazendas.length}</div><div class="sub">Cadastradas na empresa</div></div>
+      <div class="card"><h3>Talhões</h3><div class="big">${talhoes.length}</div><div class="sub">Área total: ${areaTotal.toFixed(1)} ha</div></div>
+      <div class="card"><h3>Aplicações (hoje)</h3><div class="big">${aHoje}</div><div class="sub"><span class="pill info">Operações registradas</span></div></div>
+      <div class="card"><h3>Combustível (hoje)</h3><div class="big">R$ ${combHoje.toFixed(2)}</div><div class="sub"><span class="pill warn">Custo diário</span></div></div>
     </div>
 
     <div class="section">
       <div class="card">
         <h3>Resumo rápido</h3>
         <div class="help">
-          • Chuva (hoje): <b>${chuvaHoje.toFixed(1)} mm</b><br/>
+          • Chuva (hoje): <b>${chHoje.toFixed(1)} mm</b><br/>
           • Produtos cadastrados: <b>${produtos.length}</b><br/>
           • Use Aplicações + Estoque para rastreabilidade e controle.
         </div>
-        <div class="hr"></div>
-        <span class="pill warn">Offline-first</span>
+        <div style="height:10px"></div>
+        <span class="pill ok">Offline-first</span>
         <span class="pill info">Multiempresa</span>
       </div>
 
       <div class="tableWrap">
         <table>
           <thead>
+            <tr><th colspan="6">Últimas aplicações</th></tr>
             <tr>
-              <th>Últimas aplicações</th>
-              <th>Data</th>
-              <th>Fazenda</th>
-              <th>Talhão</th>
-              <th>Área (ha)</th>
-              <th>Alvo</th>
+              <th>Produto</th><th>Data</th><th>Fazenda</th><th>Talhão</th><th>Área (ha)</th><th>Alvo</th>
             </tr>
           </thead>
           <tbody>
             ${
-              (aplicacoes.slice().reverse().slice(0,8)).map(a=>`
-                <tr>
-                  <td><b>${escapeHtml((a.produtos?.[0]?.produtoNome)||"—")}</b></td>
+              aplic.slice().reverse().slice(0,6).map(a=>{
+                const faz = findNameById(fazendas, a.fazendaId);
+                const tal = findNameById(talhoes, a.talhaoId);
+                const p1 = (a.produtos||[])[0]?.produtoNome || "—";
+                return `<tr>
+                  <td><b>${escapeHtml(p1)}</b></td>
                   <td>${escapeHtml(a.data||"")}</td>
-                  <td>${escapeHtml(findNameById(fazendas, a.fazendaId))}</td>
-                  <td>${escapeHtml(findNameById(talhoes, a.talhaoId))}</td>
+                  <td>${escapeHtml(faz)}</td>
+                  <td>${escapeHtml(tal)}</td>
                   <td>${Number(a.areaHa||0).toFixed(2)}</td>
                   <td>${escapeHtml(a.alvo||"")}</td>
-                </tr>
-              `).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
+                </tr>`;
+              }).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
             }
           </tbody>
         </table>
@@ -397,1125 +523,1030 @@ function pageDashboard(){
   `;
 }
 
-function crudPage({ entityKey, subtitle, fields, columns, helpers }){
-  const db = getDB();
-  const eid = getEmpresaId();
-
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
-
-  const content = document.getElementById("content");
-
-  const formHtml = `
-    <div class="card">
-      <h3>Novo registro</h3>
-      <div class="help">${escapeHtml(subtitle || "")}</div>
-      <div class="hr"></div>
-      <form id="frm" class="formGrid">
-        ${fields.map(f=>{
-          const full = f.full ? "full" : "";
-          if(f.type==="select"){
-            const opts = (typeof f.options === "function" ? f.options(getDB()) : (f.options || []))
-              .map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
-            return `
-              <div class="${full}">
-                <small>${escapeHtml(f.label)}</small>
-                <select class="select" name="${escapeHtml(f.key)}">${opts}</select>
-              </div>
-            `;
-          }
-          if(f.type==="textarea"){
-            return `
-              <div class="${full}">
-                <small>${escapeHtml(f.label)}</small>
-                <textarea class="textarea" name="${escapeHtml(f.key)}" placeholder="${escapeHtml(f.placeholder||"")}"></textarea>
-              </div>
-            `;
-          }
-          return `
-            <div class="${full}">
-              <small>${escapeHtml(f.label)}</small>
-              <input class="input" name="${escapeHtml(f.key)}" type="${escapeHtml(f.type||"text")}" placeholder="${escapeHtml(f.placeholder||"")}" />
-            </div>
-          `;
-        }).join("")}
-        <div class="full row" style="justify-content:flex-end; margin-top:6px;">
-          <button class="btn primary" type="submit">Salvar</button>
-        </div>
-      </form>
-    </div>
-  `;
-
-  const tableHtml = `
-    <div class="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            ${columns.map(c=>`<th>${escapeHtml(c.label)}</th>`).join("")}
-            <th class="noPrint">Ações</th>
-          </tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-  `;
-
-  content.innerHTML = `
-    <div class="section">
-      ${formHtml}
-      ${tableHtml}
-    </div>
-  `;
-
-  function renderTable(){
-    const db2 = getDB();
-    const rows0 = onlyEmpresa(db2[entityKey] || []);
-    const rows = helpers?.filter ? helpers.filter(rows0, db2) : rows0;
-
-    const tb = document.getElementById("tbody");
-    tb.innerHTML = rows.slice().reverse().map(r=>{
-      const tds = columns.map(c=>{
-        const v = c.render ? c.render(r, db2) : r[c.key];
-        return `<td>${escapeHtml(v ?? "")}</td>`;
-      }).join("");
-      return `
-        <tr>
-          ${tds}
-          <td class="noPrint">
-            <button class="btn danger" onclick="window.__del('${r.id}')">Excluir</button>
-          </td>
-        </tr>
-      `;
-    }).join("") || `<tr><td colspan="${columns.length+1}">Sem registros.</td></tr>`;
-  }
-
-  window.__del = (id)=>{
-    if(!confirm("Excluir este registro?")) return;
-    const db2 = getDB();
-    db2[entityKey] = (db2[entityKey]||[]).filter(x=>x.id!==id);
-    if(helpers?.onDelete) helpers.onDelete(id, db2);
-    setDB(db2);
-    toast("Excluído", "Registro removido.");
-    renderTable();
-  };
-
-  document.getElementById("frm").addEventListener("submit", (e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const obj = { id: uid(entityKey.slice(0,3)), empresaId: eid };
-
-    fields.forEach(f=>{
-      let v = fd.get(f.key);
-      if(f.type==="number") v = Number(v || 0);
-      obj[f.key] = v;
-    });
-
-    const db2 = getDB();
-    if(helpers?.beforeSave) helpers.beforeSave(obj, db2);
-    db2[entityKey] = db2[entityKey] || [];
-    db2[entityKey].push(obj);
-    setDB(db2);
-
-    e.target.reset();
-    toast("Salvo", "Registro adicionado com sucesso.");
-    renderTable();
-  });
-
-  document.getElementById("btnExportCSV").addEventListener("click", ()=>{
-    const db2 = getDB();
-    const rows = onlyEmpresa(db2[entityKey]||[]);
-    downloadText(`${entityKey}-${nowISO()}.csv`, toCSV(rows));
-    toast("Exportado", "CSV baixado.");
-  });
-
-  renderTable();
-}
-
-/* --------- Páginas --------- */
 function pageEmpresas(){
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
-
+  // Empresas não é por empresaId — é global
+  const db = getDB();
   const content = document.getElementById("content");
+
+  setTopActions(`<button class="btn" id="btnExportEmp">Exportar CSV</button>`);
   content.innerHTML = `
     <div class="section">
       <div class="card">
-        <h3>Cadastrar empresa</h3>
-        <div class="help">Multiempresa: cada empresa tem seus próprios talhões, estoque e aplicações.</div>
-        <div class="hr"></div>
-        <form id="frm" class="formGrid">
-          <div><small>Nome</small><input class="input" name="nome" required></div>
-          <div><small>CNPJ</small><input class="input" name="cnpj"></div>
-          <div><small>Responsável</small><input class="input" name="responsavel"></div>
-          <div><small>Cidade</small><input class="input" name="cidade"></div>
-          <div><small>UF</small><input class="input" name="uf" maxlength="2"></div>
-          <div class="full"><small>Observações</small><textarea class="textarea" name="observacoes"></textarea></div>
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Salvar</button>
+        <h3>Nova empresa</h3>
+        <form id="formEmp">
+          <div class="formGrid">
+            <div class="full"><small>Nome</small><input class="input" name="nome" placeholder="Ex.: Fazenda Santa Luzia LTDA" required /></div>
+            <div><small>CNPJ</small><input class="input" name="cnpj" placeholder="opcional" /></div>
+            <div><small>Cidade</small><input class="input" name="cidade" placeholder="opcional" /></div>
+            <div><small>UF</small><input class="input" name="uf" placeholder="ex.: MT" /></div>
+            <div class="full"><small>Obs</small><textarea class="textarea" name="obs" placeholder="Anotações..."></textarea></div>
           </div>
+          <div style="height:10px"></div>
+          <button class="btn primary" type="submit">Salvar</button>
         </form>
       </div>
 
       <div class="tableWrap">
         <table>
           <thead>
-            <tr>
-              <th>Empresa</th>
-              <th>CNPJ</th>
-              <th>Responsável</th>
-              <th>Local</th>
-              <th class="noPrint">Ações</th>
-            </tr>
+            <tr><th>Nome</th><th>CNPJ</th><th>Cidade</th><th>UF</th><th></th></tr>
           </thead>
-          <tbody id="tbody"></tbody>
+          <tbody>
+            ${db.empresas.map(e=>`
+              <tr>
+                <td><b>${escapeHtml(e.nome)}</b></td>
+                <td>${escapeHtml(e.cnpj||"")}</td>
+                <td>${escapeHtml(e.cidade||"")}</td>
+                <td>${escapeHtml(e.uf||"")}</td>
+                <td><button class="btn danger" data-del="${e.id}">Excluir</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
         </table>
       </div>
     </div>
   `;
 
-  function render(){
-    const db2 = getDB();
-    const tb = document.getElementById("tbody");
-    tb.innerHTML = db2.empresas.slice().reverse().map(e=>`
-      <tr>
-        <td><b>${escapeHtml(e.nome)}</b></td>
-        <td>${escapeHtml(e.cnpj||"")}</td>
-        <td>${escapeHtml(e.responsavel||"")}</td>
-        <td>${escapeHtml((e.cidade||"")+" / "+(e.uf||""))}</td>
-        <td class="noPrint">
-          <button class="btn" onclick="window.__use('${e.id}')">Usar</button>
-          <button class="btn danger" onclick="window.__delEmp('${e.id}')">Excluir</button>
-        </td>
-      </tr>
-    `).join("") || `<tr><td colspan="5">Sem empresas.</td></tr>`;
-  }
+  document.getElementById("btnExportEmp").addEventListener("click", ()=>{
+    downloadText(`empresas-${nowISO()}.csv`, toCSV(db.empresas.map(x=>({...x}))));
+    toast("Exportado","CSV baixado.");
+  });
 
-  window.__use = (id)=>{
-    setEmpresaId(id);
-    toast("Empresa ativa", "Mudando para a empresa selecionada…");
-    setTimeout(()=>location.reload(), 250);
-  };
+  content.querySelectorAll("[data-del]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const id = btn.getAttribute("data-del");
+      if(!confirm("Excluir empresa? Isso não apaga os dados antigos do histórico (fica no backup).")) return;
+      const db2 = getDB();
+      db2.empresas = db2.empresas.filter(e=>e.id!==id);
+      setDB(db2);
+      toast("Excluída","Empresa removida.");
+      setTimeout(()=>location.reload(),120);
+    });
+  });
 
-  window.__delEmp = (id)=>{
-    const db2 = getDB();
-    if(db2.empresas.length<=1){
-      alert("Você precisa ter pelo menos 1 empresa.");
-      return;
-    }
-    if(!confirm("Excluir empresa e TODOS os dados dela (fazendas, talhões, aplicações etc.)?")) return;
-
-    db2.empresas = db2.empresas.filter(x=>x.id!==id);
-    const wipe = key => db2[key] = (db2[key]||[]).filter(x=>x.empresaId!==id);
-
-    ["fazendas","talhoes","produtos","estoque","equipe","maquinas","clima","aplicacoes","combustivel"].forEach(wipe);
-
-    if(getEmpresaId()===id){
-      db2.session.empresaId = db2.empresas[0].id;
-    }
-    setDB(db2);
-    toast("Excluída", "Empresa removida com dados associados.");
-    setTimeout(()=>location.reload(), 250);
-  };
-
-  document.getElementById("frm").addEventListener("submit",(e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
+  document.getElementById("formEmp").addEventListener("submit",(ev)=>{
+    ev.preventDefault();
+    const fd = new FormData(ev.target);
     const obj = {
       id: uid("emp"),
-      nome: fd.get("nome"),
-      cnpj: fd.get("cnpj"),
-      responsavel: fd.get("responsavel"),
-      cidade: fd.get("cidade"),
-      uf: fd.get("uf"),
-      observacoes: fd.get("observacoes")
+      nome: fd.get("nome")||"",
+      cnpj: fd.get("cnpj")||"",
+      cidade: fd.get("cidade")||"",
+      uf: fd.get("uf")||"",
+      obs: fd.get("obs")||""
     };
     const db2 = getDB();
     db2.empresas.push(obj);
     setDB(db2);
-    e.target.reset();
-    toast("Salvo","Empresa adicionada.");
-    render();
+    toast("Salvo","Empresa criada.");
+    setTimeout(()=>location.reload(),120);
   });
-
-  document.getElementById("btnExportCSV").addEventListener("click", ()=>{
-    const db2 = getDB();
-    downloadText(`empresas-${nowISO()}.csv`, toCSV(db2.empresas));
-    toast("Exportado","CSV baixado.");
-  });
-
-  render();
 }
 
 function pageFazendas(){
   crudPage({
-    entityKey:"fazendas",
-    fields:[
-      {key:"nome", label:"Nome da fazenda", type:"text"},
-      {key:"cidade", label:"Cidade", type:"text"},
-      {key:"uf", label:"UF", type:"text"},
-      {key:"areaHa", label:"Área total (ha)", type:"number"},
-      {key:"observacoes", label:"Observações", type:"textarea", full:true}
-    ],
+    title:"Fazendas",
+    subtitle:"Cadastro de fazendas da empresa",
+    tableKey:"fazendas",
     columns:[
-      {key:"nome", label:"Fazenda"},
-      {key:"cidade", label:"Cidade"},
+      {key:"nome", label:"Nome"},
+      {key:"municipio", label:"Município"},
       {key:"uf", label:"UF"},
-      {key:"areaHa", label:"Área (ha)"},
-      {key:"observacoes", label:"Obs."}
-    ]
+      {key:"obs", label:"Obs"},
+    ],
+    formFields:[
+      {kind:"input", name:"nome", label:"Nome", placeholder:"Ex.: Fazenda Horizonte", full:true},
+      {kind:"input", name:"municipio", label:"Município", placeholder:"opcional"},
+      {kind:"input", name:"uf", label:"UF", placeholder:"ex.: MT"},
+      {kind:"textarea", name:"obs", label:"Obs", placeholder:"anotações...", full:true},
+    ],
   });
 }
 
 function pageTalhoes(){
   crudPage({
-    entityKey:"talhoes",
-    fields:[
-      {
-        key:"fazendaId", label:"Fazenda", type:"select",
-        options:(db)=> onlyEmpresa(db.fazendas).map(f=>({value:f.id, label:f.nome}))
-      },
-      {key:"nome", label:"Nome do talhão", type:"text"},
-      {key:"areaHa", label:"Área (ha)", type:"number"},
-      {key:"cultura", label:"Cultura", type:"text", placeholder:"Soja / Milho / Algodão..."},
-      {key:"safra", label:"Safra", type:"text", placeholder:"2025/26"},
-      {key:"solo", label:"Solo", type:"text", placeholder:"Argiloso / Arenoso..."},
-      {key:"coordenadas", label:"Coordenadas/Geo", type:"text", placeholder:"Opcional"},
-      {key:"observacoes", label:"Observações", type:"textarea", full:true}
-    ],
+    title:"Talhões",
+    subtitle:"Talhões por fazenda",
+    tableKey:"talhoes",
     columns:[
-      {key:"nome", label:"Talhão"},
-      {key:"fazendaId", label:"Fazenda", render:(r,db)=>findNameById(onlyEmpresa(db.fazendas), r.fazendaId)},
-      {key:"areaHa", label:"Área (ha)"},
+      {key:"nome", label:"Nome"},
+      {key:"fazendaId", label:"Fazenda", render:(r,db)=> findNameById(onlyEmpresa(db.fazendas||[]), r.fazendaId)},
       {key:"cultura", label:"Cultura"},
-      {key:"safra", label:"Safra"},
-      {key:"solo", label:"Solo"}
-    ]
+      {key:"areaHa", label:"Área (ha)", render:(r)=> Number(r.areaHa||0).toFixed(2)},
+      {key:"obs", label:"Obs"},
+    ],
+    formFields:[
+      {kind:"select", name:"fazendaId", label:"Fazenda", optionsFn:(db)=>{
+        const f = onlyEmpresa(db.fazendas||[]);
+        return f.length ? f.map(x=>({value:x.id, label:x.nome})) : [{value:"", label:"Cadastre Fazendas primeiro"}];
+      }, full:true},
+      {kind:"input", name:"nome", label:"Nome", placeholder:"Ex.: T-12"},
+      {kind:"input", name:"cultura", label:"Cultura", placeholder:"Ex.: Soja"},
+      {kind:"number", name:"areaHa", label:"Área (ha)", step:"0.01", placeholder:"Ex.: 78.5"},
+      {kind:"textarea", name:"obs", label:"Obs", placeholder:"anotações...", full:true},
+    ],
   });
 }
 
 function pageProdutos(){
   crudPage({
-    entityKey:"produtos",
-    subtitle:"Cadastre defensivos, fertilizantes e adjuvantes com carência e reentrada.",
-    fields:[
-      {key:"tipo", label:"Tipo", type:"text", placeholder:"Herbicida/Fungicida/Inseticida/Fertilizante/Adjuvante"},
-      {key:"nome", label:"Nome comercial", type:"text"},
-      {key:"ingrediente", label:"Ingrediente ativo", type:"text"},
-      {key:"fabricante", label:"Fabricante", type:"text"},
-      {key:"registro", label:"Registro/Mapa", type:"text"},
-      {key:"carenciaDias", label:"Carência (dias)", type:"number"},
-      {key:"reentradaHoras", label:"Reentrada (horas)", type:"number"},
-      {key:"unidade", label:"Unidade padrão", type:"text", placeholder:"L / kg"},
-      {key:"obs", label:"Observações", type:"textarea", full:true}
-    ],
+    title:"Produtos",
+    subtitle:"Insumos e combustíveis",
+    tableKey:"produtos",
     columns:[
       {key:"tipo", label:"Tipo"},
-      {key:"nome", label:"Produto"},
-      {key:"ingrediente", label:"Ingrediente"},
-      {key:"carenciaDias", label:"Carência (d)"},
-      {key:"reentradaHoras", label:"Reentrada (h)"},
-      {key:"unidade", label:"Unid."}
+      {key:"nome", label:"Nome"},
+      {key:"unidade", label:"Unid."},
+      {key:"obs", label:"Obs"},
     ],
-    helpers:{
-      onDelete:(id,db)=>{
-        db.estoque = (db.estoque||[]).filter(s=>s.produtoId!==id);
+    formFields:[
+      {kind:"select", name:"tipo", label:"Tipo", options:[
+        {value:"Insumo", label:"Insumo"},
+        {value:"Fertilizante", label:"Fertilizante"},
+        {value:"Semente", label:"Semente"},
+        {value:"Combustível", label:"Combustível"},
+        {value:"Outro", label:"Outro"},
+      ], full:true},
+      {kind:"input", name:"nome", label:"Nome", placeholder:"Ex.: Diesel S10 / Glifosato 480", full:true},
+      {kind:"input", name:"unidade", label:"Unidade", placeholder:"Ex.: L, kg, sc"},
+      {kind:"textarea", name:"obs", label:"Obs", placeholder:"informações...", full:true},
+    ],
+  });
+}
+
+function ensureExtraStyles(){
+  if(document.getElementById("agroExtraStyles")) return;
+  const st = document.createElement("style");
+  st.id = "agroExtraStyles";
+  st.textContent = `
+    .qtyTag{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid var(--line);
+      background: var(--chip);
+      font-weight:800;
+    }
+    .qtyTag.neg{
+      border-color: rgba(239,68,68,.35);
+      background: rgba(239,68,68,.10);
+      color: #7f1d1d;
+    }
+    .qtyTag.pos{
+      border-color: rgba(22,163,74,.28);
+      background: rgba(22,163,74,.10);
+      color: #14532d;
+    }
+  `;
+  document.head.appendChild(st);
+}
+
+function pageEstoque(){
+  ensureExtraStyles();
+  const db = getDB();
+  const produtos = onlyEmpresa(db.produtos||[]);
+
+  crudPage({
+    title:"Estoque",
+    subtitle:"Entradas, saldos e furo (negativo permitido)",
+    tableKey:"estoque",
+    columns:[
+      {key:"produtoId", label:"Produto", render:(r,db)=> findNameById(onlyEmpresa(db.produtos||[]), r.produtoId)},
+      {key:"deposito", label:"Depósito"},
+      {key:"qtd", label:"Qtd", raw:true, render:(r)=>{
+        const q = Number(r.qtd||0);
+        const cls = q < 0 ? "neg" : "pos";
+        return `<span class="qtyTag ${cls}">${q.toFixed(2)}</span>`;
+      }},
+      {key:"unidade", label:"Unid."},
+      {key:"obs", label:"Obs"},
+    ],
+    formFields:[
+      {kind:"select", name:"produtoId", label:"Produto", optionsFn:()=>{
+        return produtos.length ? produtos.map(p=>({value:p.id, label:`${p.nome} (${p.tipo})`})) : [{value:"", label:"Cadastre Produtos primeiro"}];
+      }, full:true},
+      {kind:"input", name:"deposito", label:"Depósito", placeholder:"Ex.: Galpão / Tanque"},
+      {kind:"number", name:"qtd", label:"Qtd", step:"0.01", placeholder:"Ex.: 500"},
+      {kind:"input", name:"unidade", label:"Unid.", placeholder:"Ex.: L, kg"},
+      {kind:"textarea", name:"obs", label:"Obs", placeholder:"lote/nota/fornecedor...", full:true},
+    ],
+    onBeforeSave:(obj)=>{
+      // auto unidade se vazia
+      if(!obj.unidade){
+        const p = produtos.find(x=>x.id===obj.produtoId);
+        if(p && p.unidade) obj.unidade = p.unidade;
       }
     }
   });
 }
 
-function pageEstoque(){
-  crudPage({
-    entityKey:"estoque",
-    subtitle:"Controle por depósito, lote e validade. (Pode ficar negativo se baixar em aplicações).",
-    fields:[
-      {key:"produtoId", label:"Produto", type:"select",
-        options:(db)=> {
-          const ps = onlyEmpresa(db.produtos);
-          return [{value:"", label:"(Selecione)"}].concat(ps.map(p=>({value:p.id, label:`${p.nome} — ${p.tipo}`})));
-        }
-      },
-      {key:"deposito", label:"Depósito", type:"text", placeholder:"Central / Galpão / Unidade..."},
-      {key:"lote", label:"Lote", type:"text"},
-      {key:"validade", label:"Validade (YYYY-MM-DD)", type:"text", placeholder:"2027-12-31"},
-      {key:"qtd", label:"Quantidade", type:"number"},
-      {key:"unidade", label:"Unidade", type:"text", placeholder:"L / kg"},
-      {key:"obs", label:"Observações", type:"textarea", full:true}
-    ],
-    columns:[
-      {key:"produtoId", label:"Produto", render:(r,db)=>{
-        const p = onlyEmpresa(db.produtos).find(p=>p.id===r.produtoId);
-        return p ? `${p.nome} (${p.tipo})` : "(sem produto)";
-      }},
-      {key:"deposito", label:"Depósito"},
-      {key:"lote", label:"Lote"},
-      {key:"validade", label:"Validade"},
-      {key:"qtd", label:"Qtd"},
-      {key:"unidade", label:"Unid."}
-    ]
-  });
-}
-
-function pageClima(){
-  crudPage({
-    entityKey:"clima",
-    subtitle:"Lançamento manual de chuva e condições (útil para justificar janelas de aplicação).",
-    fields:[
-      {key:"data", label:"Data", type:"text", placeholder: nowISO()},
-      {
-        key:"fazendaId", label:"Fazenda", type:"select",
-        options:(db)=> onlyEmpresa(db.fazendas).map(f=>({value:f.id, label:f.nome}))
-      },
-      {
-        key:"talhaoId", label:"Talhão (opcional)", type:"select",
-        options:(db)=> [{value:"", label:"(Todos/geral)"}].concat(
-          onlyEmpresa(db.talhoes).map(t=>({value:t.id, label:t.nome}))
-        )
-      },
-      {key:"chuvaMm", label:"Chuva (mm)", type:"number"},
-      {key:"tempMin", label:"Temp min (°C)", type:"number"},
-      {key:"tempMax", label:"Temp max (°C)", type:"number"},
-      {key:"umidade", label:"Umidade (%)", type:"number"},
-      {key:"vento", label:"Vento (km/h)", type:"number"},
-      {key:"obs", label:"Observações", type:"textarea", full:true}
-    ],
-    columns:[
-      {key:"data", label:"Data"},
-      {key:"fazendaId", label:"Fazenda", render:(r,db)=>findNameById(onlyEmpresa(db.fazendas), r.fazendaId)},
-      {key:"talhaoId", label:"Talhão", render:(r,db)=> r.talhaoId ? findNameById(onlyEmpresa(db.talhoes), r.talhaoId) : "Geral"},
-      {key:"chuvaMm", label:"Chuva (mm)"},
-      {key:"tempMax", label:"Temp máx"},
-      {key:"vento", label:"Vento"}
-    ],
-    helpers:{ beforeSave:(obj)=>{ if(!obj.data) obj.data = nowISO(); } }
-  });
-}
-
 function pageEquipe(){
   crudPage({
-    entityKey:"equipe",
-    subtitle:"Equipe de campo: operadores, agrônomos, terceirizados etc.",
-    fields:[
-      {key:"nome", label:"Nome", type:"text"},
-      {key:"funcao", label:"Função", type:"text", placeholder:"Tratorista / Encarregado / Agrônomo..."},
-      {key:"telefone", label:"Telefone", type:"text"},
-      {key:"nr", label:"NR/Certificações", type:"text", placeholder:"NR-31 / Treinamentos..."},
-      {key:"obs", label:"Observações", type:"textarea", full:true}
-    ],
+    title:"Equipe",
+    subtitle:"Operadores e equipe de campo",
+    tableKey:"equipe",
     columns:[
       {key:"nome", label:"Nome"},
       {key:"funcao", label:"Função"},
       {key:"telefone", label:"Telefone"},
-      {key:"nr", label:"NR/Cert."},
-      {key:"obs", label:"Obs."}
-    ]
+      {key:"obs", label:"Obs"},
+    ],
+    formFields:[
+      {kind:"input", name:"nome", label:"Nome", placeholder:"Ex.: João", full:true},
+      {kind:"input", name:"funcao", label:"Função", placeholder:"Ex.: Operador"},
+      {kind:"input", name:"telefone", label:"Telefone", placeholder:"opcional"},
+      {kind:"textarea", name:"obs", label:"Obs", placeholder:"anotações...", full:true},
+    ],
   });
 }
 
 function pageMaquinas(){
   crudPage({
-    entityKey:"maquinas",
-    subtitle:"Cadastro de equipamentos para rastreabilidade de aplicação.",
-    fields:[
-      {key:"nome", label:"Máquina/equipamento", type:"text", placeholder:"Pulverizador / Trator / Drone..."},
-      {key:"placa", label:"Placa/Identificação", type:"text"},
-      {key:"horimetro", label:"Horímetro", type:"number"},
-      {key:"capacidadeL", label:"Capacidade (L)", type:"number"},
-      {key:"bicos", label:"Bicos/Barra", type:"text", placeholder:"Leque 11002 / Cone..."},
-      {key:"obs", label:"Observações", type:"textarea", full:true}
-    ],
+    title:"Máquinas",
+    subtitle:"Pulverizadores, tratores, colheitadeiras",
+    tableKey:"maquinas",
     columns:[
-      {key:"nome", label:"Máquina"},
-      {key:"placa", label:"ID/Placa"},
-      {key:"horimetro", label:"Horímetro"},
-      {key:"capacidadeL", label:"Capacidade (L)"},
-      {key:"bicos", label:"Bicos"}
-    ]
+      {key:"nome", label:"Nome"},
+      {key:"tipo", label:"Tipo"},
+      {key:"placa", label:"Placa/ID"},
+      {key:"obs", label:"Obs"},
+    ],
+    formFields:[
+      {kind:"input", name:"nome", label:"Nome", placeholder:"Ex.: Pulverizador 01", full:true},
+      {kind:"input", name:"tipo", label:"Tipo", placeholder:"Ex.: Pulverizador"},
+      {kind:"input", name:"placa", label:"Placa/ID", placeholder:"opcional"},
+      {kind:"textarea", name:"obs", label:"Obs", placeholder:"anotações...", full:true},
+    ],
   });
 }
 
-/* ✅ Combustível */
-function pageCombustivel(){
-  const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const equipe = onlyEmpresa(db.equipe);
-  const maquinas = onlyEmpresa(db.maquinas);
-
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
-
-  const content = document.getElementById("content");
-  const options = (arr, emptyLabel) => {
-    const empty = emptyLabel ? `<option value="">${escapeHtml(emptyLabel)}</option>` : "";
-    return empty + arr.map(o=>`<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join("");
-  };
-
-  content.innerHTML = `
-    <div class="section">
-      <div class="card">
-        <h3>Registrar abastecimento</h3>
-        <div class="help">Vincule com máquina/operador/talhão para custo operacional.</div>
-        <div class="hr"></div>
-
-        <form id="frm" class="formGrid">
-          <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
-          <div><small>Tipo</small><input class="input" name="tipo" placeholder="Diesel S10" /></div>
-          <div class="full"><small>Posto/Fornecedor</small><input class="input" name="posto" placeholder="Nome do posto / fornecedor" /></div>
-
-          <div><small>Máquina</small><select class="select" name="maquinaId">${options(maquinas, "(opcional)")}</select></div>
-          <div><small>Operador</small><select class="select" name="operadorId">${options(equipe, "(opcional)")}</select></div>
-
-          <div><small>Fazenda</small><select class="select" name="fazendaId" required>${options(fazendas)}</select></div>
-          <div><small>Talhão</small><select class="select" name="talhaoId" required>${options(talhoes)}</select></div>
-
-          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.01" placeholder="120" required /></div>
-          <div><small>Preço por litro (R$)</small><input class="input" name="precoLitro" type="number" step="0.01" placeholder="6.19" required /></div>
-
-          <div class="full"><small>KM / Horímetro (opcional)</small><input class="input" name="kmOuHora" type="number" step="0.01" placeholder="Ex: 1530 (horímetro) ou 45000 (km)" /></div>
-          <div class="full"><small>Observações</small><textarea class="textarea" name="obs" placeholder="Ex: tanque cheio, deslocamento, serviço etc."></textarea></div>
-
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Salvar</button>
-          </div>
-        </form>
-
-        <div class="hr"></div>
-        <div class="help" id="kpis"></div>
-      </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Máquina</th><th>Operador</th><th>Tipo</th>
-              <th>Litros</th><th>R$/L</th><th>Total (R$)</th><th class="noPrint">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-    </div>
-  `;
-
-  function render(){
-    const db2 = getDB();
-    const rows = onlyEmpresa(db2.combustivel || []);
-    const faz2 = onlyEmpresa(db2.fazendas);
-    const tal2 = onlyEmpresa(db2.talhoes);
-    const maq2 = onlyEmpresa(db2.maquinas);
-    const eq2  = onlyEmpresa(db2.equipe);
-
-    const today = new Date();
-    const days30 = new Date(today.getTime() - 30*24*60*60*1000);
-    const rows30 = rows.filter(r => {
-      const d = new Date((r.data || "").slice(0,10));
-      return !isNaN(d) && d >= days30;
-    });
-
-    const litros30 = rows30.reduce((s,r)=>s+Number(r.litros||0),0);
-    const total30  = rows30.reduce((s,r)=>s+(Number(r.litros||0)*Number(r.precoLitro||0)),0);
-
-    document.getElementById("kpis").innerHTML =
-      `Últimos 30 dias: <b>${litros30.toFixed(1)} L</b> • Custo: <b>R$ ${total30.toFixed(2)}</b> • Média: <b>R$ ${(litros30? (total30/litros30):0).toFixed(2)}</b>/L`;
-
-    const tb = document.getElementById("tbody");
-    tb.innerHTML = rows.slice().reverse().map(r=>{
-      const total = Number(r.litros||0) * Number(r.precoLitro||0);
-      return `
-        <tr>
-          <td>${escapeHtml(r.data||"")}</td>
-          <td>${escapeHtml(findNameById(faz2, r.fazendaId))}</td>
-          <td>${escapeHtml(findNameById(tal2, r.talhaoId))}</td>
-          <td>${escapeHtml(r.maquinaId ? findNameById(maq2, r.maquinaId) : "—")}</td>
-          <td>${escapeHtml(r.operadorId ? findNameById(eq2, r.operadorId) : "—")}</td>
-          <td>${escapeHtml(r.tipo||"")}</td>
-          <td>${Number(r.litros||0).toFixed(2)}</td>
-          <td>${Number(r.precoLitro||0).toFixed(2)}</td>
-          <td><b>R$ ${total.toFixed(2)}</b></td>
-          <td class="noPrint"><button class="btn danger" onclick="window.__delC('${r.id}')">Excluir</button></td>
-        </tr>
-      `;
-    }).join("") || `<tr><td colspan="10">Sem registros.</td></tr>`;
-  }
-
-  window.__delC = (id)=>{
-    if(!confirm("Excluir este abastecimento?")) return;
-    const db2 = getDB();
-    db2.combustivel = (db2.combustivel||[]).filter(x=>x.id!==id);
-    setDB(db2);
-    toast("Excluído","Abastecimento removido.");
-    render();
-  };
-
-  document.getElementById("frm").addEventListener("submit",(e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-
-    const obj = {
-      id: uid("cmb"),
-      empresaId: getEmpresaId(),
-      data: fd.get("data") || nowISO(),
-      tipo: fd.get("tipo") || "Diesel",
-      posto: fd.get("posto") || "",
-      maquinaId: fd.get("maquinaId") || "",
-      operadorId: fd.get("operadorId") || "",
-      fazendaId: fd.get("fazendaId"),
-      talhaoId: fd.get("talhaoId"),
-      litros: Number(fd.get("litros")||0),
-      precoLitro: Number(fd.get("precoLitro")||0),
-      kmOuHora: Number(fd.get("kmOuHora")||0),
-      obs: fd.get("obs") || ""
-    };
-
-    const db2 = getDB();
-    db2.combustivel = db2.combustivel || [];
-    db2.combustivel.push(obj);
-    setDB(db2);
-
-    e.target.reset();
-    toast("Salvo","Abastecimento registrado.");
-    render();
+function pageClima(){
+  crudPage({
+    title:"Clima/Chuva",
+    subtitle:"Registro manual de chuva (mm)",
+    tableKey:"chuva",
+    columns:[
+      {key:"data", label:"Data"},
+      {key:"fazendaId", label:"Fazenda", render:(r,db)=> findNameById(onlyEmpresa(db.fazendas||[]), r.fazendaId)},
+      {key:"mm", label:"mm", render:(r)=> Number(r.mm||0).toFixed(1)},
+      {key:"obs", label:"Obs"},
+    ],
+    formFields:[
+      {kind:"date", name:"data", label:"Data", value: nowISO()},
+      {kind:"select", name:"fazendaId", label:"Fazenda", optionsFn:(db)=>{
+        const f = onlyEmpresa(db.fazendas||[]);
+        return f.length ? f.map(x=>({value:x.id, label:x.nome})) : [{value:"", label:"Cadastre Fazendas primeiro"}];
+      }},
+      {kind:"number", name:"mm", label:"Chuva (mm)", step:"0.1", placeholder:"Ex.: 12"},
+      {kind:"textarea", name:"obs", label:"Obs", placeholder:"anotações...", full:true},
+    ],
   });
-
-  document.getElementById("btnExportCSV").addEventListener("click", ()=>{
-    const db2 = getDB();
-    downloadText(`combustivel-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.combustivel||[])));
-    toast("Exportado","CSV baixado.");
-  });
-
-  render();
 }
 
-/* ✅ Aplicações + baixa de estoque + área aplicada */
+/* ---------------- Aplicações (10 linhas) + baixa de estoque ---------------- */
 function pageAplicacoes(){
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const equipe = onlyEmpresa(db.equipe);
-  const maquinas = onlyEmpresa(db.maquinas);
-  const produtos = onlyEmpresa(db.produtos);
+  const fazendas = onlyEmpresa(db.fazendas||[]);
+  const talhoes = onlyEmpresa(db.talhoes||[]);
+  const produtos = onlyEmpresa(db.produtos||[]).filter(p=>String(p.tipo||"").toLowerCase()!=="combustível"); // não mistura diesel aqui
+  const operadores = onlyEmpresa(db.equipe||[]);
+  const maquinas = onlyEmpresa(db.maquinas||[]);
 
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+  setTopActions(`<button class="btn" onclick="window.print()">Imprimir</button>`);
 
   const content = document.getElementById("content");
-
-  function optionList(arr){
-    return arr.map(o=>`<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join("");
-  }
-
   content.innerHTML = `
     <div class="section">
       <div class="card">
-        <h3>Registrar aplicação</h3>
-        <div class="help">
-          ✅ Agora você informa <b>Área aplicada (ha)</b> e o sistema dá baixa no estoque automaticamente (pode ficar negativo).
-        </div>
-        <div class="hr"></div>
+        <h3>Nova aplicação</h3>
+        <form id="formApl">
+          <div class="formGrid">
+            <div><small>Data</small><input class="input" type="date" name="data" value="${nowISO()}" /></div>
+            <div><small>Operação</small><input class="input" name="operacao" placeholder="Ex.: Pulverização terrestre" /></div>
 
-        <form id="frm" class="formGrid">
-          <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
+            <div><small>Fazenda</small>
+              <select class="select" name="fazendaId">
+                ${fazendas.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("")}
+              </select>
+            </div>
 
-          <div>
-            <small>Fazenda</small>
-            <select class="select" name="fazendaId" required>
-              ${optionList(fazendas)}
-            </select>
-          </div>
+            <div><small>Talhão</small>
+              <select class="select" name="talhaoId">
+                ${talhoes.map(t=>`<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join("")}
+              </select>
+            </div>
 
-          <div>
-            <small>Talhão</small>
-            <select class="select" name="talhaoId" required>
-              ${optionList(talhoes)}
-            </select>
-          </div>
+            <div><small>Área aplicada (ha)</small><input class="input" type="number" step="0.01" name="areaHa" placeholder="Ex.: 10" required /></div>
+            <div><small>Alvo</small><input class="input" name="alvo" placeholder="Ex.: Plantas daninhas" /></div>
 
-          <div><small>Área aplicada (ha)</small><input class="input" name="areaHa" type="number" step="0.01" placeholder="Ex: 12.5" required /></div>
+            <div><small>Máquina</small>
+              <select class="select" name="maquinaId">
+                <option value="">(opcional)</option>
+                ${maquinas.map(m=>`<option value="${m.id}">${escapeHtml(m.nome)}</option>`).join("")}
+              </select>
+            </div>
 
-          <div><small>Cultura</small><input class="input" name="cultura" placeholder="Soja" /></div>
-          <div><small>Alvo</small><input class="input" name="alvo" placeholder="Ferrugem / Lagartas / Daninhas..." /></div>
-          <div><small>Operação</small><input class="input" name="operacao" placeholder="Pulverização terrestre / Drone..." /></div>
+            <div><small>Operador</small>
+              <select class="select" name="operadorId">
+                <option value="">(opcional)</option>
+                ${operadores.map(o=>`<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join("")}
+              </select>
+            </div>
 
-          <div>
-            <small>Máquina</small>
-            <select class="select" name="maquinaId">
-              <option value="">(opcional)</option>
-              ${optionList(maquinas)}
-            </select>
-          </div>
+            <div><small>Calda (L/ha)</small><input class="input" type="number" step="0.1" name="caldaLHa" placeholder="120" /></div>
+            <div><small>Velocidade (km/h)</small><input class="input" type="number" step="0.1" name="velocidade" placeholder="14" /></div>
 
-          <div>
-            <small>Operador</small>
-            <select class="select" name="operadorId">
-              <option value="">(opcional)</option>
-              ${optionList(equipe)}
-            </select>
-          </div>
+            <div><small>Pressão (bar)</small><input class="input" type="number" step="0.1" name="pressao" placeholder="3" /></div>
+            <div><small>Bico</small><input class="input" name="bico" placeholder="Leque 11002" /></div>
 
-          <div><small>Calda (L/ha)</small><input class="input" name="caldaLHa" type="number" placeholder="120" /></div>
-          <div><small>Velocidade (km/h)</small><input class="input" name="velocidadeKmH" type="number" placeholder="14" /></div>
-          <div><small>Bico</small><input class="input" name="bico" placeholder="Leque 11002" /></div>
-          <div><small>Pressão (bar)</small><input class="input" name="pressaoBar" type="number" placeholder="3" /></div>
+            <div><small>Vento (km/h)</small><input class="input" type="number" step="0.1" name="vento" placeholder="8" /></div>
+            <div><small>Temperatura (°C)</small><input class="input" type="number" step="0.1" name="temperatura" placeholder="30" /></div>
 
-          <div><small>Vento (km/h)</small><input class="input" name="vento" type="number" placeholder="8" /></div>
-          <div><small>Temperatura (°C)</small><input class="input" name="temp" type="number" placeholder="30" /></div>
-          <div><small>Umidade (%)</small><input class="input" name="umidade" type="number" placeholder="60" /></div>
+            <div><small>Umidade (%)</small><input class="input" type="number" step="0.1" name="umidade" placeholder="60" /></div>
+            <div class="full"><small>Produtos (10 linhas) — Dose/ha</small>
+              <div class="help">Escolha o produto, informe dose por hectare e unidade (L/ha ou kg/ha).</div>
+            </div>
 
-          <div class="full">
-            <small>Produtos (até 3 linhas)</small>
-            <div class="help">Preencha nome e dose por hectare.</div>
-            <div class="hr"></div>
+            ${Array.from({length:10}, (_,i)=> i+1).map(i=>`
+              <div>
+                <small>Produto ${i}</small>
+                <select class="select" name="p${i}_id">
+                  <option value="">(opcional)</option>
+                  ${produtos.map(p=>`<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join("")}
+                </select>
+              </div>
+              <div>
+                <small>Dose/ha</small>
+                <input class="input" type="number" step="0.001" name="p${i}_dose" placeholder="Ex.: 2.0" />
+              </div>
+              <div>
+                <small>Unidade</small>
+                <input class="input" name="p${i}_un" placeholder="L/ha ou kg/ha" />
+              </div>
+            `).join("")}
 
-            <div class="formGrid">
-              ${[1,2,3].map(i=>`
-                <div class="full" style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:10px;">
-                  <select class="select" name="p${i}Nome">
-                    <option value="">(produto ${i} - opcional)</option>
-                    ${produtos.map(p=>`<option value="${escapeHtml(p.nome)}">${escapeHtml(p.nome)} — ${escapeHtml(p.tipo)}</option>`).join("")}
-                  </select>
-                  <input class="input" name="p${i}Dose" type="number" step="0.01" placeholder="Dose/ha" />
-                  <input class="input" name="p${i}Un" placeholder="L/ha ou kg/ha" />
-                </div>
-              `).join("")}
+            <div class="full">
+              <small>Observações</small>
+              <textarea class="textarea" name="obs" placeholder="Deriva, falhas, reentrada, carência, ocorrências..."></textarea>
             </div>
           </div>
-
-          <div class="full">
-            <small>Observações</small>
-            <textarea class="textarea" name="obs" placeholder="Deriva, falhas, reentrada, carência, ocorrências..."></textarea>
-          </div>
-
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Salvar aplicação</button>
-          </div>
+          <div style="height:10px"></div>
+          <button class="btn primary" type="submit">Salvar aplicação</button>
         </form>
       </div>
 
       <div class="tableWrap">
         <table>
           <thead>
-            <tr>
-              <th>Data</th>
-              <th>Fazenda</th>
-              <th>Talhão</th>
-              <th>Área (ha)</th>
-              <th>Cultura</th>
-              <th>Alvo</th>
-              <th>Produtos</th>
-              <th>Condições</th>
-              <th class="noPrint">Ações</th>
-            </tr>
+            <tr><th colspan="6">Últimas aplicações</th></tr>
+            <tr><th>Data</th><th>Fazenda</th><th>Talhão</th><th>Área</th><th>Alvo</th><th>Produtos</th></tr>
           </thead>
-          <tbody id="tbody"></tbody>
+          <tbody>
+            ${
+              onlyEmpresa(db.aplicacoes||[]).slice().reverse().slice(0,10).map(a=>{
+                const faz = findNameById(fazendas, a.fazendaId);
+                const tal = findNameById(talhoes, a.talhaoId);
+                const prds = (a.produtos||[]).map(p=>`${p.produtoNome} (${p.dosePorHa} ${p.unidade||""})`).join(" + ");
+                return `<tr>
+                  <td>${escapeHtml(a.data||"")}</td>
+                  <td>${escapeHtml(faz)}</td>
+                  <td>${escapeHtml(tal)}</td>
+                  <td>${Number(a.areaHa||0).toFixed(2)}</td>
+                  <td>${escapeHtml(a.alvo||"")}</td>
+                  <td>${escapeHtml(prds||"—")}</td>
+                </tr>`;
+              }).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
+            }
+          </tbody>
         </table>
       </div>
     </div>
   `;
 
-  function render(){
-    const db2 = getDB();
-    const rows = onlyEmpresa(db2.aplicacoes||[]);
-    const tb = document.getElementById("tbody");
-    tb.innerHTML = rows.slice().reverse().map(a=>{
-      const faz = findNameById(onlyEmpresa(db2.fazendas), a.fazendaId);
-      const tal = findNameById(onlyEmpresa(db2.talhoes), a.talhaoId);
-      const prds = (a.produtos||[]).filter(p=>p.produtoNome).map(p=>`${p.produtoNome} (${p.dosePorHa} ${p.unidade})`).join(" + ");
-      const cond = a.condicoes ? `V:${a.condicoes.vento} T:${a.condicoes.temp} U:${a.condicoes.umidade}` : "";
-      return `
-        <tr>
-          <td>${escapeHtml(a.data||"")}</td>
-          <td>${escapeHtml(faz)}</td>
-          <td>${escapeHtml(tal)}</td>
-          <td>${Number(a.areaHa||0).toFixed(2)}</td>
-          <td>${escapeHtml(a.cultura||"")}</td>
-          <td>${escapeHtml(a.alvo||"")}</td>
-          <td>${escapeHtml(prds||"—")}</td>
-          <td>${escapeHtml(cond||"—")}</td>
-          <td class="noPrint"><button class="btn danger" onclick="window.__delA('${a.id}')">Excluir</button></td>
-        </tr>
-      `;
-    }).join("") || `<tr><td colspan="9">Sem aplicações.</td></tr>`;
-  }
+  document.getElementById("formApl").addEventListener("submit",(ev)=>{
+    ev.preventDefault();
+    const fd = new FormData(ev.target);
 
-  window.__delA = (id)=>{
-    if(!confirm("Excluir esta aplicação?")) return;
-    const db2 = getDB();
-    db2.aplicacoes = (db2.aplicacoes||[]).filter(x=>x.id!==id);
-    setDB(db2);
-    toast("Excluída","Aplicação removida.");
-    render();
-  };
+    const areaHa = Number(fd.get("areaHa")||0);
+    if(!areaHa || areaHa <= 0){
+      toast("Erro","Informe a área aplicada (ha).");
+      return;
+    }
 
-  document.getElementById("frm").addEventListener("submit",(e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-
-    const obj = {
+    const apl = {
       id: uid("apl"),
       empresaId: getEmpresaId(),
       data: fd.get("data") || nowISO(),
-      fazendaId: fd.get("fazendaId"),
-      talhaoId: fd.get("talhaoId"),
-      areaHa: Number(fd.get("areaHa")||0), // ✅ área aplicada por operação
-      cultura: fd.get("cultura") || "",
+      fazendaId: fd.get("fazendaId") || "",
+      talhaoId: fd.get("talhaoId") || "",
+      areaHa,
       alvo: fd.get("alvo") || "",
       operacao: fd.get("operacao") || "",
       maquinaId: fd.get("maquinaId") || "",
       operadorId: fd.get("operadorId") || "",
-      condicoes: {
-        vento: Number(fd.get("vento")||0),
-        temp: Number(fd.get("temp")||0),
-        umidade: Number(fd.get("umidade")||0)
-      },
       caldaLHa: Number(fd.get("caldaLHa")||0),
-      velocidadeKmH: Number(fd.get("velocidadeKmH")||0),
+      velocidade: Number(fd.get("velocidade")||0),
+      pressao: Number(fd.get("pressao")||0),
       bico: fd.get("bico") || "",
-      pressaoBar: Number(fd.get("pressaoBar")||0),
-      produtos: [],
-      obs: fd.get("obs") || ""
+      vento: Number(fd.get("vento")||0),
+      temperatura: Number(fd.get("temperatura")||0),
+      umidade: Number(fd.get("umidade")||0),
+      obs: fd.get("obs") || "",
+      produtos: []
     };
 
-    [1,2,3].forEach(i=>{
-      const nome = fd.get(`p${i}Nome`);
-      const dose = fd.get(`p${i}Dose`);
-      const un = fd.get(`p${i}Un`);
-      if(nome){
-        obj.produtos.push({ produtoNome: nome, dosePorHa: Number(dose||0), unidade: un || "" });
-      }
+    // 10 linhas
+    Array.from({length:10}, (_,i)=> i+1).forEach(i=>{
+      const id = fd.get(`p${i}_id`) || "";
+      const dose = Number(fd.get(`p${i}_dose`)||0);
+      const un = (fd.get(`p${i}_un`)||"").trim();
+      if(!id) return;
+      const p = produtos.find(x=>x.id===id);
+      apl.produtos.push({
+        produtoId: id,
+        produtoNome: p ? p.nome : "Produto",
+        dosePorHa: dose,
+        unidade: un || (p?.unidade ? `${p.unidade}/ha` : "")
+      });
     });
 
-    // ✅ Baixa automática no estoque (pode ficar negativo)
-    (function baixarEstoquePorAplicacao(){
-      const dbX = getDB();
-      const area = Number(obj.areaHa || 0);
-      if(!area) return;
-
-      const prods = onlyEmpresa(dbX.produtos);
-      dbX.estoque = dbX.estoque || [];
-      const estoqueEmpresa = onlyEmpresa(dbX.estoque);
-
-      const logs = [];
-
-      (obj.produtos || []).forEach(p=>{
-        if(!p.produtoNome) return;
-
-        const prod = prods.find(pp => (pp.nome||"").trim().toLowerCase() === String(p.produtoNome).trim().toLowerCase());
-        const dose = Number(p.dosePorHa || 0);
-        if(!dose) return;
-
-        const consumo = dose * area; // dose/ha * ha aplicados
-
-        if(prod){
-          let item = estoqueEmpresa.find(s => s.produtoId === prod.id);
-
-          // se não existir item de estoque, cria (e vai negativo)
-          if(!item){
-            item = {
-              id: uid("stk"),
-              empresaId: getEmpresaId(),
-              produtoId: prod.id,
-              deposito: "Padrão",
-              lote: "",
-              validade: "",
-              qtd: 0,
-              unidade: (prod.unidade || "").trim() || "L",
-              obs: "Criado automaticamente pela baixa de aplicação"
-            };
-            dbX.estoque.push(item);
-          }
-
-          item.qtd = Number(item.qtd || 0) - consumo; // ✅ pode ficar negativo
-          logs.push(`${prod.nome}: -${consumo.toFixed(2)} ${item.unidade}`);
-        } else {
-          logs.push(`${p.produtoNome}: (não baixou — não cadastrado em Produtos)`);
-        }
-      });
-
-      setDB(dbX);
-
-      if(logs.length){
-        toast("Estoque atualizado", logs.join(" • "));
-      }
-    })();
-
-    // salvar aplicação
+    // Salva aplicação
     const db2 = getDB();
     db2.aplicacoes = db2.aplicacoes || [];
-    db2.aplicacoes.push(obj);
+    db2.aplicacoes.push(apl);
+
+    // ✅ BAIXA AUTOMÁTICA NO ESTOQUE: dose/ha * área
+    db2.estoque = db2.estoque || [];
+    apl.produtos.forEach(pp=>{
+      const dose = Number(pp.dosePorHa||0);
+      if(!dose) return;
+      const consumo = dose * areaHa; // mesma unidade da dose/ha (ex.: L ou kg)
+      // procura a primeira linha de estoque do produto
+      let item = onlyEmpresa(db2.estoque).find(s => s.produtoId === pp.produtoId);
+      if(!item){
+        // cria linha se não existir (vai negativo)
+        item = {
+          id: uid("stk"),
+          empresaId: getEmpresaId(),
+          produtoId: pp.produtoId,
+          deposito: "Geral",
+          lote: "",
+          validade: "",
+          qtd: 0,
+          unidade: (pp.unidade||"").includes("kg") ? "kg" : "L",
+          obs: "Criado automaticamente pela baixa de aplicação"
+        };
+        db2.estoque.push(item);
+      }
+      item.qtd = Number(item.qtd||0) - consumo; // permite negativo
+    });
+
     setDB(db2);
-
-    e.target.reset();
-    toast("Salvo","Aplicação registrada.");
-    render();
+    toast("Salvo","Aplicação registrada e estoque atualizado.");
+    setTimeout(()=>location.reload(), 120);
   });
-
-  document.getElementById("btnExportCSV").addEventListener("click", ()=>{
-    const db2 = getDB();
-    downloadText(`aplicacoes-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.aplicacoes||[])));
-    toast("Exportado","CSV baixado.");
-  });
-
-  render();
 }
 
-function pageRelatorios(){
+/* ---------------- Combustível: Diesel S10/S500 + baixa estoque ---------------- */
+function pageCombustivel(){
+  ensureExtraStyles();
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const aplicacoes = onlyEmpresa(db.aplicacoes);
-  const clima = onlyEmpresa(db.clima);
-  const combustivel = onlyEmpresa(db.combustivel || []);
-  const estoque = onlyEmpresa(db.estoque || []);
-  const prods = onlyEmpresa(db.produtos || []);
+  const fazendas = onlyEmpresa(db.fazendas||[]);
+  const talhoes = onlyEmpresa(db.talhoes||[]);
+  const maquinas = onlyEmpresa(db.maquinas||[]);
+  const operadores = onlyEmpresa(db.equipe||[]);
+  const produtos = onlyEmpresa(db.produtos||[]);
+  const combustiveis = produtos.filter(p => String(p.tipo||"").toLowerCase().includes("combust"));
 
-  setTopActions(`
-    <button class="btn" id="btnCSV">Exportar (Apl) CSV</button>
-    <button class="btn primary" id="btnPrint">Imprimir / PDF</button>
-  `);
-
-  const totalAreaTalhoes = talhoes.reduce((s,t)=>s+Number(t.areaHa||0),0);
-  const totalAreaAplicada = aplicacoes.reduce((s,a)=>s+Number(a.areaHa||0),0);
-
-  const ultApl = aplicacoes.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).slice(0,12);
-  const ultClima = clima.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).slice(0,12);
-
-  const today = new Date();
-  const days30 = new Date(today.getTime() - 30*24*60*60*1000);
-  const comb30 = combustivel.filter(r=>{
-    const d = new Date((r.data||"").slice(0,10));
-    return !isNaN(d) && d >= days30;
-  });
-  const combTotal30 = comb30.reduce((s,r)=>s+(Number(r.litros||0)*Number(r.precoLitro||0)),0);
-
-  const negativos = estoque.filter(s=>Number(s.qtd||0) < 0).length;
+  setTopActions(`<button class="btn" onclick="window.print()">Imprimir</button>`);
 
   const content = document.getElementById("content");
   content.innerHTML = `
-    <div class="printOnly">
-      <h2>Relatório Agro Pro</h2>
-      <p>Gerado em: ${new Date().toLocaleString("pt-BR")}</p>
-      <div class="hr"></div>
-    </div>
-
-    <div class="kpi">
-      <div class="card">
-        <h3>Área total (talhões)</h3>
-        <div class="big">${totalAreaTalhoes.toFixed(1)} ha</div>
-        <div class="sub">Somatório cadastrado</div>
-      </div>
-      <div class="card">
-        <h3>Área aplicada (total)</h3>
-        <div class="big">${totalAreaAplicada.toFixed(1)} ha</div>
-        <div class="sub">Somatório das aplicações</div>
-      </div>
-      <div class="card">
-        <h3>Combustível (30d)</h3>
-        <div class="big">R$ ${combTotal30.toFixed(2)}</div>
-        <div class="sub"><span class="pill warn">Custo operacional</span></div>
-      </div>
-      <div class="card">
-        <h3>Estoque negativo</h3>
-        <div class="big">${negativos}</div>
-        <div class="sub"><span class="pill bad">Furo de estoque</span></div>
-      </div>
-    </div>
-
     <div class="section">
+      <div class="card">
+        <h3>Novo abastecimento</h3>
+        <form id="formCmb">
+          <div class="formGrid">
+            <div><small>Data</small><input class="input" type="date" name="data" value="${nowISO()}" /></div>
+
+            <div>
+              <small>Diesel</small>
+              <select class="select" name="produtoId" ${combustiveis.length ? "" : "disabled"}>
+                ${
+                  combustiveis.length
+                    ? combustiveis.map(p=>`<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join("")
+                    : `<option value="">Cadastre Diesel em Produtos (tipo Combustível)</option>`
+                }
+              </select>
+            </div>
+
+            <div><small>Posto / Origem</small><input class="input" name="posto" placeholder="Ex.: Tanque / Posto XPTO" /></div>
+            <div><small>Litros</small><input class="input" type="number" step="0.01" name="litros" placeholder="Ex.: 120" required /></div>
+
+            <div><small>Preço/Litro</small><input class="input" type="number" step="0.01" name="precoLitro" placeholder="Ex.: 6.19" /></div>
+            <div><small>KM ou Horímetro</small><input class="input" type="number" step="0.1" name="kmOuHora" placeholder="opcional" /></div>
+
+            <div><small>Máquina</small>
+              <select class="select" name="maquinaId">
+                <option value="">(opcional)</option>
+                ${maquinas.map(m=>`<option value="${m.id}">${escapeHtml(m.nome)}</option>`).join("")}
+              </select>
+            </div>
+
+            <div><small>Operador</small>
+              <select class="select" name="operadorId">
+                <option value="">(opcional)</option>
+                ${operadores.map(o=>`<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join("")}
+              </select>
+            </div>
+
+            <div><small>Fazenda</small>
+              <select class="select" name="fazendaId">
+                ${fazendas.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("")}
+              </select>
+            </div>
+
+            <div><small>Talhão</small>
+              <select class="select" name="talhaoId">
+                ${talhoes.map(t=>`<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join("")}
+              </select>
+            </div>
+
+            <div class="full"><small>Observações</small>
+              <textarea class="textarea" name="obs" placeholder="Abastecimento, manutenção, ocorrências..."></textarea>
+            </div>
+          </div>
+
+          <div style="height:10px"></div>
+          <button class="btn primary" type="submit">Salvar abastecimento</button>
+          <div style="height:8px"></div>
+          <div class="help">Ao salvar, o estoque do diesel selecionado é baixado automaticamente (permite saldo negativo).</div>
+        </form>
+      </div>
+
       <div class="tableWrap">
         <table>
           <thead>
-            <tr><th colspan="7">Últimas aplicações</th></tr>
-            <tr>
-              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Área</th><th>Alvo</th><th>Operação</th><th>Produtos</th>
-            </tr>
+            <tr><th colspan="7">Últimos abastecimentos</th></tr>
+            <tr><th>Data</th><th>Diesel</th><th>Litros</th><th>R$</th><th>Máquina</th><th>Fazenda</th><th>Talhão</th></tr>
           </thead>
           <tbody>
             ${
-              ultApl.map(a=>{
-                const prds = (a.produtos||[]).filter(p=>p.produtoNome).map(p=>`${p.produtoNome} (${p.dosePorHa} ${p.unidade})`).join(" + ");
-                return `
-                  <tr>
-                    <td>${escapeHtml(a.data||"")}</td>
-                    <td>${escapeHtml(findNameById(fazendas, a.fazendaId))}</td>
-                    <td>${escapeHtml(findNameById(talhoes, a.talhaoId))}</td>
-                    <td>${Number(a.areaHa||0).toFixed(2)}</td>
-                    <td>${escapeHtml(a.alvo||"")}</td>
-                    <td>${escapeHtml(a.operacao||"")}</td>
-                    <td>${escapeHtml(prds||"—")}</td>
-                  </tr>
-                `;
+              onlyEmpresa(db.combustivel||[]).slice().reverse().slice(0,12).map(c=>{
+                const maq = findNameById(maquinas, c.maquinaId);
+                const faz = findNameById(fazendas, c.fazendaId);
+                const tal = findNameById(talhoes, c.talhaoId);
+                const total = (Number(c.litros||0) * Number(c.precoLitro||0));
+                return `<tr>
+                  <td>${escapeHtml(c.data||"")}</td>
+                  <td><b>${escapeHtml(c.tipo||"")}</b></td>
+                  <td>${Number(c.litros||0).toFixed(2)}</td>
+                  <td>R$ ${total.toFixed(2)}</td>
+                  <td>${escapeHtml(maq||"")}</td>
+                  <td>${escapeHtml(faz||"")}</td>
+                  <td>${escapeHtml(tal||"")}</td>
+                </tr>`;
               }).join("") || `<tr><td colspan="7">Sem registros.</td></tr>`
             }
           </tbody>
         </table>
       </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr><th colspan="6">Últimos registros de clima</th></tr>
-            <tr>
-              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Chuva (mm)</th><th>Temp máx</th><th>Vento</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              ultClima.map(c=>`
-                <tr>
-                  <td>${escapeHtml(c.data||"")}</td>
-                  <td>${escapeHtml(findNameById(fazendas, c.fazendaId))}</td>
-                  <td>${escapeHtml(c.talhaoId ? findNameById(talhoes, c.talhaoId) : "Geral")}</td>
-                  <td>${escapeHtml(c.chuvaMm)}</td>
-                  <td>${escapeHtml(c.tempMax)}</td>
-                  <td>${escapeHtml(c.vento)}</td>
-                </tr>
-              `).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr><th colspan="5">Estoque (resumo)</th></tr>
-            <tr><th>Produto</th><th>Depósito</th><th>Lote</th><th>Qtd</th><th>Unid.</th></tr>
-          </thead>
-          <tbody>
-            ${
-              estoque.slice().reverse().slice(0,20).map(s=>{
-                const p = prods.find(pp=>pp.id===s.produtoId);
-                return `
-                  <tr>
-                    <td>${escapeHtml(p ? p.nome : "(sem produto)")}</td>
-                    <td>${escapeHtml(s.deposito||"")}</td>
-                    <td>${escapeHtml(s.lote||"")}</td>
-                    <td><b>${Number(s.qtd||0).toFixed(2)}</b></td>
-                    <td>${escapeHtml(s.unidade||"")}</td>
-                  </tr>
-                `;
-              }).join("") || `<tr><td colspan="5">Sem estoque.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-
-      <div class="card">
-        <h3>Como interpretar</h3>
-        <div class="help">
-          • O estoque pode ficar <b>negativo</b> para mostrar “furo”.<br/>
-          • A baixa usa: <b>dose/ha × área aplicada</b>.<br/>
-          • Para baixar corretamente, o produto da aplicação precisa existir em <b>Produtos</b> (mesmo nome).
-        </div>
-      </div>
     </div>
   `;
 
-  document.getElementById("btnPrint").addEventListener("click", ()=> window.print());
-  document.getElementById("btnCSV").addEventListener("click", ()=>{
+  document.getElementById("formCmb").addEventListener("submit",(ev)=>{
+    ev.preventDefault();
+    const fd = new FormData(ev.target);
+
+    const produtoId = fd.get("produtoId") || "";
+    const litros = Number(fd.get("litros")||0);
+    if(!produtoId){
+      toast("Erro","Cadastre Diesel S10/S500 em Produtos (tipo Combustível).");
+      return;
+    }
+    if(!litros || litros<=0){
+      toast("Erro","Informe os litros abastecidos.");
+      return;
+    }
+
     const db2 = getDB();
-    downloadText(`relatorio-aplicacoes-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.aplicacoes||[])));
-    toast("Exportado","CSV baixado.");
+    const prodFuel = onlyEmpresa(db2.produtos||[]).find(p=>p.id===produtoId);
+
+    const obj = {
+      id: uid("cmb"),
+      empresaId: getEmpresaId(),
+      data: fd.get("data") || nowISO(),
+      produtoId,
+      tipo: prodFuel ? prodFuel.nome : "Diesel",
+      posto: fd.get("posto") || "",
+      maquinaId: fd.get("maquinaId") || "",
+      operadorId: fd.get("operadorId") || "",
+      fazendaId: fd.get("fazendaId") || "",
+      talhaoId: fd.get("talhaoId") || "",
+      litros,
+      precoLitro: Number(fd.get("precoLitro")||0),
+      kmOuHora: Number(fd.get("kmOuHora")||0),
+      obs: fd.get("obs") || ""
+    };
+
+    db2.combustivel = db2.combustivel || [];
+    db2.combustivel.push(obj);
+
+    // ✅ BAIXA AUTOMÁTICA NO ESTOQUE DE DIESEL (permite negativo)
+    db2.estoque = db2.estoque || [];
+    let item = onlyEmpresa(db2.estoque).find(s => s.produtoId === produtoId);
+    if(!item){
+      item = {
+        id: uid("stk"),
+        empresaId: getEmpresaId(),
+        produtoId,
+        deposito: "Tanque",
+        lote: "",
+        validade: "",
+        qtd: 0,
+        unidade: "L",
+        obs: "Criado automaticamente pela baixa de abastecimento"
+      };
+      db2.estoque.push(item);
+    }
+    item.qtd = Number(item.qtd||0) - litros;
+
+    setDB(db2);
+    toast("Salvo", `Abastecimento registrado e estoque baixado: -${litros.toFixed(2)} L`);
+    setTimeout(()=>location.reload(),120);
   });
 }
 
-function pageConfiguracoes(){
+/* ---------------- Relatórios ---------------- */
+function pageRelatorios(){
+  ensureExtraStyles();
+  const db = getDB();
+  const estoque = onlyEmpresa(db.estoque || []);
+  const prods = onlyEmpresa(db.produtos || []);
+
+  const negRows = estoque
+    .filter(s => Number(s.qtd||0) < 0)
+    .map(s => {
+      const p = prods.find(pp => pp.id === s.produtoId);
+      const nome = p ? p.nome : "(sem produto)";
+      const unidade = (s.unidade || (p?.unidade) || "").trim();
+      return { nome, unidade, qtd: Number(s.qtd||0) };
+    });
+
+  const negByProduto = Object.values(
+    negRows.reduce((acc, r)=>{
+      const k = r.nome + "||" + r.unidade;
+      acc[k] = acc[k] || { nome:r.nome, unidade:r.unidade, qtd:0 };
+      acc[k].qtd += r.qtd;
+      return acc;
+    }, {})
+  ).sort((a,b)=> a.qtd - b.qtd);
+
   setTopActions(`
-    <button class="btn" id="btnImport">Importar Backup</button>
-    <button class="btn primary" id="btnExport">Exportar Backup</button>
+    <button class="btn" onclick="window.print()">Imprimir</button>
   `);
 
   const content = document.getElementById("content");
   content.innerHTML = `
     <div class="section">
       <div class="card">
-        <h3>Configurações</h3>
+        <h3>Relatórios</h3>
         <div class="help">
-          • Este sistema salva tudo no navegador (localStorage).<br/>
-          • Use backup para trocar de aparelho sem perder dados.<br/>
-          • Importar substitui o banco local atual.
+          • Use <b>Imprimir</b> do navegador para gerar PDF.<br/>
+          • Estoque negativo aparece como furo (permitido).
         </div>
       </div>
 
       <div class="card">
-        <h3>Financeiro (próximo passo)</h3>
+        <h3>Status</h3>
+        <div class="big">${negByProduto.length}</div>
+        <div class="sub">Produtos com saldo negativo</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr><th colspan="3">Furo de estoque por produto (saldo negativo)</th></tr>
+            <tr><th>Produto</th><th>Saldo</th><th>Unid.</th></tr>
+          </thead>
+          <tbody>
+            ${
+              (negByProduto.length ? negByProduto : [{nome:"Sem furo de estoque", qtd:0, unidade:""}]).map(r=>`
+                <tr>
+                  <td><b>${escapeHtml(r.nome)}</b></td>
+                  <td><span class="qtyTag ${r.qtd < 0 ? "neg" : "pos"}">${Number(r.qtd||0).toFixed(2)}</span></td>
+                  <td>${escapeHtml(r.unidade||"")}</td>
+                </tr>
+              `).join("")
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Recomendação</h3>
         <div class="help">
-          • Custo/ha: insumo + combustível + mão de obra<br/>
-          • Safras e centro de custos<br/>
-          • Supabase: login, multiusuário, auditoria
+          • Se o furo for Diesel, lance entrada no Estoque (Tanque).<br/>
+          • Se for insumo, revise dose/área das aplicações.
         </div>
       </div>
     </div>
   `;
-
-  document.getElementById("btnExport").addEventListener("click", ()=>{
-    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(getDB(), null, 2));
-    toast("Backup exportado","Arquivo .json baixado.");
-  });
-
-  document.getElementById("btnImport").addEventListener("click", ()=>{
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/json";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if(!file) return;
-      const text = await file.text();
-      try{
-        const data = JSON.parse(text);
-        if(!data.empresas || !data.meta){
-          alert("Arquivo inválido.");
-          return;
-        }
-        if(!confirm("Importar vai SUBSTITUIR seus dados locais. Continuar?")) return;
-        Storage.save(data);
-        toast("Importado","Recarregando…");
-        setTimeout(()=>location.reload(), 250);
-      }catch(e){
-        alert("Não foi possível ler o arquivo JSON.");
-      }
-    };
-    input.click();
-  });
 }
 
-/* ------------------ Boot ------------------ */
-function boot(){
-  const pageKey = document.body.getAttribute("data-page") || "dashboard";
+function pageConfig(){
+  const content = document.getElementById("content");
+  setTopActions(`<button class="btn" onclick="backupCSV()">Backup</button>`);
+  content.innerHTML = `
+    <div class="section">
+      <div class="card">
+        <h3>Configurações</h3>
+        <div class="help">
+          Seu sistema é <b>offline-first</b> (salva no navegador).<br/>
+          Para multiusuário e nuvem, a evolução natural é <b>Supabase</b>.
+        </div>
+        <div style="height:12px"></div>
+        <button class="btn danger" onclick="resetDemo()">Reset demo</button>
+      </div>
 
-  const titles = {
-    dashboard:["Dashboard","Visão geral, indicadores e últimos registros"],
-    empresas:["Empresas","Cadastre e gerencie organizações (multiempresa)"],
-    fazendas:["Fazendas","Unidades produtivas por empresa"],
-    talhoes:["Talhões","Área, cultura, safra e informações de campo"],
-    produtos:["Produtos","Cadastro de defensivos e insumos"],
-    estoque:["Estoque","Controle básico por depósito/lote/validade"],
-    aplicacoes:["Aplicações","Rastreabilidade completa e baixa automática"],
-    clima:["Clima/Chuva","Histórico manual por fazenda/talhão"],
-    equipe:["Equipe","Operadores, agrônomos e times de campo"],
-    maquinas:["Máquinas","Equipamentos usados nas operações"],
-    combustivel:["Combustível","Abastecimentos, custo e vínculo por talhão/máquina"],
-    relatorios:["Relatórios","Resumo + impressão/PDF + exportação"],
-    config:["Configurações","Backup/restore e preparação para backend"],
+      <div class="card">
+        <h3>Links</h3>
+        <div class="help">
+          • Ops Center: <b>opscenter.html</b><br/>
+          • Backup: botão no menu lateral
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------------- Ops Center ---------------- */
+function pageOpscenter(){
+  const db = getDB();
+
+  const fazendas = onlyEmpresa(db.fazendas || []);
+  const talhoes = onlyEmpresa(db.talhoes || []);
+  const aplicacoes = onlyEmpresa(db.aplicacoes || []);
+  const estoque = onlyEmpresa(db.estoque || []);
+  const combustivel = onlyEmpresa(db.combustivel || []);
+  const produtos = onlyEmpresa(db.produtos || []);
+
+  setTopActions(`
+    <button class="btn" id="btnExportOps">Exportar KPIs</button>
+    <button class="btn" onclick="location.href='index.html'">Voltar</button>
+  `);
+
+  const sum = (arr, fn) => arr.reduce((s,x)=> s + (Number(fn(x))||0), 0);
+  const today = new Date();
+  const days30 = new Date(today.getTime() - 30*24*60*60*1000);
+  const inLast30 = (iso) => {
+    const d = new Date(String(iso||"").slice(0,10));
+    return !isNaN(d) && d >= days30;
   };
 
-  const [t, s] = titles[pageKey] || ["Agro Pro",""];
-  renderShell(pageKey, t, s);
+  const areaTotal = sum(talhoes, t=>t.areaHa);
+
+  const apl30 = aplicacoes.filter(a=>inLast30(a.data));
+  const comb30 = combustivel.filter(c=>inLast30(c.data));
+  const litros30 = sum(comb30, c=>c.litros);
+  const custoComb30 = sum(comb30, c => (Number(c.litros||0) * Number(c.precoLitro||0)));
+
+  const itensNeg = estoque.filter(s => Number(s.qtd||0) < 0);
+  const qtdItensNeg = itensNeg.length;
+
+  // Top consumos por produto (estimativa: dose/ha * area)
+  const consumoPorProduto = {};
+  aplicacoes.forEach(a=>{
+    const area = Number(a.areaHa||0);
+    (a.produtos||[]).forEach(p=>{
+      const nome = (p.produtoNome||"").trim();
+      const dose = Number(p.dosePorHa||0);
+      if(!nome || !dose || !area) return;
+      consumoPorProduto[nome] = (consumoPorProduto[nome]||0) + (dose * area);
+    });
+  });
+  const topProdutos = Object.entries(consumoPorProduto)
+    .map(([nome, qtd])=>({nome, qtd}))
+    .sort((a,b)=> b.qtd - a.qtd)
+    .slice(0,6);
+
+  // Aplicações por mês (últimos 12)
+  const byMonthApl = {};
+  aplicacoes.forEach(a=>{
+    const m = String(a.data||"").slice(0,7);
+    if(!m) return;
+    byMonthApl[m] = (byMonthApl[m]||0) + 1;
+  });
+  const monthsApl = Object.keys(byMonthApl).sort().slice(-12);
+  const valuesApl = monthsApl.map(m=>byMonthApl[m]);
+
+  // Combustível por mês (últimos 12) em R$
+  const byMonthFuel = {};
+  combustivel.forEach(c=>{
+    const m = String(c.data||"").slice(0,7);
+    if(!m) return;
+    const total = (Number(c.litros||0) * Number(c.precoLitro||0));
+    byMonthFuel[m] = (byMonthFuel[m]||0) + total;
+  });
+  const monthsFuel = Object.keys(byMonthFuel).sort().slice(-12);
+  const valuesFuel = monthsFuel.map(m=>byMonthFuel[m]);
+
+  // Diesel no estoque (S10/S500)
+  const dieselIds = produtos
+    .filter(p=>String(p.tipo||"").toLowerCase().includes("combust"))
+    .map(p=>p.id);
+
+  const dieselEst = estoque.filter(s=> dieselIds.includes(s.produtoId));
+  const dieselTotal = sum(dieselEst, s=>s.qtd);
+
+  const alertas = [];
+  if(qtdItensNeg>0) alertas.push({tag:"Estoque crítico", msg:`${qtdItensNeg} item(ns) negativo(s)`, kind:"bad"});
+  if(dieselTotal < 500) alertas.push({tag:"Diesel baixo", msg:`Saldo total: ${dieselTotal.toFixed(0)} L`, kind:"warn"});
+  if(custoComb30>0) alertas.push({tag:"Combustível 30d", msg:`R$ ${custoComb30.toFixed(2)} (${litros30.toFixed(0)} L)`, kind:"info"});
+  if(!alertas.length) alertas.push({tag:"Tudo certo", msg:"Sem alertas críticos no momento", kind:"ok"});
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="kpi">
+      <div class="card">
+        <h3>Área total (talhões)</h3>
+        <div class="big">${areaTotal.toFixed(1)} ha</div>
+        <div class="sub">Somatório cadastrado</div>
+      </div>
+      <div class="card">
+        <h3>Aplicações (30 dias)</h3>
+        <div class="big">${apl30.length}</div>
+        <div class="sub"><span class="pill info">Operações recentes</span></div>
+      </div>
+      <div class="card">
+        <h3>Combustível (30 dias)</h3>
+        <div class="big">R$ ${custoComb30.toFixed(2)}</div>
+        <div class="sub">${litros30.toFixed(0)} L • <span class="pill warn">Custo</span></div>
+      </div>
+      <div class="card">
+        <h3>Diesel em estoque</h3>
+        <div class="big">${dieselTotal.toFixed(0)} L</div>
+        <div class="sub"><span class="pill ok">S10/S500</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="card">
+        <h3>Alertas</h3>
+        <div class="hr"></div>
+        ${alertas.map(a=>`
+          <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
+            <span class="pill ${a.kind}">${a.tag}</span>
+            <div class="help">${escapeHtml(a.msg)}</div>
+          </div>
+        `).join("")}
+        <div class="hr"></div>
+        <div class="help">Próximo nível: custo/ha por talhão (insumos + diesel).</div>
+      </div>
+
+      <div class="card">
+        <h3>Top insumos (estimativa)</h3>
+        <div class="help">Dose/ha × área aplicada (somado)</div>
+        <div class="hr"></div>
+        ${
+          topProdutos.length
+            ? topProdutos.map(p=>`
+                <div style="display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid rgba(2,6,23,.06);">
+                  <div><b>${escapeHtml(p.nome)}</b></div>
+                  <div>${p.qtd.toFixed(2)}</div>
+                </div>
+              `).join("")
+            : `<div class="help">Sem aplicações suficientes para estimar.</div>`
+        }
+      </div>
+    </div>
+
+    <div class="section" style="grid-template-columns: 1fr 1fr;">
+      <div class="card">
+        <h3>Aplicações por mês</h3>
+        <canvas id="chartApl" height="140"></canvas>
+      </div>
+
+      <div class="card">
+        <h3>Combustível por mês (R$)</h3>
+        <canvas id="chartFuel" height="140"></canvas>
+      </div>
+    </div>
+
+    <div class="section" style="grid-template-columns: 1fr;">
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr><th colspan="6">Últimas aplicações</th></tr>
+            <tr>
+              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Área (ha)</th><th>Alvo</th><th>Produtos</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              aplicacoes.slice().reverse().slice(0,8).map(a=>{
+                const faz = findNameById(fazendas, a.fazendaId);
+                const tal = findNameById(talhoes, a.talhaoId);
+                const prds = (a.produtos||[])
+                  .filter(p=>p.produtoNome)
+                  .map(p=>`${p.produtoNome} (${p.dosePorHa} ${p.unidade||""})`)
+                  .join(" + ");
+                return `
+                  <tr>
+                    <td>${escapeHtml(a.data||"")}</td>
+                    <td>${escapeHtml(faz)}</td>
+                    <td>${escapeHtml(tal)}</td>
+                    <td>${Number(a.areaHa||0).toFixed(2)}</td>
+                    <td>${escapeHtml(a.alvo||"")}</td>
+                    <td>${escapeHtml(prds||"—")}</td>
+                  </tr>
+                `;
+              }).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // Charts
+  const ctxA = document.getElementById("chartApl");
+  if(ctxA && window.Chart){
+    new Chart(ctxA, {
+      type:"bar",
+      data:{ labels: monthsApl, datasets:[{ label:"Aplicações", data: valuesApl }] },
+      options:{ responsive:true, plugins:{ legend:{ display:false } } }
+    });
+  }
+
+  const ctxF = document.getElementById("chartFuel");
+  if(ctxF && window.Chart){
+    new Chart(ctxF, {
+      type:"line",
+      data:{ labels: monthsFuel, datasets:[{ label:"R$", data: valuesFuel, fill:true }] },
+      options:{ responsive:true, plugins:{ legend:{ display:false } } }
+    });
+  }
+
+  // Export
+  const btn = document.getElementById("btnExportOps");
+  if(btn){
+    btn.addEventListener("click", ()=>{
+      const rows = [{
+        data: new Date().toISOString(),
+        area_total_ha: areaTotal.toFixed(2),
+        aplicacoes_30d: apl30.length,
+        diesel_total_l: dieselTotal.toFixed(2),
+        combustivel_30d_reais: custoComb30.toFixed(2),
+        combustivel_30d_litros: litros30.toFixed(2),
+        estoque_itens_negativos: qtdItensNeg
+      }];
+      downloadText(`opscenter-kpis-${nowISO()}.csv`, toCSV(rows));
+      toast("Exportado", "KPIs do Ops Center baixados em CSV.");
+    });
+  }
+}
+
+// ---------- Router ----------
+function boot(){
+  const titles = {
+    dashboard:["Dashboard","Visão geral, indicadores e últimos registros"],
+    opscenter:["Operations Center","Painel executivo (nível enterprise)"],
+    empresas:["Empresas","Cadastro e gestão multiempresa"],
+    fazendas:["Fazendas","Cadastro de fazendas"],
+    talhoes:["Talhões","Cadastro de talhões e área"],
+    produtos:["Produtos","Cadastro de insumos e combustíveis"],
+    estoque:["Estoque","Saldos, entradas e furo (negativo permitido)"],
+    aplicacoes:["Aplicações","Registro técnico e baixa automática"],
+    combustivel:["Combustível","Abastecimentos com baixa no estoque de diesel"],
+    clima:["Clima/Chuva","Registro de chuva (mm)"],
+    equipe:["Equipe","Operadores e equipe"],
+    maquinas:["Máquinas","Cadastro de máquinas"],
+    relatorios:["Relatórios","PDF e análises rápidas"],
+    config:["Configurações","Backup, reset e evolução"],
+  };
+
+  const pageKey = document.body.getAttribute("data-page") || "dashboard";
+  const t = titles[pageKey] || ["Agro Pro",""];
+
+  mountShell(pageKey, t[0], t[1]);
 
   if(pageKey==="dashboard") pageDashboard();
+  else if(pageKey==="opscenter") pageOpscenter();
   else if(pageKey==="empresas") pageEmpresas();
   else if(pageKey==="fazendas") pageFazendas();
   else if(pageKey==="talhoes") pageTalhoes();
   else if(pageKey==="produtos") pageProdutos();
   else if(pageKey==="estoque") pageEstoque();
   else if(pageKey==="aplicacoes") pageAplicacoes();
+  else if(pageKey==="combustivel") pageCombustivel();
   else if(pageKey==="clima") pageClima();
   else if(pageKey==="equipe") pageEquipe();
   else if(pageKey==="maquinas") pageMaquinas();
-  else if(pageKey==="combustivel") pageCombustivel();
   else if(pageKey==="relatorios") pageRelatorios();
-  else if(pageKey==="config") pageConfiguracoes();
-
-  toast("Agro Pro", "Sistema carregado. Dados salvos no navegador.");
+  else if(pageKey==="config") pageConfig();
+  else pageDashboard();
 }
 
-document.addEventListener("DOMContentLoaded", boot); 
+document.addEventListener("DOMContentLoaded", boot);
