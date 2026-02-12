@@ -1,5 +1,4 @@
-<meta name='viewport' content='width=device-width, initial-scale=1'/>
-:root{
+<meta name='viewport' content='width=device-width, initial-scale=1'/>:root{
   --bg:#f5f7f9;
   --panel:#ffffff;
   --panel2:#f0f3f7;
@@ -20,6 +19,7 @@
   --chip:#f1f5f9;
   --focus: 0 0 0 4px rgba(22,163,74,.15);
 }
+
 *{ box-sizing:border-box; }
 html,body{ height:100%; }
 body{
