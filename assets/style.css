@@ -1,26 +1,25 @@
-<meta name='viewport' content='width=device-width, initial-scale=1'/>:root{
+<meta name='viewport' content='width=device-width, initial-scale=1'/>
 :root{
-  --bg:#f8f6f1;
+  --bg:#f5f7f9;
   --panel:#ffffff;
-  --panel2:#f3efe6;
-  --text:#2c2c2c;
-  --muted:#6b6b6b;
-  --line:#e5e0d6;
-  --shadow: 0 12px 30px rgba(0,0,0,.05);
+  --panel2:#f0f3f7;
+  --text:#1e293b;
+  --muted:#64748b;
+  --line:#e2e8f0;
+  --shadow: 0 10px 25px rgba(0,0,0,.06);
   --radius:18px;
 
-  --gold:#3f6f3f;
-  --gold2:#2e5730;
+  --gold:#16a34a;
+  --gold2:#15803d;
 
-  --ok:#3f6f3f;
-  --warn:#d4a017;
-  --bad:#c53030;
+  --ok:#16a34a;
+  --warn:#f59e0b;
+  --bad:#ef4444;
   --info:#2563eb;
 
-  --chip:#f1ede4;
-  --focus: 0 0 0 4px rgba(63,111,63,.15);
-}  
-
+  --chip:#f1f5f9;
+  --focus: 0 0 0 4px rgba(22,163,74,.15);
+}
 *{ box-sizing:border-box; }
 html,body{ height:100%; }
 body{
