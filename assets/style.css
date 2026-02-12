@@ -346,3 +346,29 @@ tr:hover td{ background: rgba(22,163,74,.06); }
   .card, .tableWrap{ box-shadow:none; background:#fff; border-color:#ddd; }
   th{ color:#333; background:#f3f3f3; }
 } 
+/* === FIX: menu lateral consistente no tema claro (inclui :visited) === */
+.sidebar{
+  background: var(--panel) !important;
+  border-right: 1px solid var(--line) !important;
+  backdrop-filter: none !important;
+}
+
+.nav a,
+.nav a:link,
+.nav a:visited{
+  color: var(--muted) !important;
+  text-decoration: none !important;
+}
+
+.nav a:hover{
+  color: var(--text) !important;
+  background: rgba(0,0,0,.03) !important;
+  border-color: var(--line) !important;
+}
+
+.nav a.active{
+  color: var(--text) !important;
+  border-color: rgba(22,163,74,.45) !important;       /* verde vivo */
+  background: rgba(22,163,74,.10) !important;
+  box-shadow: 0 0 0 3px rgba(22,163,74,.12) inset !important;
+}
