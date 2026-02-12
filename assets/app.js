@@ -1,5 +1,5 @@
 /* Agro Pro — Multiempresa / Offline-first (localStorage)
-   Dica: depois você pluga Supabase substituindo Storage.* por chamadas da API.
+   + Página Combustível (abastecimentos e custo)
 */
 
 const Storage = {
@@ -138,6 +138,25 @@ function seedDB(){
         ],
         obs:"Aplicação padrão (demo)."
       }
+    ],
+
+    // ✅ NOVO: Combustível
+    combustivel: [
+      {
+        id: uid("cmb"),
+        empresaId,
+        data: nowISO(),
+        tipo: "Diesel S10",
+        posto: "Posto Exemplo",
+        maquinaId: "",       // opcional
+        operadorId: "",      // opcional
+        fazendaId,
+        talhaoId,
+        litros: 120,
+        precoLitro: 6.19,
+        kmOuHora: 0,
+        obs: "Abastecimento demo"
+      }
     ]
   };
 
@@ -175,6 +194,10 @@ const PAGES = [
   { href:"clima.html", label:"Clima/Chuva", key:"clima", icon:"🌧️" },
   { href:"equipe.html", label:"Equipe", key:"equipe", icon:"👷" },
   { href:"maquinas.html", label:"Máquinas", key:"maquinas", icon:"🛠️" },
+
+  // ✅ NOVO
+  { href:"combustivel.html", label:"Combustível", key:"combustivel", icon:"⛽" },
+
   { href:"relatorios.html", label:"Relatórios", key:"relatorios", icon:"🧾" },
   { href:"configuracoes.html", label:"Configurações", key:"config", icon:"⚙️" },
 ];
@@ -244,7 +267,6 @@ function renderShell(pageKey, title, subtitle){
     </div>
   `;
 
-  // Eventos globais
   document.getElementById("empresaSelect").addEventListener("change", (e)=>{
     setEmpresaId(e.target.value);
     toast("Empresa alterada", "Atualizando a página…");
@@ -289,11 +311,6 @@ function findNameById(arr, id, fallback="-"){
   return o ? o.nome : fallback;
 }
 
-function kmoney(n){
-  const v = Number(n || 0);
-  return v.toLocaleString("pt-BR", {minimumFractionDigits:2, maximumFractionDigits:2});
-}
-
 function setTopActions(html){
   const el = document.getElementById("topActions");
   if(el) el.innerHTML = html || "";
@@ -307,10 +324,12 @@ function pageDashboard(){
   const produtos = onlyEmpresa(db.produtos);
   const aplicacoes = onlyEmpresa(db.aplicacoes);
   const clima = onlyEmpresa(db.clima);
+  const combustivel = onlyEmpresa(db.combustivel || []);
 
   const hoje = nowISO();
   const aplHoje = aplicacoes.filter(a=>a.data===hoje).length;
   const chuvaHoje = clima.filter(c=>c.data===hoje).reduce((s,c)=>s+Number(c.chuvaMm||0),0);
+  const combHoje = combustivel.filter(c=>c.data===hoje).reduce((s,c)=>s+(Number(c.litros||0)*Number(c.precoLitro||0)),0);
 
   const content = document.getElementById("content");
   content.innerHTML = `
@@ -331,9 +350,9 @@ function pageDashboard(){
         <div class="sub"><span class="pill info">Operações registradas</span></div>
       </div>
       <div class="card">
-        <h3>Chuva (hoje)</h3>
-        <div class="big">${chuvaHoje.toFixed(1)} mm</div>
-        <div class="sub"><span class="pill ok">Lançamento manual</span></div>
+        <h3>Combustível (hoje)</h3>
+        <div class="big">R$ ${combHoje.toFixed(2)}</div>
+        <div class="sub"><span class="pill ok">Custo diário</span></div>
       </div>
     </div>
 
@@ -345,7 +364,7 @@ function pageDashboard(){
           • Registrar chuva/vento do dia<br/>
           • Validar talhão/cultura/safra<br/>
           • Registrar aplicação (produto, dose, calda, máquina, operador)<br/>
-          • Anotar ocorrências (deriva, falhas, reentrada, carência)<br/>
+          • Registrar abastecimentos (custo operacional)<br/>
           • Emitir relatório e assinar (PDF)
         </div>
         <div class="hr"></div>
@@ -397,7 +416,7 @@ function pageDashboard(){
         <div class="help">
           Se quiser, eu adapto este sistema para o seu fluxo real:<br/>
           • Multiusuário (login) • Permissões (admin/operador) • Supabase/Postgres<br/>
-          • Mapas/Geo (talhão) • Upload de receituário/notas • Painel de custo por ha
+          • Módulo financeiro (custo/ha) • Relatórios por safra/talhão
         </div>
       </div>
     </div>
@@ -405,19 +424,18 @@ function pageDashboard(){
 }
 
 function crudPage({
-  entityKey, title, subtitle,
-  fields, // [{key,label,type, full?, options?}]
-  columns, // [{key,label, render?}]
-  helpers // { beforeSave?(obj,db), filter?(arr), onDelete?(id,db) }
+  entityKey,
+  subtitle,
+  fields,
+  columns,
+  helpers
 }){
   const db = getDB();
   const eid = getEmpresaId();
   const arr = db[entityKey] || [];
   const list = onlyEmpresa(arr);
 
-  setTopActions(`
-    <button class="btn" id="btnExportCSV">Exportar CSV</button>
-  `);
+  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
   const content = document.getElementById("content");
 
@@ -548,7 +566,6 @@ function crudPage({
 
 /* --------- Páginas específicas --------- */
 function pageEmpresas(){
-  // Empresas é global (não filtra por empresaId)
   const db = getDB();
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
@@ -622,7 +639,9 @@ function pageEmpresas(){
 
     db2.empresas = db2.empresas.filter(x=>x.id!==id);
     const wipe = key => db2[key] = (db2[key]||[]).filter(x=>x.empresaId!==id);
-    ["fazendas","talhoes","produtos","estoque","equipe","maquinas","clima","aplicacoes"].forEach(wipe);
+
+    // ✅ inclui combustivel no wipe
+    ["fazendas","talhoes","produtos","estoque","equipe","maquinas","clima","aplicacoes","combustivel"].forEach(wipe);
 
     if(getEmpresaId()===id){
       db2.session.empresaId = db2.empresas[0].id;
@@ -733,7 +752,6 @@ function pageProdutos(){
     ],
     helpers:{
       onDelete:(id,db)=>{
-        // remove vínculos de estoque por segurança
         db.estoque = (db.estoque||[]).filter(s=>s.produtoId!==id);
       }
     }
@@ -741,9 +759,6 @@ function pageProdutos(){
 }
 
 function pageEstoque(){
-  const db = getDB();
-  const produtos = onlyEmpresa(db.produtos);
-
   crudPage({
     entityKey:"estoque",
     subtitle:"Controle por depósito, lote e validade. (Quantidades são informativas/offline).",
@@ -773,8 +788,6 @@ function pageEstoque(){
       {key:"unidade", label:"Unid."}
     ]
   });
-
-  toast("Dica de estoque", "Você pode exportar CSV para enviar ao contador/gestor.");
 }
 
 function pageClima(){
@@ -857,6 +870,200 @@ function pageMaquinas(){
   });
 }
 
+/* ✅ NOVO: Página Combustível */
+function pageCombustivel(){
+  const db = getDB();
+  const fazendas = onlyEmpresa(db.fazendas);
+  const talhoes = onlyEmpresa(db.talhoes);
+  const equipe = onlyEmpresa(db.equipe);
+  const maquinas = onlyEmpresa(db.maquinas);
+
+  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+
+  const content = document.getElementById("content");
+
+  const options = (arr, emptyLabel) => {
+    const empty = emptyLabel ? `<option value="">${escapeHtml(emptyLabel)}</option>` : "";
+    return empty + arr.map(o=>`<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join("");
+  };
+
+  content.innerHTML = `
+    <div class="section">
+      <div class="card">
+        <h3>Registrar abastecimento</h3>
+        <div class="help">
+          Registre litros, preço por litro e vínculo com máquina/operador/talhão para custo operacional.
+        </div>
+        <div class="hr"></div>
+
+        <form id="frm" class="formGrid">
+          <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
+          <div><small>Tipo</small><input class="input" name="tipo" placeholder="Diesel S10" /></div>
+
+          <div class="full"><small>Posto/Fornecedor</small><input class="input" name="posto" placeholder="Nome do posto / fornecedor" /></div>
+
+          <div>
+            <small>Máquina</small>
+            <select class="select" name="maquinaId">
+              ${options(maquinas, "(opcional)")}
+            </select>
+          </div>
+
+          <div>
+            <small>Operador</small>
+            <select class="select" name="operadorId">
+              ${options(equipe, "(opcional)")}
+            </select>
+          </div>
+
+          <div>
+            <small>Fazenda</small>
+            <select class="select" name="fazendaId" required>
+              ${options(fazendas)}
+            </select>
+          </div>
+
+          <div>
+            <small>Talhão</small>
+            <select class="select" name="talhaoId" required>
+              ${options(talhoes)}
+            </select>
+          </div>
+
+          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.01" placeholder="120" required /></div>
+          <div><small>Preço por litro (R$)</small><input class="input" name="precoLitro" type="number" step="0.01" placeholder="6.19" required /></div>
+
+          <div class="full">
+            <small>KM / Horímetro (opcional)</small>
+            <input class="input" name="kmOuHora" type="number" step="0.01" placeholder="Ex: 1530 (horímetro) ou 45000 (km)" />
+          </div>
+
+          <div class="full">
+            <small>Observações</small>
+            <textarea class="textarea" name="obs" placeholder="Ex: tanque cheio, deslocamento, serviço etc."></textarea>
+          </div>
+
+          <div class="full row" style="justify-content:flex-end">
+            <button class="btn primary" type="submit">Salvar</button>
+          </div>
+        </form>
+
+        <div class="hr"></div>
+        <div class="help" id="kpis"></div>
+      </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Fazenda</th>
+              <th>Talhão</th>
+              <th>Máquina</th>
+              <th>Operador</th>
+              <th>Tipo</th>
+              <th>Litros</th>
+              <th>R$/L</th>
+              <th>Total (R$)</th>
+              <th class="noPrint">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  function render(){
+    const db2 = getDB();
+    const rows = onlyEmpresa(db2.combustivel || []);
+    const faz2 = onlyEmpresa(db2.fazendas);
+    const tal2 = onlyEmpresa(db2.talhoes);
+    const maq2 = onlyEmpresa(db2.maquinas);
+    const eq2  = onlyEmpresa(db2.equipe);
+
+    // KPIs últimos 30 dias
+    const today = new Date();
+    const days30 = new Date(today.getTime() - 30*24*60*60*1000);
+    const rows30 = rows.filter(r => {
+      const d = new Date((r.data || "").slice(0,10));
+      return !isNaN(d) && d >= days30;
+    });
+
+    const litros30 = rows30.reduce((s,r)=>s+Number(r.litros||0),0);
+    const total30  = rows30.reduce((s,r)=>s+(Number(r.litros||0)*Number(r.precoLitro||0)),0);
+
+    document.getElementById("kpis").innerHTML =
+      `Últimos 30 dias: <b>${litros30.toFixed(1)} L</b> • Custo: <b>R$ ${total30.toFixed(2)}</b> • Média: <b>R$ ${(litros30? (total30/litros30):0).toFixed(2)}</b>/L`;
+
+    const tb = document.getElementById("tbody");
+    tb.innerHTML = rows.slice().reverse().map(r=>{
+      const total = Number(r.litros||0) * Number(r.precoLitro||0);
+      return `
+        <tr>
+          <td>${escapeHtml(r.data||"")}</td>
+          <td>${escapeHtml(findNameById(faz2, r.fazendaId))}</td>
+          <td>${escapeHtml(findNameById(tal2, r.talhaoId))}</td>
+          <td>${escapeHtml(r.maquinaId ? findNameById(maq2, r.maquinaId) : "—")}</td>
+          <td>${escapeHtml(r.operadorId ? findNameById(eq2, r.operadorId) : "—")}</td>
+          <td>${escapeHtml(r.tipo||"")}</td>
+          <td>${Number(r.litros||0).toFixed(2)}</td>
+          <td>${Number(r.precoLitro||0).toFixed(2)}</td>
+          <td><b>R$ ${total.toFixed(2)}</b></td>
+          <td class="noPrint"><button class="btn danger" onclick="window.__delC('${r.id}')">Excluir</button></td>
+        </tr>
+      `;
+    }).join("") || `<tr><td colspan="10">Sem registros.</td></tr>`;
+  }
+
+  window.__delC = (id)=>{
+    if(!confirm("Excluir este abastecimento?")) return;
+    const db2 = getDB();
+    db2.combustivel = (db2.combustivel||[]).filter(x=>x.id!==id);
+    setDB(db2);
+    toast("Excluído","Abastecimento removido.");
+    render();
+  };
+
+  document.getElementById("frm").addEventListener("submit",(e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+
+    const obj = {
+      id: uid("cmb"),
+      empresaId: getEmpresaId(),
+      data: fd.get("data") || nowISO(),
+      tipo: fd.get("tipo") || "Diesel",
+      posto: fd.get("posto") || "",
+      maquinaId: fd.get("maquinaId") || "",
+      operadorId: fd.get("operadorId") || "",
+      fazendaId: fd.get("fazendaId"),
+      talhaoId: fd.get("talhaoId"),
+      litros: Number(fd.get("litros")||0),
+      precoLitro: Number(fd.get("precoLitro")||0),
+      kmOuHora: Number(fd.get("kmOuHora")||0),
+      obs: fd.get("obs") || ""
+    };
+
+    const db2 = getDB();
+    db2.combustivel = db2.combustivel || [];
+    db2.combustivel.push(obj);
+    setDB(db2);
+
+    e.target.reset();
+    toast("Salvo","Abastecimento registrado.");
+    render();
+  });
+
+  document.getElementById("btnExportCSV").addEventListener("click", ()=>{
+    const db2 = getDB();
+    downloadText(`combustivel-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.combustivel||[])));
+    toast("Exportado","CSV baixado.");
+  });
+
+  render();
+}
+
 function pageAplicacoes(){
   const db = getDB();
   const fazendas = onlyEmpresa(db.fazendas);
@@ -865,9 +1072,7 @@ function pageAplicacoes(){
   const maquinas = onlyEmpresa(db.maquinas);
   const produtos = onlyEmpresa(db.produtos);
 
-  setTopActions(`
-    <button class="btn" id="btnExportCSV">Exportar CSV</button>
-  `);
+  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
   const content = document.getElementById("content");
 
@@ -880,8 +1085,7 @@ function pageAplicacoes(){
       <div class="card">
         <h3>Registrar aplicação</h3>
         <div class="help">
-          Registro completo: talhão, cultura/safra, condições, calda, máquina, operador, produtos e doses.<br/>
-          Ideal para auditoria e rastreabilidade.
+          Registro completo: talhão, cultura/safra, condições, calda, máquina, operador, produtos e doses.
         </div>
         <div class="hr"></div>
 
@@ -933,7 +1137,7 @@ function pageAplicacoes(){
 
           <div class="full">
             <small>Produtos (até 3 linhas)</small>
-            <div class="help">Preencha nome e dose por hectare. (offline — você pode padronizar depois com cadastro)</div>
+            <div class="help">Preencha nome e dose por hectare.</div>
             <div class="hr"></div>
 
             <div class="formGrid">
@@ -1075,6 +1279,7 @@ function pageRelatorios(){
   const talhoes = onlyEmpresa(db.talhoes);
   const aplicacoes = onlyEmpresa(db.aplicacoes);
   const clima = onlyEmpresa(db.clima);
+  const combustivel = onlyEmpresa(db.combustivel || []);
 
   setTopActions(`
     <button class="btn" id="btnCSV">Exportar (Apl) CSV</button>
@@ -1084,6 +1289,15 @@ function pageRelatorios(){
   const totalArea = talhoes.reduce((s,t)=>s+Number(t.areaHa||0),0);
   const ultApl = aplicacoes.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).slice(0,12);
   const ultClima = clima.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).slice(0,12);
+
+  // combustível últimos 30 dias (resumo simples)
+  const today = new Date();
+  const days30 = new Date(today.getTime() - 30*24*60*60*1000);
+  const comb30 = combustivel.filter(r=>{
+    const d = new Date((r.data||"").slice(0,10));
+    return !isNaN(d) && d >= days30;
+  });
+  const combTotal30 = comb30.reduce((s,r)=>s+(Number(r.litros||0)*Number(r.precoLitro||0)),0);
 
   const content = document.getElementById("content");
   content.innerHTML = `
@@ -1105,14 +1319,14 @@ function pageRelatorios(){
         <div class="sub"><span class="pill info">Rastreabilidade</span></div>
       </div>
       <div class="card">
-        <h3>Registros de clima</h3>
+        <h3>Clima</h3>
         <div class="big">${clima.length}</div>
         <div class="sub"><span class="pill ok">Histórico</span></div>
       </div>
       <div class="card">
-        <h3>Fazendas</h3>
-        <div class="big">${fazendas.length}</div>
-        <div class="sub"><span class="pill warn">Multiunidade</span></div>
+        <h3>Combustível (30d)</h3>
+        <div class="big">R$ ${combTotal30.toFixed(2)}</div>
+        <div class="sub"><span class="pill warn">Custo operacional</span></div>
       </div>
     </div>
 
@@ -1174,23 +1388,9 @@ function pageRelatorios(){
         </table>
       </div>
     </div>
-
-    <div class="card" style="margin-top:12px">
-      <h3>Observações e assinatura</h3>
-      <div class="help">
-        Use este espaço para anotações finais do relatório (auditoria, reentrada, carência, ocorrências).<br/>
-        Ao imprimir em PDF, assine manualmente ou utilize assinatura digital no arquivo final.
-      </div>
-      <div class="hr"></div>
-      <div style="height:90px;border:1px dashed rgba(255,255,255,.20); border-radius:16px; padding:12px" class="noPrint">
-        (campo livre — versão offline)
-      </div>
-    </div>
   `;
 
-  document.getElementById("btnPrint").addEventListener("click", ()=>{
-    window.print();
-  });
+  document.getElementById("btnPrint").addEventListener("click", ()=> window.print());
 
   document.getElementById("btnCSV").addEventListener("click", ()=>{
     const db2 = getDB();
@@ -1200,7 +1400,6 @@ function pageRelatorios(){
 }
 
 function pageConfiguracoes(){
-  const db = getDB();
   setTopActions(`
     <button class="btn" id="btnImport">Importar Backup</button>
     <button class="btn primary" id="btnExport">Exportar Backup</button>
@@ -1217,22 +1416,20 @@ function pageConfiguracoes(){
           • Importar substitui o banco local atual.
         </div>
         <div class="hr"></div>
-
         <div class="help">
-          <b>Boas práticas (Agro):</b><br/>
-          • Sempre registrar clima do dia de aplicação (vento/umidade/temperatura).<br/>
-          • Sempre registrar máquina/operador quando possível.<br/>
-          • Guardar relatórios em PDF por safra e por talhão.
+          <b>Boas práticas:</b><br/>
+          • Registrar clima do dia de aplicação (vento/umidade/temperatura).<br/>
+          • Registrar máquina/operador quando possível.<br/>
+          • Registrar abastecimentos para custo operacional.
         </div>
       </div>
 
       <div class="card">
-        <h3>Como evoluir para Supabase</h3>
+        <h3>Próximos upgrades</h3>
         <div class="help">
-          Próximo upgrade (quando você quiser):<br/>
-          • Login por e-mail (Auth) • Multiusuário • Permissões<br/>
-          • Postgres com histórico real • API • Logs de auditoria<br/>
-          • Upload de imagens/receituários • Exportações avançadas
+          • Financeiro: custo por talhão (insumo + combustível + mão de obra)<br/>
+          • Safras e centro de custos<br/>
+          • Supabase: login, multiusuário, histórico e auditoria
         </div>
         <div class="hr"></div>
         <span class="pill info">Pronto para backend</span>
@@ -1275,6 +1472,7 @@ function pageConfiguracoes(){
 /* ------------------ Boot ------------------ */
 function boot(){
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
+
   const titles = {
     dashboard:["Dashboard","Visão geral, indicadores e últimos registros"],
     empresas:["Empresas","Cadastre e gerencie organizações (multiempresa)"],
@@ -1286,6 +1484,10 @@ function boot(){
     clima:["Clima/Chuva","Histórico manual por fazenda/talhão"],
     equipe:["Equipe","Operadores, agrônomos e times de campo"],
     maquinas:["Máquinas","Equipamentos usados nas operações"],
+
+    // ✅ NOVO
+    combustivel:["Combustível","Abastecimentos, custo e vínculo por talhão/máquina"],
+
     relatorios:["Relatórios","Resumo + impressão/PDF + exportação"],
     config:["Configurações","Backup/restore e preparação para backend"],
   };
@@ -1293,7 +1495,6 @@ function boot(){
   const [t, s] = titles[pageKey] || ["Agro Pro",""];
   renderShell(pageKey, t, s);
 
-  // Render page
   if(pageKey==="dashboard") pageDashboard();
   else if(pageKey==="empresas") pageEmpresas();
   else if(pageKey==="fazendas") pageFazendas();
@@ -1304,6 +1505,10 @@ function boot(){
   else if(pageKey==="clima") pageClima();
   else if(pageKey==="equipe") pageEquipe();
   else if(pageKey==="maquinas") pageMaquinas();
+
+  // ✅ NOVO
+  else if(pageKey==="combustivel") pageCombustivel();
+
   else if(pageKey==="relatorios") pageRelatorios();
   else if(pageKey==="config") pageConfiguracoes();
 
