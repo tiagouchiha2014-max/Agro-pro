@@ -1,31 +1,37 @@
-<meta name='viewport' content='width=device-width, initial-scale=1'/><!doctype html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Agro Pro — Aplicações</title>
-  <link rel="stylesheet" href="assets/style.css" />
+
+  <link rel="stylesheet" href="assets/style.css?v=4" />
+
+  <style>
+    /* ===== Destaque de cor nos serviços (tema branco) ===== */
+    .card__title{
+      color: var(--primary);                 /* verde soja */
+      text-shadow: 0 10px 22px rgba(2,6,23,.08);
+    }
+
+    .card__meta{
+      color: rgba(21,128,61,.70);            /* verde mais suave */
+    }
+
+    /* Quando estiver selecionado, fica mais forte */
+    .card.is-selected .card__title{
+      color: var(--primary);
+      text-shadow: 0 0 18px rgba(34,197,94,.22), 0 10px 24px rgba(2,6,23,.08);
+    }
+
+    .card.is-selected .card__meta{
+      color: rgba(21,128,61,.92);
+    }
+  </style>
 </head>
+
 <body data-page="aplicacoes">
   <div id="app"></div>
-  <script src="assets/app.js"></script>
+  <script src="assets/app.js?v=4"></script>
 </body>
-</html><style>/* ===== Destaque de cor nos serviços ===== */
-.card__title{
-  color: var(--gold1);              /* dourado */
-  text-shadow: 0 10px 22px rgba(0,0,0,.55);
-}
-
-.card__meta{
-  color: rgba(212,160,74,.78);      /* dourado mais suave */
-}
-
-/* Quando estiver selecionado, fica mais forte */
-.card.is-selected .card__title{
-  color: #ffd88a;
-  text-shadow: 0 0 18px rgba(212,160,74,.35), 0 10px 24px rgba(0,0,0,.55);
-}
-
-.card.is-selected .card__meta{
-  color: rgba(255,216,138,.90);
-}</style>
+</html>
