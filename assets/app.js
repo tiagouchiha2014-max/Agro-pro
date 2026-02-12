@@ -1,5 +1,7 @@
 /* Agro Pro — Multiempresa / Offline-first (localStorage)
-   + Página Combustível (abastecimentos e custo)
+   ✅ Página Combustível
+   ✅ Baixa automática de estoque nas Aplicações (pode ficar negativo)
+   ✅ Área aplicada (ha) por aplicação (não usa o talhão inteiro)
 */
 
 const Storage = {
@@ -19,13 +21,11 @@ const Storage = {
 function uid(prefix="id"){
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
 }
-
 function nowISO(){
   const d = new Date();
   const pad = n => String(n).padStart(2,"0");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
-
 function escapeHtml(str){
   return String(str ?? "")
     .replaceAll("&","&amp;")
@@ -34,7 +34,6 @@ function escapeHtml(str){
     .replaceAll('"',"&quot;")
     .replaceAll("'","&#039;");
 }
-
 function toast(title, msg){
   const host = document.getElementById("toastHost") || (() => {
     const h = document.createElement("div");
@@ -52,7 +51,6 @@ function toast(title, msg){
   setTimeout(()=>{ el.style.opacity="0"; el.style.transform="translateY(6px)"; }, 3200);
   setTimeout(()=>{ el.remove(); }, 3800);
 }
-
 function downloadText(filename, text){
   const blob = new Blob([text], {type:"text/plain;charset=utf-8"});
   const url = URL.createObjectURL(blob);
@@ -64,7 +62,6 @@ function downloadText(filename, text){
   a.remove();
   URL.revokeObjectURL(url);
 }
-
 function toCSV(rows){
   if(!rows.length) return "";
   const cols = Object.keys(rows[0]);
@@ -79,6 +76,9 @@ function seedDB(){
   const empresaId = uid("emp");
   const fazendaId = uid("faz");
   const talhaoId = uid("tal");
+
+  const prd1 = uid("prd");
+  const prd2 = uid("prd");
 
   const db = {
     meta: { createdAt: new Date().toISOString(), version: 1 },
@@ -101,11 +101,13 @@ function seedDB(){
       { id: talhaoId, empresaId, fazendaId, nome:"T-12", areaHa: 78.5, cultura:"Soja", safra:"2025/26", solo:"Argiloso", coordenadas:"", observacoes:"" }
     ],
     produtos: [
-      { id: uid("prd"), empresaId, tipo:"Herbicida", nome:"Glifosato 480", ingrediente:"Glifosato", fabricante:"Genérico", registro:"", carenciaDias: 7, reentradaHoras: 24, unidade:"L", obs:"" },
-      { id: uid("prd"), empresaId, tipo:"Fungicida", nome:"Triazol+Estrobilurina", ingrediente:"Mistura", fabricante:"Genérico", registro:"", carenciaDias: 14, reentradaHoras: 24, unidade:"L", obs:"" }
+      { id: prd1, empresaId, tipo:"Herbicida", nome:"Glifosato 480", ingrediente:"Glifosato", fabricante:"Genérico", registro:"", carenciaDias: 7, reentradaHoras: 24, unidade:"L", obs:"" },
+      { id: prd2, empresaId, tipo:"Fungicida", nome:"Triazol+Estrobilurina", ingrediente:"Mistura", fabricante:"Genérico", registro:"", carenciaDias: 14, reentradaHoras: 24, unidade:"L", obs:"" }
     ],
+    // ✅ estoque demo já com produtoId e quantidades, para testar baixa
     estoque: [
-      { id: uid("stk"), empresaId, produtoId:null, deposito:"Central", lote:"", validade:"", qtd:0, unidade:"", obs:"(preencha via página Estoque)" }
+      { id: uid("stk"), empresaId, produtoId: prd1, deposito:"Central", lote:"A1", validade:"2027-12-31", qtd: 800, unidade:"L", obs:"Demo" },
+      { id: uid("stk"), empresaId, produtoId: prd2, deposito:"Central", lote:"B1", validade:"2027-12-31", qtd: 300, unidade:"L", obs:"Demo" }
     ],
     equipe: [
       { id: uid("peq"), empresaId, nome:"Operador 1", funcao:"Tratorista", telefone:"", nr:"", obs:"" }
@@ -123,11 +125,12 @@ function seedDB(){
         data: nowISO(),
         fazendaId,
         talhaoId,
+        areaHa: 10, // ✅ demo: área aplicada separada
         cultura:"Soja",
         alvo:"Plantas daninhas",
         operacao:"Pulverização terrestre",
-        maquinaId: null,
-        operadorId: null,
+        maquinaId: "",
+        operadorId: "",
         condicoes:{ vento: 8, temp: 31, umidade: 60 },
         caldaLHa: 120,
         velocidadeKmH: 14,
@@ -139,8 +142,6 @@ function seedDB(){
         obs:"Aplicação padrão (demo)."
       }
     ],
-
-    // ✅ NOVO: Combustível
     combustivel: [
       {
         id: uid("cmb"),
@@ -148,8 +149,8 @@ function seedDB(){
         data: nowISO(),
         tipo: "Diesel S10",
         posto: "Posto Exemplo",
-        maquinaId: "",       // opcional
-        operadorId: "",      // opcional
+        maquinaId: "",
+        operadorId: "",
         fazendaId,
         talhaoId,
         litros: 120,
@@ -194,10 +195,7 @@ const PAGES = [
   { href:"clima.html", label:"Clima/Chuva", key:"clima", icon:"🌧️" },
   { href:"equipe.html", label:"Equipe", key:"equipe", icon:"👷" },
   { href:"maquinas.html", label:"Máquinas", key:"maquinas", icon:"🛠️" },
-
-  // ✅ NOVO
   { href:"combustivel.html", label:"Combustível", key:"combustivel", icon:"⛽" },
-
   { href:"relatorios.html", label:"Relatórios", key:"relatorios", icon:"🧾" },
   { href:"configuracoes.html", label:"Configurações", key:"config", icon:"⚙️" },
 ];
@@ -303,14 +301,12 @@ function renderShell(pageKey, title, subtitle){
 /* ------------------ Helpers ------------------ */
 function onlyEmpresa(arr){
   const eid = getEmpresaId();
-  return arr.filter(x => x.empresaId === eid);
+  return (arr||[]).filter(x => x.empresaId === eid);
 }
-
 function findNameById(arr, id, fallback="-"){
-  const o = arr.find(x=>x.id===id);
+  const o = (arr||[]).find(x=>x.id===id);
   return o ? o.nome : fallback;
 }
-
 function setTopActions(html){
   const el = document.getElementById("topActions");
   if(el) el.innerHTML = html || "";
@@ -358,18 +354,15 @@ function pageDashboard(){
 
     <div class="section">
       <div class="card">
-        <h3>Checklist Agro (operacional)</h3>
+        <h3>Resumo rápido</h3>
         <div class="help">
-          • Conferir estoque e validade<br/>
-          • Registrar chuva/vento do dia<br/>
-          • Validar talhão/cultura/safra<br/>
-          • Registrar aplicação (produto, dose, calda, máquina, operador)<br/>
-          • Registrar abastecimentos (custo operacional)<br/>
-          • Emitir relatório e assinar (PDF)
+          • Chuva (hoje): <b>${chuvaHoje.toFixed(1)} mm</b><br/>
+          • Produtos cadastrados: <b>${produtos.length}</b><br/>
+          • Use Aplicações + Estoque para rastreabilidade e controle.
         </div>
         <div class="hr"></div>
-        <span class="pill warn">Pronto para auditoria</span>
-        <span class="pill info">Rastreabilidade</span>
+        <span class="pill warn">Offline-first</span>
+        <span class="pill info">Multiempresa</span>
       </div>
 
       <div class="tableWrap">
@@ -380,8 +373,8 @@ function pageDashboard(){
               <th>Data</th>
               <th>Fazenda</th>
               <th>Talhão</th>
+              <th>Área (ha)</th>
               <th>Alvo</th>
-              <th>Operação</th>
             </tr>
           </thead>
           <tbody>
@@ -392,8 +385,8 @@ function pageDashboard(){
                   <td>${escapeHtml(a.data||"")}</td>
                   <td>${escapeHtml(findNameById(fazendas, a.fazendaId))}</td>
                   <td>${escapeHtml(findNameById(talhoes, a.talhaoId))}</td>
+                  <td>${Number(a.areaHa||0).toFixed(2)}</td>
                   <td>${escapeHtml(a.alvo||"")}</td>
-                  <td>${escapeHtml(a.operacao||"")}</td>
                 </tr>
               `).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
             }
@@ -401,39 +394,12 @@ function pageDashboard(){
         </table>
       </div>
     </div>
-
-    <div class="section">
-      <div class="card">
-        <h3>Produtos cadastrados</h3>
-        <div class="big">${produtos.length}</div>
-        <div class="sub">Defensivos, fertilizantes, adjuvantes</div>
-        <div class="hr"></div>
-        <a class="btn primary" href="produtos.html">Gerenciar produtos</a>
-      </div>
-
-      <div class="card">
-        <h3>Próximos passos</h3>
-        <div class="help">
-          Se quiser, eu adapto este sistema para o seu fluxo real:<br/>
-          • Multiusuário (login) • Permissões (admin/operador) • Supabase/Postgres<br/>
-          • Módulo financeiro (custo/ha) • Relatórios por safra/talhão
-        </div>
-      </div>
-    </div>
   `;
 }
 
-function crudPage({
-  entityKey,
-  subtitle,
-  fields,
-  columns,
-  helpers
-}){
+function crudPage({ entityKey, subtitle, fields, columns, helpers }){
   const db = getDB();
   const eid = getEmpresaId();
-  const arr = db[entityKey] || [];
-  const list = onlyEmpresa(arr);
 
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
@@ -564,9 +530,8 @@ function crudPage({
   renderTable();
 }
 
-/* --------- Páginas específicas --------- */
+/* --------- Páginas --------- */
 function pageEmpresas(){
-  const db = getDB();
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
   const content = document.getElementById("content");
@@ -640,7 +605,6 @@ function pageEmpresas(){
     db2.empresas = db2.empresas.filter(x=>x.id!==id);
     const wipe = key => db2[key] = (db2[key]||[]).filter(x=>x.empresaId!==id);
 
-    // ✅ inclui combustivel no wipe
     ["fazendas","talhoes","produtos","estoque","equipe","maquinas","clima","aplicacoes","combustivel"].forEach(wipe);
 
     if(getEmpresaId()===id){
@@ -761,7 +725,7 @@ function pageProdutos(){
 function pageEstoque(){
   crudPage({
     entityKey:"estoque",
-    subtitle:"Controle por depósito, lote e validade. (Quantidades são informativas/offline).",
+    subtitle:"Controle por depósito, lote e validade. (Pode ficar negativo se baixar em aplicações).",
     fields:[
       {key:"produtoId", label:"Produto", type:"select",
         options:(db)=> {
@@ -771,7 +735,7 @@ function pageEstoque(){
       },
       {key:"deposito", label:"Depósito", type:"text", placeholder:"Central / Galpão / Unidade..."},
       {key:"lote", label:"Lote", type:"text"},
-      {key:"validade", label:"Validade (YYYY-MM-DD)", type:"text", placeholder:"2026-12-31"},
+      {key:"validade", label:"Validade (YYYY-MM-DD)", type:"text", placeholder:"2027-12-31"},
       {key:"qtd", label:"Quantidade", type:"number"},
       {key:"unidade", label:"Unidade", type:"text", placeholder:"L / kg"},
       {key:"obs", label:"Observações", type:"textarea", full:true}
@@ -821,9 +785,7 @@ function pageClima(){
       {key:"tempMax", label:"Temp máx"},
       {key:"vento", label:"Vento"}
     ],
-    helpers:{
-      beforeSave:(obj)=>{ if(!obj.data) obj.data = nowISO(); }
-    }
+    helpers:{ beforeSave:(obj)=>{ if(!obj.data) obj.data = nowISO(); } }
   });
 }
 
@@ -870,7 +832,7 @@ function pageMaquinas(){
   });
 }
 
-/* ✅ NOVO: Página Combustível */
+/* ✅ Combustível */
 function pageCombustivel(){
   const db = getDB();
   const fazendas = onlyEmpresa(db.fazendas);
@@ -881,7 +843,6 @@ function pageCombustivel(){
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
   const content = document.getElementById("content");
-
   const options = (arr, emptyLabel) => {
     const empty = emptyLabel ? `<option value="">${escapeHtml(emptyLabel)}</option>` : "";
     return empty + arr.map(o=>`<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join("");
@@ -891,57 +852,25 @@ function pageCombustivel(){
     <div class="section">
       <div class="card">
         <h3>Registrar abastecimento</h3>
-        <div class="help">
-          Registre litros, preço por litro e vínculo com máquina/operador/talhão para custo operacional.
-        </div>
+        <div class="help">Vincule com máquina/operador/talhão para custo operacional.</div>
         <div class="hr"></div>
 
         <form id="frm" class="formGrid">
           <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
           <div><small>Tipo</small><input class="input" name="tipo" placeholder="Diesel S10" /></div>
-
           <div class="full"><small>Posto/Fornecedor</small><input class="input" name="posto" placeholder="Nome do posto / fornecedor" /></div>
 
-          <div>
-            <small>Máquina</small>
-            <select class="select" name="maquinaId">
-              ${options(maquinas, "(opcional)")}
-            </select>
-          </div>
+          <div><small>Máquina</small><select class="select" name="maquinaId">${options(maquinas, "(opcional)")}</select></div>
+          <div><small>Operador</small><select class="select" name="operadorId">${options(equipe, "(opcional)")}</select></div>
 
-          <div>
-            <small>Operador</small>
-            <select class="select" name="operadorId">
-              ${options(equipe, "(opcional)")}
-            </select>
-          </div>
-
-          <div>
-            <small>Fazenda</small>
-            <select class="select" name="fazendaId" required>
-              ${options(fazendas)}
-            </select>
-          </div>
-
-          <div>
-            <small>Talhão</small>
-            <select class="select" name="talhaoId" required>
-              ${options(talhoes)}
-            </select>
-          </div>
+          <div><small>Fazenda</small><select class="select" name="fazendaId" required>${options(fazendas)}</select></div>
+          <div><small>Talhão</small><select class="select" name="talhaoId" required>${options(talhoes)}</select></div>
 
           <div><small>Litros</small><input class="input" name="litros" type="number" step="0.01" placeholder="120" required /></div>
           <div><small>Preço por litro (R$)</small><input class="input" name="precoLitro" type="number" step="0.01" placeholder="6.19" required /></div>
 
-          <div class="full">
-            <small>KM / Horímetro (opcional)</small>
-            <input class="input" name="kmOuHora" type="number" step="0.01" placeholder="Ex: 1530 (horímetro) ou 45000 (km)" />
-          </div>
-
-          <div class="full">
-            <small>Observações</small>
-            <textarea class="textarea" name="obs" placeholder="Ex: tanque cheio, deslocamento, serviço etc."></textarea>
-          </div>
+          <div class="full"><small>KM / Horímetro (opcional)</small><input class="input" name="kmOuHora" type="number" step="0.01" placeholder="Ex: 1530 (horímetro) ou 45000 (km)" /></div>
+          <div class="full"><small>Observações</small><textarea class="textarea" name="obs" placeholder="Ex: tanque cheio, deslocamento, serviço etc."></textarea></div>
 
           <div class="full row" style="justify-content:flex-end">
             <button class="btn primary" type="submit">Salvar</button>
@@ -956,16 +885,8 @@ function pageCombustivel(){
         <table>
           <thead>
             <tr>
-              <th>Data</th>
-              <th>Fazenda</th>
-              <th>Talhão</th>
-              <th>Máquina</th>
-              <th>Operador</th>
-              <th>Tipo</th>
-              <th>Litros</th>
-              <th>R$/L</th>
-              <th>Total (R$)</th>
-              <th class="noPrint">Ações</th>
+              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Máquina</th><th>Operador</th><th>Tipo</th>
+              <th>Litros</th><th>R$/L</th><th>Total (R$)</th><th class="noPrint">Ações</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -982,7 +903,6 @@ function pageCombustivel(){
     const maq2 = onlyEmpresa(db2.maquinas);
     const eq2  = onlyEmpresa(db2.equipe);
 
-    // KPIs últimos 30 dias
     const today = new Date();
     const days30 = new Date(today.getTime() - 30*24*60*60*1000);
     const rows30 = rows.filter(r => {
@@ -1064,6 +984,7 @@ function pageCombustivel(){
   render();
 }
 
+/* ✅ Aplicações + baixa de estoque + área aplicada */
 function pageAplicacoes(){
   const db = getDB();
   const fazendas = onlyEmpresa(db.fazendas);
@@ -1085,7 +1006,7 @@ function pageAplicacoes(){
       <div class="card">
         <h3>Registrar aplicação</h3>
         <div class="help">
-          Registro completo: talhão, cultura/safra, condições, calda, máquina, operador, produtos e doses.
+          ✅ Agora você informa <b>Área aplicada (ha)</b> e o sistema dá baixa no estoque automaticamente (pode ficar negativo).
         </div>
         <div class="hr"></div>
 
@@ -1105,6 +1026,8 @@ function pageAplicacoes(){
               ${optionList(talhoes)}
             </select>
           </div>
+
+          <div><small>Área aplicada (ha)</small><input class="input" name="areaHa" type="number" step="0.01" placeholder="Ex: 12.5" required /></div>
 
           <div><small>Cultura</small><input class="input" name="cultura" placeholder="Soja" /></div>
           <div><small>Alvo</small><input class="input" name="alvo" placeholder="Ferrugem / Lagartas / Daninhas..." /></div>
@@ -1172,6 +1095,7 @@ function pageAplicacoes(){
               <th>Data</th>
               <th>Fazenda</th>
               <th>Talhão</th>
+              <th>Área (ha)</th>
               <th>Cultura</th>
               <th>Alvo</th>
               <th>Produtos</th>
@@ -1199,6 +1123,7 @@ function pageAplicacoes(){
           <td>${escapeHtml(a.data||"")}</td>
           <td>${escapeHtml(faz)}</td>
           <td>${escapeHtml(tal)}</td>
+          <td>${Number(a.areaHa||0).toFixed(2)}</td>
           <td>${escapeHtml(a.cultura||"")}</td>
           <td>${escapeHtml(a.alvo||"")}</td>
           <td>${escapeHtml(prds||"—")}</td>
@@ -1206,7 +1131,7 @@ function pageAplicacoes(){
           <td class="noPrint"><button class="btn danger" onclick="window.__delA('${a.id}')">Excluir</button></td>
         </tr>
       `;
-    }).join("") || `<tr><td colspan="8">Sem aplicações.</td></tr>`;
+    }).join("") || `<tr><td colspan="9">Sem aplicações.</td></tr>`;
   }
 
   window.__delA = (id)=>{
@@ -1221,12 +1146,14 @@ function pageAplicacoes(){
   document.getElementById("frm").addEventListener("submit",(e)=>{
     e.preventDefault();
     const fd = new FormData(e.target);
+
     const obj = {
       id: uid("apl"),
       empresaId: getEmpresaId(),
       data: fd.get("data") || nowISO(),
       fazendaId: fd.get("fazendaId"),
       talhaoId: fd.get("talhaoId"),
+      areaHa: Number(fd.get("areaHa")||0), // ✅ área aplicada por operação
       cultura: fd.get("cultura") || "",
       alvo: fd.get("alvo") || "",
       operacao: fd.get("operacao") || "",
@@ -1254,6 +1181,61 @@ function pageAplicacoes(){
       }
     });
 
+    // ✅ Baixa automática no estoque (pode ficar negativo)
+    (function baixarEstoquePorAplicacao(){
+      const dbX = getDB();
+      const area = Number(obj.areaHa || 0);
+      if(!area) return;
+
+      const prods = onlyEmpresa(dbX.produtos);
+      dbX.estoque = dbX.estoque || [];
+      const estoqueEmpresa = onlyEmpresa(dbX.estoque);
+
+      const logs = [];
+
+      (obj.produtos || []).forEach(p=>{
+        if(!p.produtoNome) return;
+
+        const prod = prods.find(pp => (pp.nome||"").trim().toLowerCase() === String(p.produtoNome).trim().toLowerCase());
+        const dose = Number(p.dosePorHa || 0);
+        if(!dose) return;
+
+        const consumo = dose * area; // dose/ha * ha aplicados
+
+        if(prod){
+          let item = estoqueEmpresa.find(s => s.produtoId === prod.id);
+
+          // se não existir item de estoque, cria (e vai negativo)
+          if(!item){
+            item = {
+              id: uid("stk"),
+              empresaId: getEmpresaId(),
+              produtoId: prod.id,
+              deposito: "Padrão",
+              lote: "",
+              validade: "",
+              qtd: 0,
+              unidade: (prod.unidade || "").trim() || "L",
+              obs: "Criado automaticamente pela baixa de aplicação"
+            };
+            dbX.estoque.push(item);
+          }
+
+          item.qtd = Number(item.qtd || 0) - consumo; // ✅ pode ficar negativo
+          logs.push(`${prod.nome}: -${consumo.toFixed(2)} ${item.unidade}`);
+        } else {
+          logs.push(`${p.produtoNome}: (não baixou — não cadastrado em Produtos)`);
+        }
+      });
+
+      setDB(dbX);
+
+      if(logs.length){
+        toast("Estoque atualizado", logs.join(" • "));
+      }
+    })();
+
+    // salvar aplicação
     const db2 = getDB();
     db2.aplicacoes = db2.aplicacoes || [];
     db2.aplicacoes.push(obj);
@@ -1280,17 +1262,20 @@ function pageRelatorios(){
   const aplicacoes = onlyEmpresa(db.aplicacoes);
   const clima = onlyEmpresa(db.clima);
   const combustivel = onlyEmpresa(db.combustivel || []);
+  const estoque = onlyEmpresa(db.estoque || []);
+  const prods = onlyEmpresa(db.produtos || []);
 
   setTopActions(`
     <button class="btn" id="btnCSV">Exportar (Apl) CSV</button>
     <button class="btn primary" id="btnPrint">Imprimir / PDF</button>
   `);
 
-  const totalArea = talhoes.reduce((s,t)=>s+Number(t.areaHa||0),0);
+  const totalAreaTalhoes = talhoes.reduce((s,t)=>s+Number(t.areaHa||0),0);
+  const totalAreaAplicada = aplicacoes.reduce((s,a)=>s+Number(a.areaHa||0),0);
+
   const ultApl = aplicacoes.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).slice(0,12);
   const ultClima = clima.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).slice(0,12);
 
-  // combustível últimos 30 dias (resumo simples)
   const today = new Date();
   const days30 = new Date(today.getTime() - 30*24*60*60*1000);
   const comb30 = combustivel.filter(r=>{
@@ -1298,6 +1283,8 @@ function pageRelatorios(){
     return !isNaN(d) && d >= days30;
   });
   const combTotal30 = comb30.reduce((s,r)=>s+(Number(r.litros||0)*Number(r.precoLitro||0)),0);
+
+  const negativos = estoque.filter(s=>Number(s.qtd||0) < 0).length;
 
   const content = document.getElementById("content");
   content.innerHTML = `
@@ -1310,23 +1297,23 @@ function pageRelatorios(){
     <div class="kpi">
       <div class="card">
         <h3>Área total (talhões)</h3>
-        <div class="big">${totalArea.toFixed(1)} ha</div>
-        <div class="sub">Somatório da empresa ativa</div>
+        <div class="big">${totalAreaTalhoes.toFixed(1)} ha</div>
+        <div class="sub">Somatório cadastrado</div>
       </div>
       <div class="card">
-        <h3>Aplicações</h3>
-        <div class="big">${aplicacoes.length}</div>
-        <div class="sub"><span class="pill info">Rastreabilidade</span></div>
-      </div>
-      <div class="card">
-        <h3>Clima</h3>
-        <div class="big">${clima.length}</div>
-        <div class="sub"><span class="pill ok">Histórico</span></div>
+        <h3>Área aplicada (total)</h3>
+        <div class="big">${totalAreaAplicada.toFixed(1)} ha</div>
+        <div class="sub">Somatório das aplicações</div>
       </div>
       <div class="card">
         <h3>Combustível (30d)</h3>
         <div class="big">R$ ${combTotal30.toFixed(2)}</div>
         <div class="sub"><span class="pill warn">Custo operacional</span></div>
+      </div>
+      <div class="card">
+        <h3>Estoque negativo</h3>
+        <div class="big">${negativos}</div>
+        <div class="sub"><span class="pill bad">Furo de estoque</span></div>
       </div>
     </div>
 
@@ -1334,11 +1321,9 @@ function pageRelatorios(){
       <div class="tableWrap">
         <table>
           <thead>
+            <tr><th colspan="7">Últimas aplicações</th></tr>
             <tr>
-              <th colspan="6">Últimas aplicações</th>
-            </tr>
-            <tr>
-              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Alvo</th><th>Operação</th><th>Produtos</th>
+              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Área</th><th>Alvo</th><th>Operação</th><th>Produtos</th>
             </tr>
           </thead>
           <tbody>
@@ -1350,12 +1335,13 @@ function pageRelatorios(){
                     <td>${escapeHtml(a.data||"")}</td>
                     <td>${escapeHtml(findNameById(fazendas, a.fazendaId))}</td>
                     <td>${escapeHtml(findNameById(talhoes, a.talhaoId))}</td>
+                    <td>${Number(a.areaHa||0).toFixed(2)}</td>
                     <td>${escapeHtml(a.alvo||"")}</td>
                     <td>${escapeHtml(a.operacao||"")}</td>
                     <td>${escapeHtml(prds||"—")}</td>
                   </tr>
                 `;
-              }).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
+              }).join("") || `<tr><td colspan="7">Sem registros.</td></tr>`
             }
           </tbody>
         </table>
@@ -1364,9 +1350,7 @@ function pageRelatorios(){
       <div class="tableWrap">
         <table>
           <thead>
-            <tr>
-              <th colspan="6">Últimos registros de clima</th>
-            </tr>
+            <tr><th colspan="6">Últimos registros de clima</th></tr>
             <tr>
               <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Chuva (mm)</th><th>Temp máx</th><th>Vento</th>
             </tr>
@@ -1388,10 +1372,45 @@ function pageRelatorios(){
         </table>
       </div>
     </div>
+
+    <div class="section">
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr><th colspan="5">Estoque (resumo)</th></tr>
+            <tr><th>Produto</th><th>Depósito</th><th>Lote</th><th>Qtd</th><th>Unid.</th></tr>
+          </thead>
+          <tbody>
+            ${
+              estoque.slice().reverse().slice(0,20).map(s=>{
+                const p = prods.find(pp=>pp.id===s.produtoId);
+                return `
+                  <tr>
+                    <td>${escapeHtml(p ? p.nome : "(sem produto)")}</td>
+                    <td>${escapeHtml(s.deposito||"")}</td>
+                    <td>${escapeHtml(s.lote||"")}</td>
+                    <td><b>${Number(s.qtd||0).toFixed(2)}</b></td>
+                    <td>${escapeHtml(s.unidade||"")}</td>
+                  </tr>
+                `;
+              }).join("") || `<tr><td colspan="5">Sem estoque.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Como interpretar</h3>
+        <div class="help">
+          • O estoque pode ficar <b>negativo</b> para mostrar “furo”.<br/>
+          • A baixa usa: <b>dose/ha × área aplicada</b>.<br/>
+          • Para baixar corretamente, o produto da aplicação precisa existir em <b>Produtos</b> (mesmo nome).
+        </div>
+      </div>
+    </div>
   `;
 
   document.getElementById("btnPrint").addEventListener("click", ()=> window.print());
-
   document.getElementById("btnCSV").addEventListener("click", ()=>{
     const db2 = getDB();
     downloadText(`relatorio-aplicacoes-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.aplicacoes||[])));
@@ -1415,25 +1434,15 @@ function pageConfiguracoes(){
           • Use backup para trocar de aparelho sem perder dados.<br/>
           • Importar substitui o banco local atual.
         </div>
-        <div class="hr"></div>
-        <div class="help">
-          <b>Boas práticas:</b><br/>
-          • Registrar clima do dia de aplicação (vento/umidade/temperatura).<br/>
-          • Registrar máquina/operador quando possível.<br/>
-          • Registrar abastecimentos para custo operacional.
-        </div>
       </div>
 
       <div class="card">
-        <h3>Próximos upgrades</h3>
+        <h3>Financeiro (próximo passo)</h3>
         <div class="help">
-          • Financeiro: custo por talhão (insumo + combustível + mão de obra)<br/>
+          • Custo/ha: insumo + combustível + mão de obra<br/>
           • Safras e centro de custos<br/>
-          • Supabase: login, multiusuário, histórico e auditoria
+          • Supabase: login, multiusuário, auditoria
         </div>
-        <div class="hr"></div>
-        <span class="pill info">Pronto para backend</span>
-        <span class="pill ok">Offline-first</span>
       </div>
     </div>
   `;
@@ -1480,14 +1489,11 @@ function boot(){
     talhoes:["Talhões","Área, cultura, safra e informações de campo"],
     produtos:["Produtos","Cadastro de defensivos e insumos"],
     estoque:["Estoque","Controle básico por depósito/lote/validade"],
-    aplicacoes:["Aplicações","Rastreabilidade completa de operações"],
+    aplicacoes:["Aplicações","Rastreabilidade completa e baixa automática"],
     clima:["Clima/Chuva","Histórico manual por fazenda/talhão"],
     equipe:["Equipe","Operadores, agrônomos e times de campo"],
     maquinas:["Máquinas","Equipamentos usados nas operações"],
-
-    // ✅ NOVO
     combustivel:["Combustível","Abastecimentos, custo e vínculo por talhão/máquina"],
-
     relatorios:["Relatórios","Resumo + impressão/PDF + exportação"],
     config:["Configurações","Backup/restore e preparação para backend"],
   };
@@ -1505,14 +1511,11 @@ function boot(){
   else if(pageKey==="clima") pageClima();
   else if(pageKey==="equipe") pageEquipe();
   else if(pageKey==="maquinas") pageMaquinas();
-
-  // ✅ NOVO
   else if(pageKey==="combustivel") pageCombustivel();
-
   else if(pageKey==="relatorios") pageRelatorios();
   else if(pageKey==="config") pageConfiguracoes();
 
   toast("Agro Pro", "Sistema carregado. Dados salvos no navegador.");
 }
 
-document.addEventListener("DOMContentLoaded", boot);
+document.addEventListener("DOMContentLoaded", boot); 
