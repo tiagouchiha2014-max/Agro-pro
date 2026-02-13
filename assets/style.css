@@ -1,39 +1,48 @@
-/* Agro Pro — CSS completo (Light / Agro Premium)
-   Objetivo: fundo branco + tema agro, sem quebrar layout mesmo sem classes específicas.
+/* Agro Pro — Novo CSS (Light / Agro Premium “Folha & Campo”)
+   Arquivo: assets/style.css
+   - Fundo branco
+   - Verde agro + detalhes “campo”
+   - Compatível com páginas sem classes específicas
 */
 
 :root{
+  /* Base */
   --bg:#ffffff;
   --panel:#ffffff;
   --panel2:#f6fbf7;
+  --panel3:#f9fbf9;
 
-  /* Agro premium (folha + campo) */
-  --brand:#1f7a3a;
-  --brand2:#34d399;
-  --brand3:#dcfce7;
+  /* Agro */
+  --brand:#1f7a3a;        /* verde folha */
+  --brand2:#34d399;       /* verde vivo */
+  --brand3:#dcfce7;       /* verde bem claro */
   --brandInk:#0b3d1f;
 
+  /* Campo/terra (detalhes) */
   --earth:#8b6b4f;
   --earth2:#efe7df;
 
+  /* Texto */
   --text:#0f172a;
   --muted:#64748b;
 
+  /* UI */
   --line:rgba(15,23,42,.12);
   --shadow:0 18px 40px rgba(2,6,23,.08);
   --shadow2:0 10px 22px rgba(2,6,23,.06);
-
   --radius:18px;
   --r-sm:14px;
 
+  /* Estados */
   --ok:#16a34a;
   --warn:#f59e0b;
   --bad:#ef4444;
 
+  /* Fonte */
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, Arial, "Apple Color Emoji","Segoe UI Emoji";
 }
 
-/* Reset + base */
+/* ===== Base / Reset ===== */
 *{ box-sizing:border-box; }
 html, body{ height:100%; }
 body{
@@ -47,7 +56,12 @@ body{
 
 #app{ min-height:100vh; }
 
-/* Tipografia padrão (isso evita “texto solto”) */
+::selection{ background:rgba(52,211,153,.25); }
+
+a{ color:var(--brand); text-decoration:none; }
+a:hover{ color:#145c2b; text-decoration:underline; }
+
+/* Tipografia */
 h1,h2,h3,h4{
   margin:0 0 8px 0;
   line-height:1.15;
@@ -56,77 +70,86 @@ h1,h2,h3,h4{
 h1{ font-size:22px; }
 h2{ font-size:18px; }
 h3{ font-size:15px; }
-p{
-  margin:0 0 10px 0;
-  color:var(--text);
+p{ margin:0 0 10px 0; }
+small,.small,.muted{ color:var(--muted); }
+
+/* Utilitários */
+.hidden{ display:none !important; }
+.row{ display:flex; gap:12px; align-items:center; }
+.col{ display:flex; flex-direction:column; gap:10px; }
+.wrap{ flex-wrap:wrap; }
+.spacer{ flex:1; }
+.divider, hr{
+  border:none;
+  height:1px;
+  background:var(--line);
+  margin:14px 0;
 }
-small,.small{ color:var(--muted); }
-.muted{ color:var(--muted) !important; }
 
-a{ color:var(--brand); text-decoration:none; }
-a:hover{ color:#145c2b; text-decoration:underline; }
-
-::selection{ background:rgba(52,211,153,.25); }
-
-/* Espaçamento global: qualquer seção vira "card" se estiver crua */
-section, main, article{
-  display:block;
-}
-
-/* Container genérico (se seu app não tiver) */
-.container, .wrap, .page, .content{
+/* Container padrão (se existir) */
+.container, .page, .content, .wrap, .inner{
   max-width:1200px;
   margin:0 auto;
-  padding:22px;
 }
 
-/* Se o JS não usa container, estiliza o conteúdo dentro do #app */
+/* Se o app não usa container, deixa tudo com respiro */
 #app > *{
   max-width:1200px;
   margin:0 auto;
   padding:18px 22px;
 }
 
-/* Topbar / header (se existir) */
+/* ===== Topbar / Header ===== */
 header, .topbar, .appbar, .navbar{
   position:sticky;
   top:0;
   z-index:50;
-  background:linear-gradient(180deg, rgba(31,122,58,.10), rgba(139,107,79,.04));
+  background:
+    linear-gradient(180deg,
+      rgba(31,122,58,.10),
+      rgba(139,107,79,.03));
   border-bottom:1px solid rgba(139,107,79,.18);
   backdrop-filter:saturate(1.1) blur(8px);
 }
 header .inner, .topbar .inner, .appbar .inner, .navbar .inner{
-  max-width:1200px;
-  margin:0 auto;
   padding:12px 22px;
   display:flex;
-  gap:12px;
   align-items:center;
+  gap:12px;
+}
+.brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:900;
+  letter-spacing:.2px;
+}
+.brand .dot{
+  width:12px; height:12px;
+  border-radius:999px;
+  background:linear-gradient(180deg, var(--brand2), var(--brand));
+  box-shadow:0 10px 18px rgba(31,122,58,.20);
 }
 
-/* Blocos estilo card (classes comuns) */
-.card, .panel, .box, .sheet, .modal,
-.container-card, .widget, .tile{
+/* ===== Cards / Painéis ===== */
+.card, .panel, .box, .sheet, .modal, .widget, .tile, .container-card{
   background:var(--panel);
   border:1px solid var(--line);
   border-radius:var(--radius);
   box-shadow:var(--shadow);
 }
 
-/* Cabeçalho/Corpo em cards (se existir) */
 .card .head, .panel .head, .box .head, .widget .head{
   padding:14px 16px;
   border-bottom:1px solid var(--line);
   display:flex;
-  gap:10px;
   align-items:center;
+  gap:10px;
 }
 .card .body, .panel .body, .box .body, .widget .body{
   padding:16px;
 }
 
-/* “Soft areas” */
 .soft, .subpanel, .toolbar, .filters, .well{
   background:var(--panel2);
   border:1px solid rgba(31,122,58,.12);
@@ -134,36 +157,24 @@ header .inner, .topbar .inner, .appbar .inner, .navbar .inner{
   padding:12px;
 }
 
-/* O PULO DO GATO: se seu app está imprimindo blocos sem classe,
-   estilizamos blocos comuns dentro do #app como cards automaticamente */
-#app h1,
-#app h2{
+/* ===== “Auto-card” para conteúdo cru (melhora dashboard) ===== */
+#app h1, #app h2{
   padding:14px 16px;
-  margin:0;
+  border-radius:var(--radius);
+  background:linear-gradient(180deg, rgba(31,122,58,.08), rgba(255,255,255,0));
+  border:1px solid rgba(31,122,58,.10);
 }
-#app h1 + p, #app h2 + p{
-  margin-top:10px;
-}
+#app h1{ margin-top:10px; }
+#app h2{ margin-top:14px; }
 
-/* Qualquer lista / bloco depois do título vira “seção” bonita */
+/* Blocos comuns dentro do app: melhora listas e seções */
 #app ul, #app ol{
   margin:10px 0 0 0;
   padding-left:18px;
-  color:var(--text);
 }
-#app ul li, #app ol li{
-  margin:6px 0;
-}
+#app li{ margin:6px 0; }
 
-/* “Seções” genéricas: se tiver um hr ou divisor */
-hr{
-  border:none;
-  height:1px;
-  background:var(--line);
-  margin:14px 0;
-}
-
-/* Botões */
+/* ===== Botões ===== */
 button, .btn, input[type="button"], input[type="submit"]{
   font:inherit;
   border-radius:var(--r-sm);
@@ -181,7 +192,7 @@ button:active, .btn:active, input[type="button"]:active, input[type="submit"]:ac
   transform:translateY(1px);
 }
 
-/* Botão principal (classes comuns) */
+/* Principal */
 .primary, .btn-primary, .primary-btn, button.primary, .btn.primary{
   background:linear-gradient(180deg, var(--brand2), var(--brand));
   color:#fff !important;
@@ -192,14 +203,39 @@ button:active, .btn:active, input[type="button"]:active, input[type="submit"]:ac
   filter:brightness(1.03);
 }
 
-/* Botão secundário */
+/* Secundário (terra leve) */
 .secondary, .btn-secondary, .secondary-btn, button.secondary, .btn.secondary{
   background:linear-gradient(180deg, rgba(139,107,79,.12), rgba(139,107,79,.06));
   color:#3e2723 !important;
-  border:1px solid rgba(139,107,79,.26) !important;
+  border:1px solid rgba(139,107,79,.24) !important;
 }
 
-/* Inputs */
+/* Ghost */
+.ghost, .btn-ghost, button.ghost, .btn.ghost{
+  background:transparent;
+  border:1px solid transparent;
+}
+.ghost:hover, .btn-ghost:hover, button.ghost:hover, .btn.ghost:hover{
+  background:rgba(31,122,58,.07);
+  border-color:rgba(31,122,58,.14);
+}
+
+/* Danger */
+.danger, .btn-danger, button.danger, .btn.danger{
+  background:linear-gradient(180deg, #ef4444, #dc2626);
+  color:#fff !important;
+  border:1px solid rgba(0,0,0,.06) !important;
+  box-shadow:0 10px 18px rgba(239,68,68,.18);
+}
+
+/* Botão pequeno */
+.sm, .btn-sm, button.sm{
+  padding:7px 10px;
+  border-radius:12px;
+  font-size:13px;
+}
+
+/* ===== Inputs ===== */
 label{ display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
 input, select, textarea{
   width:100%;
@@ -217,13 +253,9 @@ input:focus, select:focus, textarea:focus{
   box-shadow:0 0 0 4px rgba(31,122,58,.14);
 }
 input::placeholder, textarea::placeholder{ color:rgba(100,116,139,.75); }
+input[type="checkbox"], input[type="radio"]{ width:auto; accent-color:var(--brand); }
 
-input[type="checkbox"], input[type="radio"]{
-  width:auto;
-  accent-color:var(--brand);
-}
-
-/* Badges/Chips */
+/* ===== Badges / Chips ===== */
 .badge, .chip, .tag, .pill{
   display:inline-flex;
   align-items:center;
@@ -241,14 +273,14 @@ input[type="checkbox"], input[type="radio"]{
 .badge.warn{ background:rgba(245,158,11,.12); border-color:rgba(245,158,11,.25); color:#7a4a00; }
 .badge.bad{ background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.22); color:#7a0b0b; }
 
-/* Tabelas (isso melhora muito o dashboard) */
+/* ===== Tabelas (melhora muito o visual) ===== */
 .table{
   width:100%;
   overflow:auto;
   border-radius:var(--radius);
   border:1px solid var(--line);
-  box-shadow:var(--shadow2);
   background:#fff;
+  box-shadow:var(--shadow2);
 }
 table{
   width:100%;
@@ -261,7 +293,7 @@ thead th{
   text-align:left;
   font-weight:900;
   padding:12px 12px;
-  background:linear-gradient(180deg, rgba(31,122,58,.08), rgba(139,107,79,.04));
+  background:linear-gradient(180deg, rgba(31,122,58,.08), rgba(139,107,79,.03));
   color:#145c2b;
   border-bottom:1px solid var(--line);
 }
@@ -272,7 +304,7 @@ tbody td{
 tbody tr:hover{ background:rgba(31,122,58,.05); }
 tbody tr:last-child td{ border-bottom:none; }
 
-/* Se sua tabela está “crua” (sem wrapper), ainda aplica */
+/* Se tabela vier crua sem wrapper */
 #app table{
   border:1px solid var(--line);
   border-radius:var(--radius);
@@ -280,23 +312,43 @@ tbody tr:last-child td{ border-bottom:none; }
   box-shadow:var(--shadow2);
 }
 
-/* Separadores e layout em linhas */
-.row{ display:flex; gap:12px; align-items:center; }
-.col{ display:flex; flex-direction:column; gap:10px; }
-.wrap{ flex-wrap:wrap; }
-.spacer{ flex:1; }
-
-/* Responsivo */
-@media (max-width: 820px){
-  #app > *{ padding:14px 14px; }
-  h1{ font-size:20px; }
+/* ===== Mensagens / Alertas ===== */
+.alert, .toast, .notice{
+  border-radius:var(--radius);
+  border:1px solid var(--line);
+  background:var(--panel);
+  padding:12px 14px;
+  box-shadow:var(--shadow2);
 }
+.alert.ok{ border-color:rgba(22,163,74,.22); background:rgba(22,163,74,.06); }
+.alert.warn{ border-color:rgba(245,158,11,.25); background:rgba(245,158,11,.06); }
+.alert.bad{ border-color:rgba(239,68,68,.22); background:rgba(239,68,68,.06); }
 
-/* Scrollbar */
+/* ===== Modal ===== */
+.backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(2,6,23,.48);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  z-index:80;
+}
+.modal{ max-width:820px; margin:0 auto; }
+
+/* ===== Scrollbar ===== */
 *::-webkit-scrollbar{ height:10px; width:10px; }
 *::-webkit-scrollbar-thumb{
   background:rgba(31,122,58,.22);
   border-radius:999px;
   border:2px solid rgba(255,255,255,.7);
 }
-*::-webkit-scrollbar-track{ background:rgba(15,23,42,.05); } 
+*::-webkit-scrollbar-track{ background:rgba(15,23,42,.05); }
+
+/* ===== Responsivo ===== */
+@media (max-width: 820px){
+  #app > *{ padding:14px 14px; }
+  h1{ font-size:20px; }
+  h2{ font-size:17px; }
+}
