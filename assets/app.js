@@ -1,14 +1,6 @@
-/* ============================================================
-   AGRO PRO — app.js (OFFLINE / MULTIEMPRESA)
-   Atualização:
-   + OPS CENTER (monitoramento)
-   + Combustível com BAIXA automática no estoque de Diesel (saldo pode ficar negativo)
-   + Aplicações com:
-       - Área aplicada (ha) por operação
-       - 10 linhas de produtos
-       - BAIXA automática no estoque (saldo pode ficar negativo)
-       - Custo por talhão (R$) e Custo/ha (acumulado tipo “chuva por talhão”)
-   ============================================================ */
+/* Agro Pro — Multiempresa / Offline-first (localStorage)
+   Dica: depois você pluga Supabase substituindo Storage.* por chamadas da API.
+*/
 
 const Storage = {
   key: "agro_pro_v1",
@@ -87,16 +79,10 @@ function seedDB(){
   const empresaId = uid("emp");
   const fazendaId = uid("faz");
   const talhaoId = uid("tal");
-  const maqId = uid("maq");
-  const opId = uid("peq");
-
-  const prd1 = uid("prd");
-  const prd2 = uid("prd");
 
   const db = {
-    meta: { createdAt: new Date().toISOString(), version: 2 },
+    meta: { createdAt: new Date().toISOString(), version: 1 },
     session: { empresaId },
-
     empresas: [
       {
         id: empresaId,
@@ -108,63 +94,28 @@ function seedDB(){
         observacoes: "Ambiente de demonstração."
       }
     ],
-
     fazendas: [
       { id: fazendaId, empresaId, nome:"Fazenda Horizonte", cidade:"Sorriso", uf:"MT", areaHa: 1450, observacoes:"Soja/Milho safrinha" }
     ],
-
     talhoes: [
       { id: talhaoId, empresaId, fazendaId, nome:"T-12", areaHa: 78.5, cultura:"Soja", safra:"2025/26", solo:"Argiloso", coordenadas:"", observacoes:"" }
     ],
-
     produtos: [
-      { id: prd1, empresaId, tipo:"Herbicida", nome:"Glifosato 480", ingrediente:"Glifosato", fabricante:"Genérico", registro:"", carenciaDias: 7, reentradaHoras: 24, unidade:"L", obs:"" },
-      { id: prd2, empresaId, tipo:"Fungicida", nome:"Triazol+Estrobilurina", ingrediente:"Mistura", fabricante:"Genérico", registro:"", carenciaDias: 14, reentradaHoras: 24, unidade:"L", obs:"" }
+      { id: uid("prd"), empresaId, tipo:"Herbicida", nome:"Glifosato 480", ingrediente:"Glifosato", fabricante:"Genérico", registro:"", carenciaDias: 7, reentradaHoras: 24, unidade:"L", obs:"", precoUnit: 0 },
+      { id: uid("prd"), empresaId, tipo:"Fungicida", nome:"Triazol+Estrobilurina", ingrediente:"Mistura", fabricante:"Genérico", registro:"", carenciaDias: 14, reentradaHoras: 24, unidade:"L", obs:"", precoUnit: 0 }
     ],
-
-    // Estoque de insumos (pode ficar negativo)
     estoque: [
-      { id: uid("stk"), empresaId, produtoId: prd1, deposito:"Central", lote:"", validade:"", qtd: 1200, unidade:"L", obs:"Demo" },
-      { id: uid("stk"), empresaId, produtoId: prd2, deposito:"Central", lote:"", validade:"", qtd: 240, unidade:"L", obs:"Demo" }
+      { id: uid("stk"), empresaId, produtoId:null, deposito:"Central", lote:"", validade:"", qtd:0, unidade:"", obs:"(preencha via página Estoque)" }
     ],
-
     equipe: [
-      { id: opId, empresaId, nome:"Operador 1", funcao:"Tratorista", telefone:"", nr:"", obs:"" }
+      { id: uid("peq"), empresaId, nome:"Operador 1", funcao:"Tratorista", telefone:"", nr:"", obs:"" }
     ],
-
     maquinas: [
-      { id: maqId, empresaId, nome:"Pulverizador Autopropelido", placa:"", horimetro: 0, capacidadeL: 3000, bicos:"", obs:"" }
+      { id: uid("maq"), empresaId, nome:"Pulverizador Autopropelido", placa:"", horimetro: 0, capacidadeL: 3000, bicos:"", obs:"" }
     ],
-
-    // Clima: histórico (acumulado por talhão é soma dos lançamentos)
     clima: [
       { id: uid("cli"), empresaId, data: nowISO(), fazendaId, talhaoId, chuvaMm: 12, tempMin: 22, tempMax: 33, umidade: 68, vento: 9, obs:"Chuva isolada à tarde" }
     ],
-
-    // Combustível: estoque de diesel (litros) + abastecimentos (baixa automática)
-    dieselEstoque: [
-      { id: uid("dsl"), empresaId, deposito:"Tanque Principal", litros: 5000, obs:"Saldo pode ficar negativo (furo de estoque)" }
-    ],
-    combustivel: [
-      {
-        id: uid("cmb"),
-        empresaId,
-        data: nowISO(),
-        tipo: "Diesel S10",
-        deposito: "Tanque Principal",
-        posto: "Posto Exemplo",
-        maquinaId: maqId,
-        operadorId: opId,
-        fazendaId,
-        talhaoId,
-        litros: 120,
-        precoLitro: 6.19,
-        kmOuHora: 0,
-        obs: "Abastecimento demo"
-      }
-    ],
-
-    // Aplicações: com área aplicada (ha), produtos e custoTotal (R$) opcional
     aplicacoes: [
       {
         id: uid("apl"),
@@ -172,12 +123,11 @@ function seedDB(){
         data: nowISO(),
         fazendaId,
         talhaoId,
-        areaHaAplicada: 25, // <= área aplicada nessa operação
         cultura:"Soja",
         alvo:"Plantas daninhas",
         operacao:"Pulverização terrestre",
-        maquinaId: maqId,
-        operadorId: opId,
+        maquinaId: null,
+        operadorId: null,
         condicoes:{ vento: 8, temp: 31, umidade: 60 },
         caldaLHa: 120,
         velocidadeKmH: 14,
@@ -186,7 +136,6 @@ function seedDB(){
         produtos: [
           { produtoNome:"Glifosato 480", dosePorHa: 2.0, unidade:"L/ha" }
         ],
-        custoTotal: 0, // R$ (opcional)
         obs:"Aplicação padrão (demo)."
       }
     ]
@@ -199,26 +148,6 @@ function seedDB(){
 function getDB(){
   let db = Storage.load();
   if(!db) db = seedDB();
-
-  // migração leve para versões antigas
-  db.meta = db.meta || { createdAt: new Date().toISOString(), version: 2 };
-  db.session = db.session || {};
-  db.empresas = db.empresas || [];
-  db.fazendas = db.fazendas || [];
-  db.talhoes = db.talhoes || [];
-  db.produtos = db.produtos || [];
-  db.estoque = db.estoque || [];
-  db.equipe = db.equipe || [];
-  db.maquinas = db.maquinas || [];
-  db.clima = db.clima || [];
-  db.aplicacoes = db.aplicacoes || [];
-  db.combustivel = db.combustivel || [];
-  db.dieselEstoque = db.dieselEstoque || [{ id: uid("dsl"), empresaId: (db.session.empresaId||db.empresas?.[0]?.id||uid("emp")), deposito:"Tanque Principal", litros: 0, obs:"" }];
-
-  // normaliza: talhaoId vazio vira "" (para clima)
-  db.clima.forEach(c=>{ if(c.talhaoId==null) c.talhaoId=""; });
-
-  Storage.save(db);
   return db;
 }
 function setDB(db){ Storage.save(db); }
@@ -237,14 +166,12 @@ function setEmpresaId(id){
 /* ------------------ UI shell ------------------ */
 const PAGES = [
   { href:"index.html", label:"Dashboard", key:"dashboard", icon:"📊" },
-  { href:"opscenter.html", label:"Ops Center", key:"opscenter", icon:"🛰️" },
   { href:"empresas.html", label:"Empresas", key:"empresas", icon:"🏢" },
   { href:"fazendas.html", label:"Fazendas", key:"fazendas", icon:"🌾" },
   { href:"talhoes.html", label:"Talhões", key:"talhoes", icon:"🧭" },
   { href:"produtos.html", label:"Produtos", key:"produtos", icon:"🧪" },
   { href:"estoque.html", label:"Estoque", key:"estoque", icon:"📦" },
   { href:"aplicacoes.html", label:"Aplicações", key:"aplicacoes", icon:"🚜" },
-  { href:"combustivel.html", label:"Combustível", key:"combustivel", icon:"⛽" },
   { href:"clima.html", label:"Clima/Chuva", key:"clima", icon:"🌧️" },
   { href:"equipe.html", label:"Equipe", key:"equipe", icon:"👷" },
   { href:"maquinas.html", label:"Máquinas", key:"maquinas", icon:"🛠️" },
@@ -317,10 +244,11 @@ function renderShell(pageKey, title, subtitle){
     </div>
   `;
 
+  // Eventos globais
   document.getElementById("empresaSelect").addEventListener("change", (e)=>{
     setEmpresaId(e.target.value);
     toast("Empresa alterada", "Atualizando a página…");
-    setTimeout(()=>location.reload(), 200);
+    setTimeout(()=>location.reload(), 250);
   });
 
   document.getElementById("btnResetDemo").addEventListener("click", ()=>{
@@ -328,152 +256,67 @@ function renderShell(pageKey, title, subtitle){
     localStorage.removeItem(Storage.key);
     seedDB();
     toast("Reset concluído", "Banco local restaurado para o demo.");
-    setTimeout(()=>location.reload(), 200);
+    setTimeout(()=>location.reload(), 250);
   });
 
   document.getElementById("btnBackup").addEventListener("click", ()=>{
-    const db2 = getDB();
-    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(db2, null, 2));
+    const db = getDB();
+    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(db, null, 2));
     toast("Backup gerado", "Arquivo .json baixado.");
   });
 
   document.getElementById("btnNovaEmpresa").addEventListener("click", ()=>{
     const nome = prompt("Nome da nova empresa:");
     if(!nome) return;
-    const db2 = getDB();
+    const db = getDB();
     const id = uid("emp");
-    db2.empresas.push({ id, nome, cnpj:"", responsavel:"", cidade:"", uf:"", observacoes:"" });
-    setDB(db2);
+    db.empresas.push({ id, nome, cnpj:"", responsavel:"", cidade:"", uf:"", observacoes:"" });
+    setDB(db);
     setEmpresaId(id);
     toast("Empresa criada", "Agora você está nessa empresa.");
-    setTimeout(()=>location.reload(), 200);
+    setTimeout(()=>location.reload(), 250);
   });
 }
 
 /* ------------------ Helpers ------------------ */
 function onlyEmpresa(arr){
   const eid = getEmpresaId();
-  return (arr||[]).filter(x => x.empresaId === eid);
+  return arr.filter(x => x.empresaId === eid);
 }
 
 function findNameById(arr, id, fallback="-"){
-  const o = (arr||[]).find(x=>x.id===id);
-  return o ? (o.nome ?? fallback) : fallback;
+  const o = arr.find(x=>x.id===id);
+  return o ? o.nome : fallback;
 }
 
 // ===== Formatação BR (vírgula / moeda) =====
 const FMT_BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-function brl(v){ return FMT_BRL.format(Number(v || 0)); }
-function num(v, casas=2){
-  return new Intl.NumberFormat("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas }).format(Number(v || 0));
+
+function brl(v){
+  return FMT_BRL.format(Number(v || 0));
 }
-function kmoney(n){ return num(n, 2); }
-function kbrl(n){ return brl(n); }
+
+function num(v, casas=2){
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas
+  }).format(Number(v || 0));
+}
+
+// Compat: trechos antigos que usam kmoney() (retorna só número com vírgula)
+function kmoney(n){
+  return num(n, 2);
+}
+
+// Moeda pronta (R$ com vírgula)
+function kbrl(n){
+  return brl(n);
+}
+
 
 function setTopActions(html){
   const el = document.getElementById("topActions");
   if(el) el.innerHTML = html || "";
-}
-
-function clampStr(s, max=60){
-  s = String(s ?? "");
-  return s.length>max ? s.slice(0,max-1)+"…" : s;
-}
-
-function safeNumber(v){ return Number(v||0); }
-
-function talhaoArea(db, talhaoId){
-  const t = onlyEmpresa(db.talhoes).find(x=>x.id===talhaoId);
-  return t ? Number(t.areaHa||0) : 0;
-}
-
-/* ------------------ Estoque: baixas automáticas ------------------ */
-function ensureStockRow(db, produtoId, deposito="Central", unidade=""){
-  db.estoque = db.estoque || [];
-  let row = db.estoque.find(s => s.empresaId===getEmpresaId() && s.produtoId===produtoId && (s.deposito||"Central")===deposito);
-  if(!row){
-    row = { id: uid("stk"), empresaId: getEmpresaId(), produtoId, deposito, lote:"", validade:"", qtd:0, unidade, obs:"(auto)" };
-    db.estoque.push(row);
-  }
-  return row;
-}
-
-function baixaEstoqueProdutoPorNome(db, produtoNome, quantidade, unidadePreferida=""){
-  if(!produtoNome || !quantidade) return { ok:false, msg:"Sem produto/quantidade" };
-  const prod = onlyEmpresa(db.produtos).find(p => String(p.nome||"").trim().toLowerCase() === String(produtoNome).trim().toLowerCase());
-  if(!prod){
-    // Não encontrado no cadastro → não dá para linkar em produtoId.
-    return { ok:false, msg:`Produto não cadastrado: ${produtoNome}` };
-  }
-  const unidade = unidadePreferida || prod.unidade || "";
-  const row = ensureStockRow(db, prod.id, "Central", unidade);
-  row.unidade = row.unidade || unidade;
-  row.qtd = Number(row.qtd||0) - Number(quantidade||0); // pode ficar negativo
-  return { ok:true, msg:`Baixa estoque: ${produtoNome} -${num(quantidade,2)} ${row.unidade||""}` };
-}
-
-/* ------------------ Diesel: baixa automática ------------------ */
-function ensureDieselTank(db, deposito="Tanque Principal"){
-  db.dieselEstoque = db.dieselEstoque || [];
-  let t = db.dieselEstoque.find(x => x.empresaId===getEmpresaId() && (x.deposito||"Tanque Principal")===deposito);
-  if(!t){
-    t = { id: uid("dsl"), empresaId: getEmpresaId(), deposito, litros: 0, obs:"(auto)" };
-    db.dieselEstoque.push(t);
-  }
-  return t;
-}
-function baixaDiesel(db, deposito, litros){
-  const tank = ensureDieselTank(db, deposito || "Tanque Principal");
-  tank.litros = Number(tank.litros||0) - Number(litros||0); // pode ficar negativo
-  return tank;
-}
-
-/* ------------------ Custo por talhão (acumulado tipo chuva) ------------------ */
-function calcCustosPorTalhao(db){
-  const talhoes = onlyEmpresa(db.talhoes);
-  const fazendas = onlyEmpresa(db.fazendas);
-
-  const apl = onlyEmpresa(db.aplicacoes||[]);
-  const cmb = onlyEmpresa(db.combustivel||[]);
-
-  const map = new Map(); // talhaoId -> {custo: number, last: string, ops: number}
-  for(const t of talhoes){
-    map.set(t.id, { custo:0, last:"", ops:0 });
-  }
-
-  for(const a of apl){
-    if(!a.talhaoId) continue;
-    const rec = map.get(a.talhaoId) || { custo:0, last:"", ops:0 };
-    rec.custo += Number(a.custoTotal||0);
-    rec.ops += 1;
-    if((a.data||"") > (rec.last||"")) rec.last = a.data||"";
-    map.set(a.talhaoId, rec);
-  }
-
-  for(const c of cmb){
-    if(!c.talhaoId) continue;
-    const rec = map.get(c.talhaoId) || { custo:0, last:"", ops:0 };
-    rec.custo += Number(c.litros||0) * Number(c.precoLitro||0);
-    rec.ops += 1;
-    if((c.data||"") > (rec.last||"")) rec.last = c.data||"";
-    map.set(c.talhaoId, rec);
-  }
-
-  return talhoes.map(t=>{
-    const info = map.get(t.id) || { custo:0, last:"", ops:0 };
-    const area = Number(t.areaHa||0) || 0;
-    const custoHa = area>0 ? (info.custo/area) : 0;
-    return {
-      talhaoId: t.id,
-      talhao: t.nome,
-      fazenda: findNameById(fazendas, t.fazendaId),
-      areaHa: area,
-      custoTotal: info.custo,
-      custoHa,
-      last: info.last || "-",
-      ops: info.ops || 0
-    };
-  }).sort((a,b)=>b.custoTotal - a.custoTotal);
 }
 
 /* ------------------ Pages ------------------ */
@@ -500,7 +343,7 @@ function pageDashboard(){
       <div class="card">
         <h3>Talhões</h3>
         <div class="big">${talhoes.length}</div>
-        <div class="sub">Área total: ${num(talhoes.reduce((s,t)=>s+Number(t.areaHa||0),0),1)} ha</div>
+        <div class="sub">Área total: ${talhoes.reduce((s,t)=>s+Number(t.areaHa||0),0).toFixed(1)} ha</div>
       </div>
       <div class="card">
         <h3>Aplicações (hoje)</h3>
@@ -509,7 +352,7 @@ function pageDashboard(){
       </div>
       <div class="card">
         <h3>Chuva (hoje)</h3>
-        <div class="big">${num(chuvaHoje,1)} mm</div>
+        <div class="big">${chuvaHoje.toFixed(1)} mm</div>
         <div class="sub"><span class="pill ok">Lançamento manual</span></div>
       </div>
     </div>
@@ -521,8 +364,8 @@ function pageDashboard(){
           • Conferir estoque e validade<br/>
           • Registrar chuva/vento do dia<br/>
           • Validar talhão/cultura/safra<br/>
-          • Registrar aplicação (produto, dose, área aplicada)<br/>
-          • Registrar abastecimentos e diesel<br/>
+          • Registrar aplicação (produto, dose, calda, máquina, operador)<br/>
+          • Anotar ocorrências (deriva, falhas, reentrada, carência)<br/>
           • Emitir relatório e assinar (PDF)
         </div>
         <div class="hr"></div>
@@ -538,8 +381,8 @@ function pageDashboard(){
               <th>Data</th>
               <th>Fazenda</th>
               <th>Talhão</th>
-              <th>Área aplicada</th>
               <th>Alvo</th>
+              <th>Operação</th>
             </tr>
           </thead>
           <tbody>
@@ -550,8 +393,8 @@ function pageDashboard(){
                   <td>${escapeHtml(a.data||"")}</td>
                   <td>${escapeHtml(findNameById(fazendas, a.fazendaId))}</td>
                   <td>${escapeHtml(findNameById(talhoes, a.talhaoId))}</td>
-                  <td>${escapeHtml(num(a.areaHaAplicada||0,1))} ha</td>
                   <td>${escapeHtml(a.alvo||"")}</td>
+                  <td>${escapeHtml(a.operacao||"")}</td>
                 </tr>
               `).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
             }
@@ -570,169 +413,31 @@ function pageDashboard(){
       </div>
 
       <div class="card">
-        <h3>Ops Center</h3>
+        <h3>Próximos passos</h3>
         <div class="help">
-          Monitoramento de alertas:<br/>
-          • Estoque negativo • Diesel baixo/negativo • Custos por talhão<br/>
+          Se quiser, eu adapto este sistema para o seu fluxo real:<br/>
+          • Multiusuário (login) • Permissões (admin/operador) • Supabase/Postgres<br/>
+          • Mapas/Geo (talhão) • Upload de receituário/notas • Painel de custo por ha
         </div>
-        <div class="hr"></div>
-        <a class="btn primary" href="opscenter.html">Abrir Ops Center</a>
       </div>
-    </div>
-  `;
-}
-
-function pageOpsCenter(){
-  const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-
-  const estoque = onlyEmpresa(db.estoque||[]);
-  const diesel = onlyEmpresa(db.dieselEstoque||[]);
-  const aplicacoes = onlyEmpresa(db.aplicacoes||[]);
-  const combustivel = onlyEmpresa(db.combustivel||[]);
-  const clima = onlyEmpresa(db.clima||[]);
-
-  const negEstoque = estoque.filter(s => Number(s.qtd||0) < 0);
-  const negDiesel = diesel.filter(d => Number(d.litros||0) < 0);
-  const custoTal = calcCustosPorTalhao(db);
-
-  // chuva 7d por talhão (simples)
-  const chuvaTal = new Map();
-  const hoje = new Date();
-  const start = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0,0,0,0);
-  const min = new Date(start.getTime() - 6*24*60*60*1000);
-  function parseISO(d){
-    const [y,m,day] = String(d||"").split("-").map(Number);
-    if(!y||!m||!day) return null;
-    return new Date(y, m-1, day, 0,0,0,0);
-  }
-  for(const r of clima){
-    if(!r.talhaoId) continue;
-    const dt = parseISO(r.data);
-    if(!dt) continue;
-    if(dt < min || dt > start) continue;
-    chuvaTal.set(r.talhaoId, (chuvaTal.get(r.talhaoId)||0) + Number(r.chuvaMm||0));
-  }
-
-  const content = document.getElementById("content");
-  content.innerHTML = `
-    <div class="kpi">
-      <div class="card">
-        <h3>Alertas de estoque</h3>
-        <div class="big">${negEstoque.length}</div>
-        <div class="sub">${negEstoque.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
-      </div>
-      <div class="card">
-        <h3>Alertas de diesel</h3>
-        <div class="big">${negDiesel.length}</div>
-        <div class="sub">${negDiesel.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
-      </div>
-      <div class="card">
-        <h3>Aplicações</h3>
-        <div class="big">${aplicacoes.length}</div>
-        <div class="sub"><span class="pill info">Rastreabilidade</span></div>
-      </div>
-      <div class="card">
-        <h3>Abastecimentos</h3>
-        <div class="big">${combustivel.length}</div>
-        <div class="sub"><span class="pill info">Controle diesel</span></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr><th colspan="6">Estoque com saldo negativo</th></tr>
-            <tr>
-              <th>Produto</th><th>Depósito</th><th>Qtd</th><th>Unid.</th><th>Obs</th><th>Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              negEstoque.map(s=>{
-                const p = onlyEmpresa(db.produtos).find(p=>p.id===s.produtoId);
-                const nome = p ? p.nome : "(sem produto)";
-                return `
-                  <tr>
-                    <td><b>${escapeHtml(nome)}</b></td>
-                    <td>${escapeHtml(s.deposito||"")}</td>
-                    <td><b>${escapeHtml(num(s.qtd||0,2))}</b></td>
-                    <td>${escapeHtml(s.unidade||"")}</td>
-                    <td>${escapeHtml(clampStr(s.obs||"",50))}</td>
-                    <td><a class="btn" href="estoque.html">Ajustar</a></td>
-                  </tr>
-                `;
-              }).join("") || `<tr><td colspan="6">Nenhum.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr><th colspan="5">Diesel (tanques)</th></tr>
-            <tr>
-              <th>Depósito</th><th>Litros</th><th>Status</th><th>Obs</th><th>Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              diesel.map(d=>`
-                <tr>
-                  <td><b>${escapeHtml(d.deposito||"")}</b></td>
-                  <td><b>${escapeHtml(num(d.litros||0,1))}</b></td>
-                  <td>${Number(d.litros||0)<0?'<span class="pill bad">Negativo</span>':'<span class="pill ok">OK</span>'}</td>
-                  <td>${escapeHtml(clampStr(d.obs||"",50))}</td>
-                  <td><a class="btn" href="combustivel.html">Ver</a></td>
-                </tr>
-              `).join("") || `<tr><td colspan="5">Sem tanques.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="tableWrap" style="margin-top:12px">
-      <table>
-        <thead>
-          <tr><th colspan="7">Custo por talhão (acumulado)</th></tr>
-          <tr>
-            <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Custo total</th><th>Custo/ha</th><th>Chuva 7d</th><th>Último</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${
-            custoTal.map(r=>`
-              <tr>
-                <td><b>${escapeHtml(r.talhao)}</b></td>
-                <td>${escapeHtml(r.fazenda)}</td>
-                <td>${escapeHtml(num(r.areaHa||0,1))}</td>
-                <td><b>${escapeHtml(kbrl(r.custoTotal||0))}</b></td>
-                <td>${escapeHtml(kbrl(r.custoHa||0))}</td>
-                <td>${escapeHtml(num(chuvaTal.get(r.talhaoId)||0,1))} mm</td>
-                <td>${escapeHtml(r.last||"-")}</td>
-              </tr>
-            `).join("") || `<tr><td colspan="7">Sem talhões.</td></tr>`
-          }
-        </tbody>
-      </table>
     </div>
   `;
 }
 
 function crudPage({
-  entityKey, subtitle,
-  fields,
-  columns,
-  helpers
+  entityKey, title, subtitle,
+  fields, // [{key,label,type, full?, options?}]
+  columns, // [{key,label, render?}]
+  helpers // { beforeSave?(obj,db), filter?(arr), onDelete?(id,db) }
 }){
   const db = getDB();
   const eid = getEmpresaId();
+  const arr = db[entityKey] || [];
+  const list = onlyEmpresa(arr);
 
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+  setTopActions(`
+    <button class="btn" id="btnExportCSV">Exportar CSV</button>
+  `);
 
   const content = document.getElementById("content");
 
@@ -790,7 +495,12 @@ function crudPage({
     </div>
   `;
 
-  content.innerHTML = `<div class="section">${formHtml}${tableHtml}</div>`;
+  content.innerHTML = `
+    <div class="section">
+      ${formHtml}
+      ${tableHtml}
+    </div>
+  `;
 
   function renderTable(){
     const db2 = getDB();
@@ -858,14 +568,16 @@ function crudPage({
 
 /* --------- Páginas específicas --------- */
 function pageEmpresas(){
+  // Empresas é global (não filtra por empresaId)
   const db = getDB();
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+
   const content = document.getElementById("content");
   content.innerHTML = `
     <div class="section">
       <div class="card">
         <h3>Cadastrar empresa</h3>
-        <div class="help">Multiempresa: cada empresa tem seus próprios talhões, estoque, aplicações e combustível.</div>
+        <div class="help">Multiempresa: cada empresa tem seus próprios talhões, estoque e aplicações.</div>
         <div class="hr"></div>
         <form id="frm" class="formGrid">
           <div><small>Nome</small><input class="input" name="nome" required></div>
@@ -917,7 +629,7 @@ function pageEmpresas(){
   window.__use = (id)=>{
     setEmpresaId(id);
     toast("Empresa ativa", "Mudando para a empresa selecionada…");
-    setTimeout(()=>location.reload(), 200);
+    setTimeout(()=>location.reload(), 250);
   };
 
   window.__delEmp = (id)=>{
@@ -930,14 +642,14 @@ function pageEmpresas(){
 
     db2.empresas = db2.empresas.filter(x=>x.id!==id);
     const wipe = key => db2[key] = (db2[key]||[]).filter(x=>x.empresaId!==id);
-    ["fazendas","talhoes","produtos","estoque","equipe","maquinas","clima","aplicacoes","combustivel","dieselEstoque"].forEach(wipe);
+    ["fazendas","talhoes","produtos","estoque","equipe","maquinas","clima","aplicacoes"].forEach(wipe);
 
     if(getEmpresaId()===id){
       db2.session.empresaId = db2.empresas[0].id;
     }
     setDB(db2);
     toast("Excluída", "Empresa removida com dados associados.");
-    setTimeout(()=>location.reload(), 200);
+    setTimeout(()=>location.reload(), 250);
   };
 
   document.getElementById("frm").addEventListener("submit",(e)=>{
@@ -972,29 +684,6 @@ function pageEmpresas(){
 function pageFazendas(){
   crudPage({
     entityKey:"fazendas",
-    subtitle:"Unidades produtivas por empresa.",
-    fields:[
-      {key:"nome", label:"Nome da fazenda", type:"text"},
-      {key:"cidade", label:"Cidade", type:"text"},
-      {key:"uf", label:"UF", type:"text"},
-      {key:"areaHa", label:"Área total (ha)", type:"number"},
-      {key:"observacoes", label:"Observações", type:"textarea", full:true}
-    ],
-    columns:[
-      {key:"nome", label:"Fazenda"},
-      {key:"cidade", label:"Cidade"},
-      {key:"uf", label:"UF"},
-      {key:"areaHa", label:"Área (ha)"},
-      {key:"observacoes", label:"Obs."}
-    ]
-  });
-}
-
-
-function pageFazendas(){
-  crudPage({
-    entityKey:"fazendas",
-    subtitle:"Unidades produtivas por empresa.",
     fields:[
       {key:"nome", label:"Nome da fazenda", type:"text"},
       {key:"cidade", label:"Cidade", type:"text"},
@@ -1013,139 +702,30 @@ function pageFazendas(){
 }
 
 function pageTalhoes(){
-  const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
-
-  const content = document.getElementById("content");
-  content.innerHTML = `
-    <div class="section">
-      <div class="card">
-        <h3>Cadastrar talhão</h3>
-        <div class="help">Área, cultura, safra e dados de campo.</div>
-        <div class="hr"></div>
-        <form id="frm" class="formGrid">
-          <div class="full">
-            <small>Fazenda</small>
-            <select class="select" name="fazendaId" required>
-              ${fazendas.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("")}
-            </select>
-          </div>
-          <div><small>Nome do talhão</small><input class="input" name="nome" required></div>
-          <div><small>Área (ha)</small><input class="input" name="areaHa" type="number" step="0.1" placeholder="0"></div>
-          <div><small>Cultura</small><input class="input" name="cultura" placeholder="Soja"></div>
-          <div><small>Safra</small><input class="input" name="safra" placeholder="2025/26"></div>
-          <div class="full"><small>Solo</small><input class="input" name="solo" placeholder="Argiloso / Arenoso..."></div>
-          <div class="full"><small>Coordenadas/Geo</small><input class="input" name="coordenadas" placeholder="Opcional"></div>
-          <div class="full"><small>Observações</small><textarea class="textarea" name="observacoes"></textarea></div>
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Salvar</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Cultura</th><th>Safra</th><th>Solo</th><th class="noPrint">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="tableWrap" style="margin-top:12px">
-      <table>
-        <thead>
-          <tr><th colspan="7">Custo por talhão (acumulado) — tipo “chuva por talhão”</th></tr>
-          <tr>
-            <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Custo total</th><th>Custo/ha</th><th>Operações</th><th>Último</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyCustos"></tbody>
-      </table>
-    </div>
-  `;
-
-  function render(){
-    const db2 = getDB();
-    const rows = onlyEmpresa(db2.talhoes||[]);
-    const tb = document.getElementById("tbody");
-    tb.innerHTML = rows.slice().reverse().map(t=>{
-      const faz = findNameById(onlyEmpresa(db2.fazendas), t.fazendaId);
-      return `
-        <tr>
-          <td><b>${escapeHtml(t.nome||"")}</b></td>
-          <td>${escapeHtml(faz)}</td>
-          <td>${escapeHtml(num(t.areaHa||0,1))}</td>
-          <td>${escapeHtml(t.cultura||"")}</td>
-          <td>${escapeHtml(t.safra||"")}</td>
-          <td>${escapeHtml(t.solo||"")}</td>
-          <td class="noPrint"><button class="btn danger" onclick="window.__delTal('${t.id}')">Excluir</button></td>
-        </tr>
-      `;
-    }).join("") || `<tr><td colspan="7">Sem talhões.</td></tr>`;
-
-    // custos por talhão
-    const custos = calcCustosPorTalhao(db2);
-    const tbC = document.getElementById("tbodyCustos");
-    tbC.innerHTML = custos.map(r=>`
-      <tr>
-        <td><b>${escapeHtml(r.talhao)}</b></td>
-        <td>${escapeHtml(r.fazenda)}</td>
-        <td>${escapeHtml(num(r.areaHa||0,1))}</td>
-        <td><b>${escapeHtml(kbrl(r.custoTotal||0))}</b></td>
-        <td>${escapeHtml(kbrl(r.custoHa||0))}</td>
-        <td>${escapeHtml(String(r.ops||0))}</td>
-        <td>${escapeHtml(r.last||"-")}</td>
-      </tr>
-    `).join("") || `<tr><td colspan="7">Sem dados.</td></tr>`;
-  }
-
-  window.__delTal = (id)=>{
-    if(!confirm("Excluir este talhão?")) return;
-    const db2 = getDB();
-    db2.talhoes = (db2.talhoes||[]).filter(x=>x.id!==id);
-    // opcional: mantém histórico (aplicações/clima) para auditoria. Se quiser apagar também, você apaga manual.
-    setDB(db2);
-    toast("Excluído","Talhão removido.");
-    render();
-  };
-
-  document.getElementById("frm").addEventListener("submit",(e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const obj = {
-      id: uid("tal"),
-      empresaId: getEmpresaId(),
-      fazendaId: fd.get("fazendaId"),
-      nome: fd.get("nome"),
-      areaHa: Number(fd.get("areaHa")||0),
-      cultura: fd.get("cultura")||"",
-      safra: fd.get("safra")||"",
-      solo: fd.get("solo")||"",
-      coordenadas: fd.get("coordenadas")||"",
-      observacoes: fd.get("observacoes")||""
-    };
-    const db2 = getDB();
-    db2.talhoes = db2.talhoes || [];
-    db2.talhoes.push(obj);
-    setDB(db2);
-    e.target.reset();
-    toast("Salvo","Talhão adicionado.");
-    render();
+  crudPage({
+    entityKey:"talhoes",
+    fields:[
+      {
+        key:"fazendaId", label:"Fazenda", type:"select",
+        options:(db)=> onlyEmpresa(db.fazendas).map(f=>({value:f.id, label:f.nome}))
+      },
+      {key:"nome", label:"Nome do talhão", type:"text"},
+      {key:"areaHa", label:"Área (ha)", type:"number"},
+      {key:"cultura", label:"Cultura", type:"text", placeholder:"Soja / Milho / Algodão..."},
+      {key:"safra", label:"Safra", type:"text", placeholder:"2025/26"},
+      {key:"solo", label:"Solo", type:"text", placeholder:"Argiloso / Arenoso..."},
+      {key:"coordenadas", label:"Coordenadas/Geo", type:"text", placeholder:"Opcional"},
+      {key:"observacoes", label:"Observações", type:"textarea", full:true}
+    ],
+    columns:[
+      {key:"nome", label:"Talhão"},
+      {key:"fazendaId", label:"Fazenda", render:(r,db)=>findNameById(onlyEmpresa(db.fazendas), r.fazendaId)},
+      {key:"areaHa", label:"Área (ha)"},
+      {key:"cultura", label:"Cultura"},
+      {key:"safra", label:"Safra"},
+      {key:"solo", label:"Solo"}
+    ]
   });
-
-  document.getElementById("btnExportCSV").addEventListener("click", ()=>{
-    const db2 = getDB();
-    downloadText(`talhoes-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.talhoes||[])));
-    toast("Exportado","CSV baixado.");
-  });
-
-  render();
 }
 
 function pageProdutos(){
@@ -1161,6 +741,7 @@ function pageProdutos(){
       {key:"carenciaDias", label:"Carência (dias)", type:"number"},
       {key:"reentradaHoras", label:"Reentrada (horas)", type:"number"},
       {key:"unidade", label:"Unidade padrão", type:"text", placeholder:"L / kg"},
+      {key:"precoUnit", label:"Preço unitário (R$)", type:"number", placeholder:"0"},
       {key:"obs", label:"Observações", type:"textarea", full:true}
     ],
     columns:[
@@ -1170,9 +751,11 @@ function pageProdutos(){
       {key:"carenciaDias", label:"Carência (d)"},
       {key:"reentradaHoras", label:"Reentrada (h)"},
       {key:"unidade", label:"Unid."}
+      {key:"precoUnit", label:"Preço (R$)", render:(r)=> kmoney(r.precoUnit||0) }
     ],
     helpers:{
       onDelete:(id,db)=>{
+        // remove vínculos de estoque por segurança
         db.estoque = (db.estoque||[]).filter(s=>s.produtoId!==id);
       }
     }
@@ -1185,7 +768,7 @@ function pageEstoque(){
 
   crudPage({
     entityKey:"estoque",
-    subtitle:"Controle por depósito, lote e validade. Saldo pode ficar negativo (furo de estoque).",
+    subtitle:"Controle por depósito, lote e validade. (Quantidades são informativas/offline).",
     fields:[
       {key:"produtoId", label:"Produto", type:"select",
         options:(db)=> {
@@ -1198,6 +781,7 @@ function pageEstoque(){
       {key:"validade", label:"Validade (YYYY-MM-DD)", type:"text", placeholder:"2026-12-31"},
       {key:"qtd", label:"Quantidade", type:"number"},
       {key:"unidade", label:"Unidade", type:"text", placeholder:"L / kg"},
+      {key:"precoUnit", label:"Preço unitário (R$)", type:"number", placeholder:"0"},
       {key:"obs", label:"Observações", type:"textarea", full:true}
     ],
     columns:[
@@ -1212,226 +796,8 @@ function pageEstoque(){
       {key:"unidade", label:"Unid."}
     ]
   });
-}
 
-function pageCombustivel(){
-  const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const equipe = onlyEmpresa(db.equipe);
-  const maquinas = onlyEmpresa(db.maquinas);
-  const tanques = onlyEmpresa(db.dieselEstoque);
-
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
-
-  const content = document.getElementById("content");
-
-  function optionList(arr, labelKey="nome"){
-    return arr.map(o=>`<option value="${o.id}">${escapeHtml(o[labelKey]||"")}</option>`).join("");
-  }
-
-  const depositoOptions = tanques.map(t=>`<option value="${escapeHtml(t.deposito||"Tanque Principal")}">${escapeHtml(t.deposito||"Tanque Principal")}</option>`).join("");
-
-  content.innerHTML = `
-    <div class="kpi">
-      <div class="card">
-        <h3>Diesel (tanque total)</h3>
-        <div class="big">${num(tanques.reduce((s,t)=>s+Number(t.litros||0),0),1)} L</div>
-        <div class="sub">${tanques.some(t=>Number(t.litros||0)<0)?'<span class="pill bad">Negativo</span>':'<span class="pill ok">OK</span>'}</div>
-      </div>
-      <div class="card">
-        <h3>Abastecimentos</h3>
-        <div class="big">${onlyEmpresa(db.combustivel||[]).length}</div>
-        <div class="sub"><span class="pill info">Histórico</span></div>
-      </div>
-      <div class="card">
-        <h3>Custo diesel (R$)</h3>
-        <div class="big">${kbrl(onlyEmpresa(db.combustivel||[]).reduce((s,c)=>s+Number(c.litros||0)*Number(c.precoLitro||0),0))}</div>
-        <div class="sub"><span class="pill info">Somatório</span></div>
-      </div>
-      <div class="card">
-        <h3>Saldo pode negativo</h3>
-        <div class="big">✔</div>
-        <div class="sub">Furo de estoque visível</div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="card">
-        <h3>Registrar abastecimento</h3>
-        <div class="help">Ao salvar, o sistema dá baixa automática no tanque de diesel selecionado.</div>
-        <div class="hr"></div>
-
-        <form id="frm" class="formGrid">
-          <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
-          <div><small>Tipo</small><input class="input" name="tipo" value="Diesel S10" /></div>
-
-          <div class="full">
-            <small>Depósito / Tanque</small>
-            <select class="select" name="deposito">${depositoOptions || `<option value="Tanque Principal">Tanque Principal</option>`}</select>
-          </div>
-
-          <div>
-            <small>Fazenda</small>
-            <select class="select" name="fazendaId" required>${optionList(fazendas)}</select>
-          </div>
-
-          <div>
-            <small>Talhão (opcional)</small>
-            <select class="select" name="talhaoId">
-              <option value="">(sem talhão)</option>
-              ${optionList(talhoes)}
-            </select>
-          </div>
-
-          <div>
-            <small>Máquina (opcional)</small>
-            <select class="select" name="maquinaId">
-              <option value="">(sem máquina)</option>
-              ${optionList(maquinas)}
-            </select>
-          </div>
-
-          <div>
-            <small>Operador (opcional)</small>
-            <select class="select" name="operadorId">
-              <option value="">(sem operador)</option>
-              ${optionList(equipe)}
-            </select>
-          </div>
-
-          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.1" placeholder="0" required/></div>
-          <div><small>Preço/Litro (R$)</small><input class="input" name="precoLitro" type="number" step="0.01" placeholder="0" /></div>
-          <div><small>KM ou Horímetro</small><input class="input" name="kmOuHora" type="number" step="0.1" placeholder="0" /></div>
-          <div><small>Posto</small><input class="input" name="posto" placeholder="Posto / NF / origem" /></div>
-
-          <div class="full">
-            <small>Observações</small>
-            <textarea class="textarea" name="obs"></textarea>
-          </div>
-
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Salvar e dar baixa</button>
-          </div>
-        </form>
-
-        <div class="hr"></div>
-        <div class="help"><b>Tanques:</b> para ajustar saldo manual, edite no próprio backup (ou peça que eu crie a tela de ajuste).</div>
-      </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Litros</th><th>Preço/L</th><th>Custo</th><th>Depósito</th><th class="noPrint">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="tableWrap" style="margin-top:12px">
-      <table>
-        <thead>
-          <tr><th colspan="4">Tanques / Estoque Diesel</th></tr>
-          <tr><th>Depósito</th><th>Litros</th><th>Status</th><th>Obs</th></tr>
-        </thead>
-        <tbody id="tbodyTanques"></tbody>
-      </table>
-    </div>
-  `;
-
-  function render(){
-    const db2 = getDB();
-    const rows = onlyEmpresa(db2.combustivel||[]);
-    const tb = document.getElementById("tbody");
-    tb.innerHTML = rows.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).map(c=>{
-      const faz = findNameById(onlyEmpresa(db2.fazendas), c.fazendaId);
-      const tal = c.talhaoId ? findNameById(onlyEmpresa(db2.talhoes), c.talhaoId) : "—";
-      const custo = Number(c.litros||0) * Number(c.precoLitro||0);
-      return `
-        <tr>
-          <td>${escapeHtml(c.data||"")}</td>
-          <td>${escapeHtml(faz)}</td>
-          <td>${escapeHtml(tal)}</td>
-          <td><b>${escapeHtml(num(c.litros||0,1))}</b></td>
-          <td>${escapeHtml(num(c.precoLitro||0,2))}</td>
-          <td><b>${escapeHtml(kbrl(custo||0))}</b></td>
-          <td>${escapeHtml(c.deposito||"")}</td>
-          <td class="noPrint"><button class="btn danger" onclick="window.__delCmb('${c.id}')">Excluir</button></td>
-        </tr>
-      `;
-    }).join("") || `<tr><td colspan="8">Sem abastecimentos.</td></tr>`;
-
-    const tbT = document.getElementById("tbodyTanques");
-    const tanks = onlyEmpresa(db2.dieselEstoque||[]);
-    tbT.innerHTML = tanks.map(t=>`
-      <tr>
-        <td><b>${escapeHtml(t.deposito||"")}</b></td>
-        <td><b>${escapeHtml(num(t.litros||0,1))}</b></td>
-        <td>${Number(t.litros||0)<0?'<span class="pill bad">Negativo</span>':'<span class="pill ok">OK</span>'}</td>
-        <td>${escapeHtml(clampStr(t.obs||"",70))}</td>
-      </tr>
-    `).join("") || `<tr><td colspan="4">Sem tanques.</td></tr>`;
-  }
-
-  window.__delCmb = (id)=>{
-    if(!confirm("Excluir este abastecimento? (não reverte baixa automaticamente)")) return;
-    const db2 = getDB();
-    db2.combustivel = (db2.combustivel||[]).filter(x=>x.id!==id);
-    setDB(db2);
-    toast("Excluído","Registro removido.");
-    render();
-  };
-
-  document.getElementById("frm").addEventListener("submit",(e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-
-    const litros = Number(fd.get("litros")||0);
-    if(litros<=0){
-      alert("Informe litros > 0");
-      return;
-    }
-
-    const obj = {
-      id: uid("cmb"),
-      empresaId: getEmpresaId(),
-      data: fd.get("data") || nowISO(),
-      tipo: fd.get("tipo") || "Diesel",
-      deposito: fd.get("deposito") || "Tanque Principal",
-      posto: fd.get("posto") || "",
-      maquinaId: fd.get("maquinaId") || "",
-      operadorId: fd.get("operadorId") || "",
-      fazendaId: fd.get("fazendaId"),
-      talhaoId: fd.get("talhaoId") || "",
-      litros,
-      precoLitro: Number(fd.get("precoLitro")||0),
-      kmOuHora: Number(fd.get("kmOuHora")||0),
-      obs: fd.get("obs") || ""
-    };
-
-    const db2 = getDB();
-    db2.combustivel = db2.combustivel || [];
-    db2.combustivel.push(obj);
-
-    // BAIXA automática no diesel
-    baixaDiesel(db2, obj.deposito, litros);
-
-    setDB(db2);
-    e.target.reset();
-    toast("Salvo", "Abastecimento registrado e diesel baixado.");
-    render();
-  });
-
-  document.getElementById("btnExportCSV").addEventListener("click", ()=>{
-    const db2 = getDB();
-    downloadText(`combustivel-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.combustivel||[])));
-    toast("Exportado","CSV baixado.");
-  });
-
-  render();
+  toast("Dica de estoque", "Você pode exportar CSV para enviar ao contador/gestor.");
 }
 
 function pageClima(){
@@ -1439,7 +805,9 @@ function pageClima(){
   const fazendas = onlyEmpresa(db.fazendas);
   const talhoes = onlyEmpresa(db.talhoes);
 
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+  setTopActions(`
+    <button class="btn" id="btnExportCSV">Exportar CSV</button>
+  `);
 
   const content = document.getElementById("content");
   content.innerHTML = `
@@ -1507,13 +875,22 @@ function pageClima(){
             <button class="btn primary" type="submit">Salvar</button>
           </div>
         </form>
+
+        <div class="hr"></div>
+        <div class="help">
+          <b>Dica:</b> Para ver o acumulado por talhão, use a tabela “Acumulado por talhão” ao lado.
+        </div>
       </div>
 
       <div class="tableWrap">
         <table>
           <thead>
             <tr>
-              <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Acumulado (mm)</th><th>Última data</th>
+              <th>Talhão</th>
+              <th>Fazenda</th>
+              <th>Área (ha)</th>
+              <th>Acumulado (mm)</th>
+              <th>Última data</th>
             </tr>
           </thead>
           <tbody id="tbodyAcum"></tbody>
@@ -1525,7 +902,15 @@ function pageClima(){
       <table>
         <thead>
           <tr>
-            <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Chuva (mm)</th><th>Temp máx</th><th>Vento</th><th>Obs</th><th class="noPrint">Ações</th>
+            <th>Data</th>
+            <th>Fazenda</th>
+            <th>Talhão</th>
+            <th>Acum. talhão (mm)</th>
+            <th>Chuva (mm)</th>
+            <th>Temp máx</th>
+            <th>Vento</th>
+            <th>Obs</th>
+            <th class="noPrint">Ações</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -1534,6 +919,7 @@ function pageClima(){
   `;
 
   function parseISO(d){
+    // YYYY-MM-DD -> Date local (meia-noite)
     const [y,m,day] = String(d||"").split("-").map(Number);
     if(!y||!m||!day) return null;
     return new Date(y, m-1, day, 0,0,0,0);
@@ -1559,9 +945,9 @@ function pageClima(){
     const el30 = document.getElementById("kpi30d");
     const elCnt = document.getElementById("kpiCount");
 
-    if(elHoje) elHoje.textContent = `${num(chuvaHoje,1)} mm`;
-    if(el7) el7.textContent = `${num(chuva7d,1)} mm`;
-    if(el30) el30.textContent = `${num(chuva30d,1)} mm`;
+    if(elHoje) elHoje.textContent = `${Number(chuvaHoje||0).toFixed(1).replace(".", ",")} mm`;
+    if(el7) el7.textContent = `${Number(chuva7d||0).toFixed(1).replace(".", ",")} mm`;
+    if(el30) el30.textContent = `${Number(chuva30d||0).toFixed(1).replace(".", ",")} mm`;
     if(elCnt) elCnt.textContent = String(rows.length);
   }
 
@@ -1569,8 +955,23 @@ function pageClima(){
     const db2 = getDB();
     const rows = onlyEmpresa(db2.clima||[]);
 
+// Cumulativo por talhão (por registro): soma progressiva por data
+const cumMap = new Map(); // recordId -> acumulado
+const accByTal = new Map(); // talhaoId -> acumulado
+const sortedAsc = rows.slice().sort((a,b)=>(a.data||"").localeCompare(b.data||""));
+for(const r of sortedAsc){
+  if(!r.talhaoId) { cumMap.set(r.id, 0); continue; }
+  const cur = accByTal.get(r.talhaoId) || 0;
+  const next = cur + Number(r.chuvaMm||0);
+  accByTal.set(r.talhaoId, next);
+  cumMap.set(r.id, next);
+}
+window.__cumChuvaTalhao = cumMap;
+
+    // KPIs
     calcKPIs(rows);
 
+    // Histórico
     const tb = document.getElementById("tbody");
     tb.innerHTML = rows.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).map(c=>{
       const faz = findNameById(onlyEmpresa(db2.fazendas), c.fazendaId);
@@ -1580,38 +981,46 @@ function pageClima(){
           <td>${escapeHtml(c.data||"")}</td>
           <td>${escapeHtml(faz)}</td>
           <td>${escapeHtml(tal)}</td>
-          <td>${escapeHtml(num(c.chuvaMm||0,1))}</td>
+          <td>${escapeHtml((window.__cumChuvaTalhao?.get(c.id) ?? 0).toFixed(1).replace(".", ","))}</td>
+          <td>${escapeHtml((Number(c.chuvaMm||0)).toFixed(1).replace(".", ","))}</td>
           <td>${escapeHtml(c.tempMax ?? "")}</td>
           <td>${escapeHtml(c.vento ?? "")}</td>
           <td>${escapeHtml(c.obs||"")}</td>
           <td class="noPrint"><button class="btn danger" onclick="window.__delClima('${c.id}')">Excluir</button></td>
         </tr>
       `;
-    }).join("") || `<tr><td colspan="8">Sem registros.</td></tr>`;
+    }).join("") || `<tr><td colspan="9">Sem registros.</td></tr>`;
 
-    // acumulado por talhão
+    // Acumulado por talhão (soma automática)
     const byTalhao = new Map();
     for(const r of rows){
-      if(!r.talhaoId) continue;
-      const cur = byTalhao.get(r.talhaoId) || { mm:0, last:"" };
+      if(!r.talhaoId) continue; // "Geral" não entra no ranking de talhão
+      const key = r.talhaoId;
+      const cur = byTalhao.get(key) || { mm:0, last:"" };
       cur.mm += Number(r.chuvaMm||0);
       if((r.data||"") > (cur.last||"")) cur.last = r.data||"";
-      byTalhao.set(r.talhaoId, cur);
+      byTalhao.set(key, cur);
     }
 
     const tbA = document.getElementById("tbodyAcum");
     const list = talhoes.map(t=>{
       const info = byTalhao.get(t.id) || {mm:0, last:""};
       const faz = findNameById(onlyEmpresa(db2.fazendas), t.fazendaId);
-      return { talhao: t.nome, fazenda: faz, areaHa: Number(t.areaHa||0), mm: info.mm, last: info.last || "-" };
+      return {
+        talhao: t.nome,
+        fazenda: faz,
+        areaHa: Number(t.areaHa||0),
+        mm: info.mm,
+        last: info.last || "-"
+      };
     }).sort((a,b)=>b.mm-a.mm);
 
     tbA.innerHTML = list.map(r=>`
       <tr>
         <td><b>${escapeHtml(r.talhao)}</b></td>
         <td>${escapeHtml(r.fazenda)}</td>
-        <td>${escapeHtml(num(r.areaHa||0,1))}</td>
-        <td><b>${escapeHtml(num(r.mm||0,1))}</b></td>
+        <td>${escapeHtml(r.areaHa ? r.areaHa.toFixed(1).replace(".", ",") : "0,0")}</td>
+        <td><b>${escapeHtml(Number(r.mm||0).toFixed(1).replace(".", ","))}</b></td>
         <td>${escapeHtml(r.last)}</td>
       </tr>
     `).join("") || `<tr><td colspan="5">Sem talhões.</td></tr>`;
@@ -1671,6 +1080,7 @@ function pageEquipe(){
       {key:"funcao", label:"Função", type:"text", placeholder:"Tratorista / Encarregado / Agrônomo..."},
       {key:"telefone", label:"Telefone", type:"text"},
       {key:"nr", label:"NR/Certificações", type:"text", placeholder:"NR-31 / Treinamentos..."},
+      {key:"precoUnit", label:"Preço unitário (R$)", type:"number", placeholder:"0"},
       {key:"obs", label:"Observações", type:"textarea", full:true}
     ],
     columns:[
@@ -1713,7 +1123,9 @@ function pageAplicacoes(){
   const maquinas = onlyEmpresa(db.maquinas);
   const produtos = onlyEmpresa(db.produtos);
 
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+  setTopActions(`
+    <button class="btn" id="btnExportCSV">Exportar CSV</button>
+  `);
 
   const content = document.getElementById("content");
 
@@ -1721,16 +1133,13 @@ function pageAplicacoes(){
     return arr.map(o=>`<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join("");
   }
 
-  const prodOptions = produtos.map(p=>`<option value="${escapeHtml(p.nome)}">${escapeHtml(p.nome)} — ${escapeHtml(p.tipo)}</option>`).join("");
-
   content.innerHTML = `
     <div class="section">
       <div class="card">
         <h3>Registrar aplicação</h3>
         <div class="help">
-          • Informe <b>Área aplicada (ha)</b> (não precisa ser o talhão inteiro).<br/>
-          • Ao salvar, o sistema dá baixa automática no estoque: <b>dose/ha × área aplicada</b>.<br/>
-          • Saldo pode ficar negativo para mostrar furo de estoque.
+          Registro completo: talhão, cultura/safra, condições, calda, máquina, operador, produtos e doses.<br/>
+          Ideal para auditoria e rastreabilidade.
         </div>
         <div class="hr"></div>
 
@@ -1739,16 +1148,19 @@ function pageAplicacoes(){
 
           <div>
             <small>Fazenda</small>
-            <select class="select" name="fazendaId" required>${optionList(fazendas)}</select>
+            <select class="select" name="fazendaId" required>
+              ${optionList(fazendas)}
+            </select>
           </div>
 
           <div>
             <small>Talhão</small>
-            <select class="select" name="talhaoId" required>${optionList(talhoes)}</select>
+            <select class="select" name="talhaoId" required>
+              ${optionList(talhoes)}
+            </select>
           </div>
 
-          <div><small>Área aplicada (ha)</small><input class="input" name="areaHaAplicada" type="number" step="0.1" placeholder="Ex.: 12,5" required/></div>
-          <div><small>Custo total (R$) (opcional)</small><input class="input" name="custoTotal" type="number" step="0.01" placeholder="0"/></div>
+          <div><small>Área aplicada (ha)</small><input class="input" name="areaAplicadaHa" type="number" step="0.01" placeholder="Ex.: 12,5" required /></div>
 
           <div><small>Cultura</small><input class="input" name="cultura" placeholder="Soja" /></div>
           <div><small>Alvo</small><input class="input" name="alvo" placeholder="Ferrugem / Lagartas / Daninhas..." /></div>
@@ -1757,14 +1169,16 @@ function pageAplicacoes(){
           <div>
             <small>Máquina</small>
             <select class="select" name="maquinaId">
-              <option value="">(opcional)</option>${optionList(maquinas)}
+              <option value="">(opcional)</option>
+              ${optionList(maquinas)}
             </select>
           </div>
 
           <div>
             <small>Operador</small>
             <select class="select" name="operadorId">
-              <option value="">(opcional)</option>${optionList(equipe)}
+              <option value="">(opcional)</option>
+              ${optionList(equipe)}
             </select>
           </div>
 
@@ -1779,23 +1193,20 @@ function pageAplicacoes(){
 
           <div class="full">
             <small>Produtos (até 10 linhas)</small>
-            <div class="help">Dose por hectare. A baixa será calculada automaticamente.</div>
+            <div class="help">Preencha nome e dose por hectare. (offline — você pode padronizar depois com cadastro)</div>
             <div class="hr"></div>
 
             <div class="formGrid">
-              ${Array.from({length:10}).map((_,idx)=>{
-                const i = idx+1;
-                return `
-                  <div class="full" style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:10px;">
-                    <select class="select" name="p${i}Nome">
-                      <option value="">(produto ${i} - opcional)</option>
-                      ${prodOptions}
-                    </select>
-                    <input class="input" name="p${i}Dose" type="number" step="0.01" placeholder="Dose/ha" />
-                    <input class="input" name="p${i}Un" placeholder="L/ha ou kg/ha" />
-                  </div>
-                `;
-              }).join("")}
+              ${Array.from({length:10},(_,i)=>i+1).map(i=>`
+                <div class="full" style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:10px;">
+                  <select class="select" name="p${i}Nome">
+                    <option value="">(produto ${i} - opcional)</option>
+                    ${produtos.map(p=>`<option value="${p.id}">${escapeHtml(p.nome)} — ${escapeHtml(p.tipo)}</option>`).join("")}
+                  </select>
+                  <input class="input" name="p${i}Dose" type="number" step="0.01" placeholder="Dose/ha" />
+                  <input class="input" name="p${i}Un" placeholder="L/ha ou kg/ha" />
+                </div>
+              `).join("")}
             </div>
           </div>
 
@@ -1805,21 +1216,25 @@ function pageAplicacoes(){
           </div>
 
           <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Salvar aplicação e dar baixa</button>
+            <button class="btn primary" type="submit">Salvar aplicação</button>
           </div>
         </form>
-
-        <div class="hr"></div>
-        <div class="help">
-          <b>Obs:</b> Se um produto não estiver cadastrado em “Produtos”, a baixa não consegue linkar no estoque.
-        </div>
       </div>
 
       <div class="tableWrap">
         <table>
           <thead>
             <tr>
-              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Área</th><th>Produtos</th><th>Custo</th><th class="noPrint">Ações</th>
+              <th>Data</th>
+              <th>Fazenda</th>
+              <th>Talhão</th>
+              <th>Área (ha)</th>
+              <th>Cultura</th>
+              <th>Alvo</th>
+              <th>Produtos</th>
+              <th>Condições</th>
+              <th>Custo</th>
+              <th class="noPrint">Ações</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -1832,27 +1247,30 @@ function pageAplicacoes(){
     const db2 = getDB();
     const rows = onlyEmpresa(db2.aplicacoes||[]);
     const tb = document.getElementById("tbody");
-
     tb.innerHTML = rows.slice().reverse().map(a=>{
       const faz = findNameById(onlyEmpresa(db2.fazendas), a.fazendaId);
       const tal = findNameById(onlyEmpresa(db2.talhoes), a.talhaoId);
-      const prds = (a.produtos||[]).filter(p=>p.produtoNome).map(p=>`${p.produtoNome} (${num(p.dosePorHa||0,2)} ${p.unidade||""})`).join(" + ");
+      const prds = (a.produtos||[]).filter(p=>p.produtoNome).map(p=>`${p.produtoNome} (${p.dosePorHa} ${p.unidade})`).join(" + ");
+      const cond = a.condicoes ? `V:${a.condicoes.vento} T:${a.condicoes.temp} U:${a.condicoes.umidade}` : "";
       return `
         <tr>
           <td>${escapeHtml(a.data||"")}</td>
           <td>${escapeHtml(faz)}</td>
           <td>${escapeHtml(tal)}</td>
-          <td><b>${escapeHtml(num(a.areaHaAplicada||0,1))} ha</b></td>
-          <td>${escapeHtml(clampStr(prds||"—", 90))}</td>
-          <td>${escapeHtml(kbrl(a.custoTotal||0))}</td>
+          <td>${escapeHtml(num(a.areaAplicadaHa||0,2))}</td>
+          <td>${escapeHtml(a.cultura||"")}</td>
+          <td>${escapeHtml(a.alvo||"")}</td>
+          <td>${escapeHtml(prds||"—")}</td>
+          <td>${escapeHtml(cond||"—")}</td>
+          <td><b>${escapeHtml(kbrl(a.custoTotal||0))}</b></td>
           <td class="noPrint"><button class="btn danger" onclick="window.__delA('${a.id}')">Excluir</button></td>
         </tr>
       `;
-    }).join("") || `<tr><td colspan="7">Sem aplicações.</td></tr>`;
+    }).join("") || `<tr><td colspan="10">Sem aplicações.</td></tr>`;
   }
 
   window.__delA = (id)=>{
-    if(!confirm("Excluir esta aplicação? (não reverte baixa automaticamente)")) return;
+    if(!confirm("Excluir esta aplicação?")) return;
     const db2 = getDB();
     db2.aplicacoes = (db2.aplicacoes||[]).filter(x=>x.id!==id);
     setDB(db2);
@@ -1863,20 +1281,13 @@ function pageAplicacoes(){
   document.getElementById("frm").addEventListener("submit",(e)=>{
     e.preventDefault();
     const fd = new FormData(e.target);
-
-    const area = Number(fd.get("areaHaAplicada")||0);
-    if(area<=0){
-      alert("Informe Área aplicada (ha) > 0");
-      return;
-    }
-
     const obj = {
       id: uid("apl"),
       empresaId: getEmpresaId(),
       data: fd.get("data") || nowISO(),
       fazendaId: fd.get("fazendaId"),
       talhaoId: fd.get("talhaoId"),
-      areaHaAplicada: area,
+      areaAplicadaHa: Number(fd.get("areaAplicadaHa")||0),
       cultura: fd.get("cultura") || "",
       alvo: fd.get("alvo") || "",
       operacao: fd.get("operacao") || "",
@@ -1892,39 +1303,76 @@ function pageAplicacoes(){
       bico: fd.get("bico") || "",
       pressaoBar: Number(fd.get("pressaoBar")||0),
       produtos: [],
-      custoTotal: Number(fd.get("custoTotal")||0),
+      custoTotal: 0,
       obs: fd.get("obs") || ""
     };
 
-    for(let i=1;i<=10;i++){
+    Array.from({length:10},(_,i)=>i+1).forEach(i=>{
       const nome = fd.get(`p${i}Nome`);
-      const dose = Number(fd.get(`p${i}Dose`)||0);
-      const un = fd.get(`p${i}Un`) || "";
+      const dose = fd.get(`p${i}Dose`);
+      const un = fd.get(`p${i}Un`);
       if(nome){
-        obj.produtos.push({ produtoNome: nome, dosePorHa: dose, unidade: un });
+  // "nome" agora é o produtoId (do cadastro)
+  const prod = produtos.find(p=>p.id===nome) || null;
+
+  const doseNum = Number(dose||0);
+  const area = Number(obj.areaAplicadaHa||0);
+  const qtdUsada = doseNum * area; // (unidade do produto) por ha * ha
+
+  const unidadeFinal = (un && String(un).trim())
+    ? un
+    : (prod?.unidade ? `${prod.unidade}/ha` : "");
+
+  obj.produtos.push({
+    produtoId: nome,
+    produtoNome: prod?.nome || "(produto)",
+    dosePorHa: doseNum,
+    unidade: unidadeFinal,
+    qtdUsada: qtdUsada,
+    precoUnit: Number(prod?.precoUnit||0)
+  });
+});
+    });
+
+    // Baixa automática no estoque + custo por ha (permite negativo)
+    const db2 = getDB();
+    db2.estoque = db2.estoque || [];
+
+    for(const p of (obj.produtos||[])){
+      if(!p.produtoId) continue;
+      const qtdUsada = Number(p.qtdUsada||0);
+      if(!isFinite(qtdUsada) || qtdUsada===0) continue;
+
+      let st = onlyEmpresa(db2.estoque).find(s=>s.produtoId===p.produtoId) || null;
+      if(!st){
+        st = {
+          id: uid("stk"),
+          empresaId: getEmpresaId(),
+          produtoId: p.produtoId,
+          deposito: "Central",
+          lote: "",
+          validade: "",
+          qtd: 0,
+          unidade: (p.unidade||"").replace("/ha",""),
+          obs: "(criado automaticamente pela baixa da aplicação)"
+        };
+        db2.estoque.push(st);
       }
+      st.qtd = Number(st.qtd||0) - qtdUsada;
+
+      // custo total (R$)
+      obj.custoTotal += (qtdUsada * Number(p.precoUnit||0));
     }
 
-    const db2 = getDB();
+    // custo por ha da aplicação (se área aplicada > 0)
+    obj.custoPorHa = (obj.areaAplicadaHa>0) ? (obj.custoTotal / obj.areaAplicadaHa) : 0;
+
     db2.aplicacoes = db2.aplicacoes || [];
     db2.aplicacoes.push(obj);
-
-    // ===== BAIXA AUTOMÁTICA NO ESTOQUE =====
-    const msgs = [];
-    for(const p of (obj.produtos||[])){
-      const qty = Number(p.dosePorHa||0) * area; // dose/ha * ha
-      if(!qty) continue;
-      const unidadePreferida = (p.unidade||"").split("/")[0] || ""; // "L/ha" -> "L"
-      const res = baixaEstoqueProdutoPorNome(db2, p.produtoNome, qty, unidadePreferida);
-      if(res.ok) msgs.push(res.msg);
-      else msgs.push(res.msg);
-    }
-
     setDB(db2);
 
     e.target.reset();
-    toast("Salvo","Aplicação registrada. Baixa no estoque aplicada.");
-    if(msgs.length) toast("Baixas", msgs.slice(0,3).join(" • ")+(msgs.length>3?" • ...":""));
+    toast("Salvo","Aplicação registrada.");
     render();
   });
 
@@ -1953,6 +1401,32 @@ function pageRelatorios(){
   const ultApl = aplicacoes.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).slice(0,12);
   const ultClima = clima.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).slice(0,12);
 
+
+// Custo por talhão (a partir das aplicações)
+const costMap = new Map(); // talhaoId -> {custo, areaAplicada}
+for(const a of aplicacoes){
+  const key = a.talhaoId;
+  if(!key) continue;
+  const cur = costMap.get(key) || { custo:0, areaAplicada:0 };
+  cur.custo += Number(a.custoTotal||0);
+  cur.areaAplicada += Number(a.areaAplicadaHa||0);
+  costMap.set(key, cur);
+}
+const costRows = talhoes.map(t=>{
+  const info = costMap.get(t.id) || {custo:0, areaAplicada:0};
+  const areaTal = Number(t.areaHa||0);
+  const custoHaTalhao = areaTal>0 ? info.custo/areaTal : 0;
+  const custoHaAplicado = info.areaAplicada>0 ? info.custo/info.areaAplicada : 0;
+  return {
+    talhao: t.nome,
+    fazenda: findNameById(fazendas, t.fazendaId),
+    areaTalhao: areaTal,
+    custo: info.custo,
+    custoHaTalhao,
+    custoHaAplicado
+  };
+}).sort((a,b)=>b.custo-a.custo);
+
   const content = document.getElementById("content");
   content.innerHTML = `
     <div class="printOnly">
@@ -1964,7 +1438,7 @@ function pageRelatorios(){
     <div class="kpi">
       <div class="card">
         <h3>Área total (talhões)</h3>
-        <div class="big">${num(totalArea,1)} ha</div>
+        <div class="big">${totalArea.toFixed(1)} ha</div>
         <div class="sub">Somatório da empresa ativa</div>
       </div>
       <div class="card">
@@ -1988,27 +1462,28 @@ function pageRelatorios(){
       <div class="tableWrap">
         <table>
           <thead>
-            <tr><th colspan="7">Últimas aplicações</th></tr>
             <tr>
-              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Área</th><th>Operação</th><th>Produtos</th><th>Custo</th>
+              <th colspan="6">Últimas aplicações</th>
+            </tr>
+            <tr>
+              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Alvo</th><th>Operação</th><th>Produtos</th>
             </tr>
           </thead>
           <tbody>
             ${
               ultApl.map(a=>{
-                const prds = (a.produtos||[]).filter(p=>p.produtoNome).map(p=>`${p.produtoNome} (${num(p.dosePorHa||0,2)} ${p.unidade||""})`).join(" + ");
+                const prds = (a.produtos||[]).filter(p=>p.produtoNome).map(p=>`${p.produtoNome} (${p.dosePorHa} ${p.unidade})`).join(" + ");
                 return `
                   <tr>
                     <td>${escapeHtml(a.data||"")}</td>
                     <td>${escapeHtml(findNameById(fazendas, a.fazendaId))}</td>
                     <td>${escapeHtml(findNameById(talhoes, a.talhaoId))}</td>
-                    <td>${escapeHtml(num(a.areaHaAplicada||0,1))} ha</td>
+                    <td>${escapeHtml(a.alvo||"")}</td>
                     <td>${escapeHtml(a.operacao||"")}</td>
                     <td>${escapeHtml(prds||"—")}</td>
-                    <td>${escapeHtml(kbrl(a.custoTotal||0))}</td>
                   </tr>
                 `;
-              }).join("") || `<tr><td colspan="7">Sem registros.</td></tr>`
+              }).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
             }
           </tbody>
         </table>
@@ -2017,7 +1492,9 @@ function pageRelatorios(){
       <div class="tableWrap">
         <table>
           <thead>
-            <tr><th colspan="6">Últimos registros de clima</th></tr>
+            <tr>
+              <th colspan="6">Últimos registros de clima</th>
+            </tr>
             <tr>
               <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Chuva (mm)</th><th>Temp máx</th><th>Vento</th>
             </tr>
@@ -2029,7 +1506,7 @@ function pageRelatorios(){
                   <td>${escapeHtml(c.data||"")}</td>
                   <td>${escapeHtml(findNameById(fazendas, c.fazendaId))}</td>
                   <td>${escapeHtml(c.talhaoId ? findNameById(talhoes, c.talhaoId) : "Geral")}</td>
-                  <td>${escapeHtml(num(c.chuvaMm||0,1))}</td>
+                  <td>${escapeHtml(c.chuvaMm)}</td>
                   <td>${escapeHtml(c.tempMax)}</td>
                   <td>${escapeHtml(c.vento)}</td>
                 </tr>
@@ -2040,10 +1517,44 @@ function pageRelatorios(){
       </div>
     </div>
 
+    
+<div class="tableWrap" style="margin-top:12px">
+  <table>
+    <thead>
+      <tr>
+        <th colspan="6">Custo por talhão (R$)</th>
+      </tr>
+      <tr>
+        <th>Fazenda</th>
+        <th>Talhão</th>
+        <th>Área (ha)</th>
+        <th>Custo total</th>
+        <th>Custo/ha (talhão)</th>
+        <th>Custo/ha (aplicado)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${
+        costRows.map(r=>`
+          <tr>
+            <td>${escapeHtml(r.fazenda)}</td>
+            <td><b>${escapeHtml(r.talhao)}</b></td>
+            <td>${escapeHtml(num(r.areaTalhao||0,1))}</td>
+            <td><b>${escapeHtml(kbrl(r.custo||0))}</b></td>
+            <td>${escapeHtml(kbrl(r.custoHaTalhao||0))}</td>
+            <td>${escapeHtml(kbrl(r.custoHaAplicado||0))}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="6">Sem custos ainda (registre aplicações com preço do produto).</td></tr>`
+      }
+    </tbody>
+  </table>
+</div>
+
     <div class="card" style="margin-top:12px">
       <h3>Observações e assinatura</h3>
       <div class="help">
-        Ao imprimir em PDF, assine manualmente ou utilize assinatura digital.
+        Use este espaço para anotações finais do relatório (auditoria, reentrada, carência, ocorrências).<br/>
+        Ao imprimir em PDF, assine manualmente ou utilize assinatura digital no arquivo final.
       </div>
       <div class="hr"></div>
       <div style="height:90px;border:1px dashed rgba(255,255,255,.20); border-radius:16px; padding:12px" class="noPrint">
@@ -2052,7 +1563,10 @@ function pageRelatorios(){
     </div>
   `;
 
-  document.getElementById("btnPrint").addEventListener("click", ()=> window.print());
+  document.getElementById("btnPrint").addEventListener("click", ()=>{
+    window.print();
+  });
+
   document.getElementById("btnCSV").addEventListener("click", ()=>{
     const db2 = getDB();
     downloadText(`relatorio-aplicacoes-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.aplicacoes||[])));
@@ -2061,6 +1575,7 @@ function pageRelatorios(){
 }
 
 function pageConfiguracoes(){
+  const db = getDB();
   setTopActions(`
     <button class="btn" id="btnImport">Importar Backup</button>
     <button class="btn primary" id="btnExport">Exportar Backup</button>
@@ -2077,10 +1592,11 @@ function pageConfiguracoes(){
           • Importar substitui o banco local atual.
         </div>
         <div class="hr"></div>
+
         <div class="help">
           <b>Boas práticas (Agro):</b><br/>
-          • Registrar clima no dia de aplicação (vento/umidade/temperatura).<br/>
-          • Registrar máquina/operador quando possível.<br/>
+          • Sempre registrar clima do dia de aplicação (vento/umidade/temperatura).<br/>
+          • Sempre registrar máquina/operador quando possível.<br/>
           • Guardar relatórios em PDF por safra e por talhão.
         </div>
       </div>
@@ -2088,9 +1604,10 @@ function pageConfiguracoes(){
       <div class="card">
         <h3>Como evoluir para Supabase</h3>
         <div class="help">
-          Próximo upgrade:<br/>
-          • Login por e-mail • Multiusuário • Permissões • Postgres<br/>
-          • Logs de auditoria • Upload de documentos • API
+          Próximo upgrade (quando você quiser):<br/>
+          • Login por e-mail (Auth) • Multiusuário • Permissões<br/>
+          • Postgres com histórico real • API • Logs de auditoria<br/>
+          • Upload de imagens/receituários • Exportações avançadas
         </div>
         <div class="hr"></div>
         <span class="pill info">Pronto para backend</span>
@@ -2114,14 +1631,14 @@ function pageConfiguracoes(){
       const text = await file.text();
       try{
         const data = JSON.parse(text);
-        if(!data.empresas){
+        if(!data.empresas || !data.meta){
           alert("Arquivo inválido.");
           return;
         }
         if(!confirm("Importar vai SUBSTITUIR seus dados locais. Continuar?")) return;
         Storage.save(data);
         toast("Importado","Recarregando…");
-        setTimeout(()=>location.reload(), 200);
+        setTimeout(()=>location.reload(), 250);
       }catch(e){
         alert("Não foi possível ler o arquivo JSON.");
       }
@@ -2135,15 +1652,13 @@ function boot(){
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
   const titles = {
     dashboard:["Dashboard","Visão geral, indicadores e últimos registros"],
-    opscenter:["Ops Center","Alertas, custos por talhão e monitoramento"],
     empresas:["Empresas","Cadastre e gerencie organizações (multiempresa)"],
     fazendas:["Fazendas","Unidades produtivas por empresa"],
-    talhoes:["Talhões","Área, cultura, safra e custos por talhão"],
+    talhoes:["Talhões","Área, cultura, safra e informações de campo"],
     produtos:["Produtos","Cadastro de defensivos e insumos"],
-    estoque:["Estoque","Controle por depósito/lote/validade (saldo pode negativo)"],
-    aplicacoes:["Aplicações","Rastreabilidade + baixa automática no estoque"],
-    combustivel:["Combustível","Abastecimentos + baixa automática no diesel"],
-    clima:["Clima/Chuva","Histórico manual por fazenda/talhão (acumulado)"],
+    estoque:["Estoque","Controle básico por depósito/lote/validade"],
+    aplicacoes:["Aplicações","Rastreabilidade completa de operações"],
+    clima:["Clima/Chuva","Histórico manual por fazenda/talhão"],
     equipe:["Equipe","Operadores, agrônomos e times de campo"],
     maquinas:["Máquinas","Equipamentos usados nas operações"],
     relatorios:["Relatórios","Resumo + impressão/PDF + exportação"],
@@ -2153,15 +1668,14 @@ function boot(){
   const [t, s] = titles[pageKey] || ["Agro Pro",""];
   renderShell(pageKey, t, s);
 
+  // Render page
   if(pageKey==="dashboard") pageDashboard();
-  else if(pageKey==="opscenter") pageOpsCenter();
   else if(pageKey==="empresas") pageEmpresas();
   else if(pageKey==="fazendas") pageFazendas();
   else if(pageKey==="talhoes") pageTalhoes();
   else if(pageKey==="produtos") pageProdutos();
   else if(pageKey==="estoque") pageEstoque();
   else if(pageKey==="aplicacoes") pageAplicacoes();
-  else if(pageKey==="combustivel") pageCombustivel();
   else if(pageKey==="clima") pageClima();
   else if(pageKey==="equipe") pageEquipe();
   else if(pageKey==="maquinas") pageMaquinas();
