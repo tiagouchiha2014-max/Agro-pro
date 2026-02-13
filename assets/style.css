@@ -1,29 +1,48 @@
-/* Agro Pro — CSS seguro (Light / Agro)
+/* Agro Pro — Novo CSS (Light / Agro Premium “Folha & Campo”)
+   Arquivo: assets/style.css
    - Fundo branco
-   - Verde agro consistente
-   - Não usa variáveis antigas (ex: --gold1)
-   - Funciona mesmo se o app gerar HTML com poucas classes
+   - Verde agro + detalhes “campo”
+   - Compatível com páginas sem classes específicas
 */
 
 :root{
+  /* Base */
   --bg:#ffffff;
+  --panel:#ffffff;
+  --panel2:#f6fbf7;
+  --panel3:#f9fbf9;
+
+  /* Agro */
+  --brand:#1f7a3a;        /* verde folha */
+  --brand2:#34d399;       /* verde vivo */
+  --brand3:#dcfce7;       /* verde bem claro */
+  --brandInk:#0b3d1f;
+
+  /* Campo/terra (detalhes) */
+  --earth:#8b6b4f;
+  --earth2:#efe7df;
+
+  /* Texto */
   --text:#0f172a;
   --muted:#64748b;
 
-  --brand:#1f7a3a;     /* verde agro */
-  --brand2:#22c55e;    /* verde claro */
-  --brand3:#dcfce7;    /* verde bem claro */
-
+  /* UI */
   --line:rgba(15,23,42,.12);
-  --shadow:0 12px 28px rgba(2,6,23,.08);
+  --shadow:0 18px 40px rgba(2,6,23,.08);
+  --shadow2:0 10px 22px rgba(2,6,23,.06);
+  --radius:18px;
+  --r-sm:14px;
 
-  --radius:16px;
-  --rsm:12px;
+  /* Estados */
+  --ok:#16a34a;
+  --warn:#f59e0b;
+  --bad:#ef4444;
 
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  /* Fonte */
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, Arial, "Apple Color Emoji","Segoe UI Emoji";
 }
 
-/* Reset básico */
+/* ===== Base / Reset ===== */
 *{ box-sizing:border-box; }
 html, body{ height:100%; }
 body{
@@ -37,88 +56,134 @@ body{
 
 #app{ min-height:100vh; }
 
-/* Texto */
-h1,h2,h3{ margin:0 0 10px 0; line-height:1.15; }
+::selection{ background:rgba(52,211,153,.25); }
+
+a{ color:var(--brand); text-decoration:none; }
+a:hover{ color:#145c2b; text-decoration:underline; }
+
+/* Tipografia */
+h1,h2,h3,h4{
+  margin:0 0 8px 0;
+  line-height:1.15;
+  letter-spacing:-.2px;
+}
 h1{ font-size:22px; }
 h2{ font-size:18px; }
 h3{ font-size:15px; }
 p{ margin:0 0 10px 0; }
-small,.muted{ color:var(--muted); }
+small,.small,.muted{ color:var(--muted); }
 
-a{ color:var(--brand); text-decoration:none; }
-a:hover{ text-decoration:underline; }
-
-hr{
+/* Utilitários */
+.hidden{ display:none !important; }
+.row{ display:flex; gap:12px; align-items:center; }
+.col{ display:flex; flex-direction:column; gap:10px; }
+.wrap{ flex-wrap:wrap; }
+.spacer{ flex:1; }
+.divider, hr{
   border:none;
   height:1px;
   background:var(--line);
   margin:14px 0;
 }
 
-/* Espaçamento padrão: deixa “bonito” mesmo sem classes */
+/* Container padrão (se existir) */
+.container, .page, .content, .wrap, .inner{
+  max-width:1200px;
+  margin:0 auto;
+}
+
+/* Se o app não usa container, deixa tudo com respiro */
 #app > *{
   max-width:1200px;
   margin:0 auto;
-  padding:18px 18px;
+  padding:18px 22px;
 }
 
-/* Blocos/Seções comuns */
-section, main, article, .section, .content, .page{
-  max-width:1200px;
-  margin:0 auto;
+/* ===== Topbar / Header ===== */
+header, .topbar, .appbar, .navbar{
+  position:sticky;
+  top:0;
+  z-index:50;
+  background:
+    linear-gradient(180deg,
+      rgba(31,122,58,.10),
+      rgba(139,107,79,.03));
+  border-bottom:1px solid rgba(139,107,79,.18);
+  backdrop-filter:saturate(1.1) blur(8px);
+}
+header .inner, .topbar .inner, .appbar .inner, .navbar .inner{
+  padding:12px 22px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:900;
+  letter-spacing:.2px;
+}
+.brand .dot{
+  width:12px; height:12px;
+  border-radius:999px;
+  background:linear-gradient(180deg, var(--brand2), var(--brand));
+  box-shadow:0 10px 18px rgba(31,122,58,.20);
 }
 
-/* Cards genéricos: pega várias classes comuns */
-.card, .panel, .box, .sheet, .modal, .widget, .tile,
-.container-card, .block, .group{
-  background:#fff;
+/* ===== Cards / Painéis ===== */
+.card, .panel, .box, .sheet, .modal, .widget, .tile, .container-card{
+  background:var(--panel);
   border:1px solid var(--line);
   border-radius:var(--radius);
   box-shadow:var(--shadow);
 }
 
-/* Se não tiver classes, melhora listas e títulos dentro do app */
-#app h1, #app h2{
-  padding:12px 14px;
-  border-radius:var(--radius);
-  border:1px solid rgba(34,197,94,.18);
-  background:linear-gradient(180deg, rgba(34,197,94,.10), rgba(255,255,255,0));
+.card .head, .panel .head, .box .head, .widget .head{
+  padding:14px 16px;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.card .body, .panel .body, .box .body, .widget .body{
+  padding:16px;
 }
 
+.soft, .subpanel, .toolbar, .filters, .well{
+  background:var(--panel2);
+  border:1px solid rgba(31,122,58,.12);
+  border-radius:var(--radius);
+  padding:12px;
+}
+
+/* ===== “Auto-card” para conteúdo cru (melhora dashboard) ===== */
+#app h1, #app h2{
+  padding:14px 16px;
+  border-radius:var(--radius);
+  background:linear-gradient(180deg, rgba(31,122,58,.08), rgba(255,255,255,0));
+  border:1px solid rgba(31,122,58,.10);
+}
+#app h1{ margin-top:10px; }
+#app h2{ margin-top:14px; }
+
+/* Blocos comuns dentro do app: melhora listas e seções */
 #app ul, #app ol{
   margin:10px 0 0 0;
   padding-left:18px;
 }
 #app li{ margin:6px 0; }
 
-/* Topbar/header (se existir) */
-header, .topbar, .navbar, .appbar{
-  position:sticky;
-  top:0;
-  z-index:50;
-  background:rgba(34,197,94,.08);
-  border-bottom:1px solid rgba(34,197,94,.18);
-  backdrop-filter:saturate(1.1) blur(8px);
-}
-header .inner, .topbar .inner, .navbar .inner, .appbar .inner{
-  max-width:1200px;
-  margin:0 auto;
-  padding:12px 18px;
-  display:flex;
-  gap:10px;
-  align-items:center;
-}
-
-/* Botões (funciona para button e classes comuns) */
+/* ===== Botões ===== */
 button, .btn, input[type="button"], input[type="submit"]{
   font:inherit;
-  border-radius:var(--rsm);
+  border-radius:var(--r-sm);
   border:1px solid rgba(15,23,42,.14);
   background:#fff;
   color:var(--text);
   padding:10px 14px;
   cursor:pointer;
-  transition:transform .06s ease, filter .15s ease, box-shadow .15s ease;
+  transition:transform .06s ease, filter .15s ease, box-shadow .15s ease, background .15s ease;
 }
 button:hover, .btn:hover, input[type="button"]:hover, input[type="submit"]:hover{
   filter:brightness(1.02);
@@ -127,99 +192,161 @@ button:active, .btn:active, input[type="button"]:active, input[type="submit"]:ac
   transform:translateY(1px);
 }
 
-/* Botão principal */
+/* Principal */
 .primary, .btn-primary, .primary-btn, button.primary, .btn.primary{
   background:linear-gradient(180deg, var(--brand2), var(--brand));
   color:#fff !important;
   border:1px solid rgba(0,0,0,.06) !important;
-  box-shadow:0 10px 20px rgba(34,197,94,.18);
+  box-shadow:0 10px 18px rgba(31,122,58,.20);
+}
+.primary:hover, .btn-primary:hover, .primary-btn:hover, button.primary:hover, .btn.primary:hover{
+  filter:brightness(1.03);
 }
 
-/* Botão secundário */
-.secondary, .btn-secondary, button.secondary, .btn.secondary{
-  background:rgba(34,197,94,.08);
-  color:var(--brand) !important;
-  border:1px solid rgba(34,197,94,.25) !important;
+/* Secundário (terra leve) */
+.secondary, .btn-secondary, .secondary-btn, button.secondary, .btn.secondary{
+  background:linear-gradient(180deg, rgba(139,107,79,.12), rgba(139,107,79,.06));
+  color:#3e2723 !important;
+  border:1px solid rgba(139,107,79,.24) !important;
 }
 
-/* Inputs */
-label{
-  display:block;
-  font-size:12px;
-  color:var(--muted);
-  margin-bottom:6px;
+/* Ghost */
+.ghost, .btn-ghost, button.ghost, .btn.ghost{
+  background:transparent;
+  border:1px solid transparent;
 }
+.ghost:hover, .btn-ghost:hover, button.ghost:hover, .btn.ghost:hover{
+  background:rgba(31,122,58,.07);
+  border-color:rgba(31,122,58,.14);
+}
+
+/* Danger */
+.danger, .btn-danger, button.danger, .btn.danger{
+  background:linear-gradient(180deg, #ef4444, #dc2626);
+  color:#fff !important;
+  border:1px solid rgba(0,0,0,.06) !important;
+  box-shadow:0 10px 18px rgba(239,68,68,.18);
+}
+
+/* Botão pequeno */
+.sm, .btn-sm, button.sm{
+  padding:7px 10px;
+  border-radius:12px;
+  font-size:13px;
+}
+
+/* ===== Inputs ===== */
+label{ display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
 input, select, textarea{
   width:100%;
   background:#fff;
   color:var(--text);
   border:1px solid rgba(15,23,42,.14);
-  border-radius:var(--rsm);
+  border-radius:var(--r-sm);
   padding:10px 12px;
   outline:none;
-}
-input:focus, select:focus, textarea:focus{
-  border-color:rgba(34,197,94,.65);
-  box-shadow:0 0 0 4px rgba(34,197,94,.16);
+  transition:border-color .15s ease, box-shadow .15s ease;
 }
 textarea{ min-height:96px; resize:vertical; }
-input[type="checkbox"], input[type="radio"]{
-  width:auto;
-  accent-color:var(--brand2);
+input:focus, select:focus, textarea:focus{
+  border-color:rgba(31,122,58,.55);
+  box-shadow:0 0 0 4px rgba(31,122,58,.14);
 }
+input::placeholder, textarea::placeholder{ color:rgba(100,116,139,.75); }
+input[type="checkbox"], input[type="radio"]{ width:auto; accent-color:var(--brand); }
 
-/* Chips/Badges */
+/* ===== Badges / Chips ===== */
 .badge, .chip, .tag, .pill{
   display:inline-flex;
   align-items:center;
   gap:8px;
+  background:var(--brand3);
+  border:1px solid rgba(31,122,58,.22);
+  color:var(--brandInk);
   padding:6px 10px;
   border-radius:999px;
-  background:var(--brand3);
-  color:#0b3d1f;
-  border:1px solid rgba(34,197,94,.22);
-  font-weight:700;
+  font-weight:800;
   font-size:12px;
 }
+.badge.earth, .chip.earth{ background:rgba(139,107,79,.10); border-color:rgba(139,107,79,.22); color:#3e2723; }
+.badge.ok{ background:rgba(22,163,74,.10); border-color:rgba(22,163,74,.20); }
+.badge.warn{ background:rgba(245,158,11,.12); border-color:rgba(245,158,11,.25); color:#7a4a00; }
+.badge.bad{ background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.22); color:#7a0b0b; }
 
-/* Tabelas */
+/* ===== Tabelas (melhora muito o visual) ===== */
 .table{
-  border:1px solid var(--line);
-  border-radius:var(--radius);
+  width:100%;
   overflow:auto;
+  border-radius:var(--radius);
+  border:1px solid var(--line);
   background:#fff;
-  box-shadow:var(--shadow);
+  box-shadow:var(--shadow2);
 }
 table{
   width:100%;
   border-collapse:separate;
   border-spacing:0;
+  font-size:14px;
   background:#fff;
 }
 thead th{
   text-align:left;
-  padding:12px;
-  font-weight:800;
-  background:rgba(34,197,94,.08);
+  font-weight:900;
+  padding:12px 12px;
+  background:linear-gradient(180deg, rgba(31,122,58,.08), rgba(139,107,79,.03));
+  color:#145c2b;
   border-bottom:1px solid var(--line);
 }
 tbody td{
-  padding:12px;
+  padding:12px 12px;
   border-bottom:1px solid rgba(15,23,42,.10);
 }
-tbody tr:hover{ background:rgba(34,197,94,.05); }
+tbody tr:hover{ background:rgba(31,122,58,.05); }
 tbody tr:last-child td{ border-bottom:none; }
 
-/* Alerts / caixas */
-.alert, .toast, .notice{
+/* Se tabela vier crua sem wrapper */
+#app table{
   border:1px solid var(--line);
   border-radius:var(--radius);
-  background:#fff;
-  padding:12px 14px;
-  box-shadow:var(--shadow);
+  overflow:hidden;
+  box-shadow:var(--shadow2);
 }
 
-/* Responsivo */
+/* ===== Mensagens / Alertas ===== */
+.alert, .toast, .notice{
+  border-radius:var(--radius);
+  border:1px solid var(--line);
+  background:var(--panel);
+  padding:12px 14px;
+  box-shadow:var(--shadow2);
+}
+.alert.ok{ border-color:rgba(22,163,74,.22); background:rgba(22,163,74,.06); }
+.alert.warn{ border-color:rgba(245,158,11,.25); background:rgba(245,158,11,.06); }
+.alert.bad{ border-color:rgba(239,68,68,.22); background:rgba(239,68,68,.06); }
+
+/* ===== Modal ===== */
+.backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(2,6,23,.48);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  z-index:80;
+}
+.modal{ max-width:820px; margin:0 auto; }
+
+/* ===== Scrollbar ===== */
+*::-webkit-scrollbar{ height:10px; width:10px; }
+*::-webkit-scrollbar-thumb{
+  background:rgba(31,122,58,.22);
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,.7);
+}
+*::-webkit-scrollbar-track{ background:rgba(15,23,42,.05); }
+
+/* ===== Responsivo ===== */
 @media (max-width: 820px){
   #app > *{ padding:14px 14px; }
   h1{ font-size:20px; }
