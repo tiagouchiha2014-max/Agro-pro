@@ -233,7 +233,7 @@ function setEmpresaId(id){
   db.session.empresaId = id;
   setDB(db);
 }
-} 
+
 
 /* ------------------ UI shell ------------------ */
 const PAGES = [
@@ -254,10 +254,15 @@ const PAGES = [
 ];
 
 function renderShell(pageKey, title, subtitle){
+
+  // ===== Páginas externas: NÃO renderizar o shell do app =====
+  if(pageKey === "financeiro" || pageKey === "produtividade"){
+    return;
+  }
+
   const db = getDB();
   const empresaId = getEmpresaId();
   const empresa = db.empresas.find(e=>e.id===empresaId);
-
   const nav = PAGES.map(p => {
     const active = (p.key===pageKey) ? "active" : "";
     return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span> ${escapeHtml(p.label)}</a>`;
