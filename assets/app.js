@@ -254,10 +254,6 @@ const PAGES = [
 ];
 
 function renderShell(pageKey, title, subtitle){
-
-  // Página externa (render por JS próprio)
-  if(pageKey === "custos") return;
-
   const db = getDB();
   ...
 }
