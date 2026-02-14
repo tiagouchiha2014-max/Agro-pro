@@ -250,7 +250,6 @@ const PAGES = [
   { href:"equipe.html", label:"Equipe", key:"equipe", icon:"👷" },
   { href:"maquinas.html", label:"Máquinas", key:"maquinas", icon:"🛠️" },
   { href:"relatorios.html", label:"Relatórios", key:"relatorios", icon:"🧾" },
-  { href:"custos.html", label:"Custos", key:"custos", icon:"💼" },
   { href:"configuracoes.html", label:"Configurações", key:"config", icon:"⚙️" },
 ];
 
