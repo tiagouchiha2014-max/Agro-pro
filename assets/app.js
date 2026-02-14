@@ -1,18 +1,18 @@
 /* ============================================================
-   AGRO PRO — app.js (OFFLINE / MULTIEMPRESA) - VERSÃO COMPLETA
+   AGRO PRO — app.js (OFFLINE / MULTIEMPRESA) - VERSÃO FINAL
    Atualizações:
    + Cálculo automático de custos por aplicação (com preço dos produtos)
    + Preço da soja configurável para estimativa de lucro
    + Estimativa de produtividade configurável por cultura
    + Entrada de diesel com preço (UEPS)
    + Alertas automáticos de pragas baseados no clima
-   + IA Preditiva com tabela de pragas e produtos recomendados
-   + Dashboard com alertas e lembretes
+   + Dashboard com alertas e lembretes (design melhorado)
    + Ops Center com custos precisos por talhão
+   + Reset demo movido para Configurações (com confirmação)
    ============================================================ */
 
 const Storage = {
-  key: "agro_pro_v4",
+  key: "agro_pro_v5",
   load() {
     try {
       const raw = localStorage.getItem(this.key);
@@ -171,7 +171,7 @@ function seedDB() {
   const pragasBase = getPragasBase();
 
   const db = {
-    meta: { createdAt: new Date().toISOString(), version: 4 },
+    meta: { createdAt: new Date().toISOString(), version: 5 },
     session: { empresaId },
 
     empresas: [
@@ -301,7 +301,7 @@ function getDB() {
   if (!db) db = seedDB();
 
   // migrações
-  db.meta = db.meta || { createdAt: new Date().toISOString(), version: 4 };
+  db.meta = db.meta || { createdAt: new Date().toISOString(), version: 5 };
   db.session = db.session || {};
   db.empresas = db.empresas || [];
   db.parametros = db.parametros || { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75 };
@@ -352,8 +352,7 @@ const PAGES = [
   { href: "equipe.html", label: "Equipe", key: "equipe", icon: "👷" },
   { href: "maquinas.html", label: "Máquinas", key: "maquinas", icon: "🛠️" },
   { href: "relatorios.html", label: "Relatórios", key: "relatorios", icon: "🧾" },
-  { href: "configuracoes.html", label: "Configurações", key: "config", icon: "⚙️" },
-  { href: "ia.html", label: "IA Preditiva", key: "ia", icon: "🤖" }
+  { href: "configuracoes.html", label: "Configurações", key: "config", icon: "⚙️" }
 ];
 
 function renderShell(pageKey, title, subtitle) {
@@ -392,7 +391,6 @@ function renderShell(pageKey, title, subtitle) {
           <select class="select" id="empresaSelect">${empresaOptions}</select>
           <div style="margin-top:10px" class="row">
             <button class="btn primary" id="btnNovaEmpresa">+ Nova empresa</button>
-            <button class="btn danger" id="btnResetDemo">Reset demo</button>
           </div>
           <div style="margin-top:10px" class="help">
             Trocar a empresa muda todos os dados exibidos.
@@ -402,7 +400,7 @@ function renderShell(pageKey, title, subtitle) {
         <nav class="nav">${nav}</nav>
 
         <div style="margin-top:14px" class="help">
-          <b>Dica:</b> Use a IA Preditiva para recomendações de produtos.
+          <b>Dica:</b> Use Configurações para ajustar parâmetros de mercado e resetar dados.
         </div>
       </aside>
 
@@ -423,14 +421,6 @@ function renderShell(pageKey, title, subtitle) {
   document.getElementById("empresaSelect").addEventListener("change", (e) => {
     setEmpresaId(e.target.value);
     toast("Empresa alterada", "Atualizando a página…");
-    setTimeout(() => location.reload(), 200);
-  });
-
-  document.getElementById("btnResetDemo").addEventListener("click", () => {
-    if (!confirm("Isso vai resetar o banco local e voltar para o demo. Continuar?")) return;
-    localStorage.removeItem(Storage.key);
-    seedDB();
-    toast("Reset concluído", "Banco local restaurado para o demo.");
     setTimeout(() => location.reload(), 200);
   });
 
@@ -659,22 +649,26 @@ function pageDashboard() {
       <div class="card">
         <h3>🚨 Alertas de Pragas</h3>
         ${alertasPragas.length ? alertasPragas.map(a => `
-          <div style="padding:8px; margin:5px 0; background:#2a2a30; border-radius:4px; border-left:4px solid #f44336;">
-            <b>${escapeHtml(a.mensagem)}</b><br>
-            <small>${escapeHtml(a.detalhe)}</small>
+          <div style="padding:12px; margin:8px 0; background: rgba(244, 67, 54, 0.1); border-left:4px solid #f44336; border-radius:4px;">
+            <b style="color:#f44336;">${escapeHtml(a.mensagem)}</b><br>
+            <span style="color:#888; font-size:13px;">${escapeHtml(a.detalhe)}</span>
           </div>
-        `).join('') : '<p>Nenhum alerta no momento.</p>'}
+        `).join('') : '<p style="color:#888;">Nenhum alerta no momento.</p>'}
       </div>
 
       <div class="card">
         <h3>📋 Lembretes Pendentes</h3>
         ${lembretes.length ? lembretes.map(l => `
-          <div style="padding:8px; margin:5px 0; background:#2a2a30; border-radius:4px;">
-            <b>${escapeHtml(l.mensagem)}</b><br>
-            <small>Data: ${l.data}</small>
-            <button class="btn" style="margin-top:5px;" onclick="concluirLembrete('${l.id}')">Concluir</button>
+          <div style="padding:12px; margin:8px 0; background: rgba(33, 150, 243, 0.1); border-left:4px solid #2196f3; border-radius:4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <b style="color:#2196f3;">${escapeHtml(l.mensagem)}</b><br>
+                <span style="color:#888; font-size:13px;">Data: ${l.data}</span>
+              </div>
+              <button class="btn" style="background:#2196f3; color:white;" onclick="concluirLembrete('${l.id}')">Concluir</button>
+            </div>
           </div>
-        `).join('') : '<p>Nenhum lembrete pendente.</p>'}
+        `).join('') : '<p style="color:#888;">Nenhum lembrete pendente.</p>'}
       </div>
     </div>
 
@@ -2088,14 +2082,21 @@ function pageConfiguracoes() {
       </div>
 
       <div class="card">
+        <h3>⚠️ Reset de Dados</h3>
+        <div class="help">Restaura o banco de dados para os valores iniciais de demonstração.</div>
+        <div class="hr"></div>
+        <button class="btn danger" id="btnResetDemo" style="width:100%;">Resetar para dados de demonstração</button>
+      </div>
+
+      <div class="card">
         <h3>📈 Sobre o sistema</h3>
         <div class="help">
-          <b>Agro Pro v4.0</b><br/>
+          <b>Agro Pro v5.0</b><br/>
           • Base de dados com +100 produtos e +20 pragas pré-cadastradas<br/>
           • Alertas automáticos de pragas baseados no clima<br/>
           • Cálculo de custos com preços reais de produtos e diesel (UEPS)<br/>
           • Estimativa de receita e lucro por talhão<br/>
-          • IA Preditiva com recomendações de produtos
+          • Controle completo de entrada e saída de diesel
         </div>
       </div>
     </div>
@@ -2126,6 +2127,14 @@ function pageConfiguracoes() {
   document.getElementById("btnImport").addEventListener("click", importarBackup);
   document.getElementById("btnImport2").addEventListener("click", importarBackup);
 
+  document.getElementById("btnResetDemo").addEventListener("click", () => {
+    if (!confirm("⚠️ ATENÇÃO! Isso vai apagar TODOS os dados atuais e restaurar a versão de demonstração. Continuar?")) return;
+    localStorage.removeItem(Storage.key);
+    seedDB();
+    toast("Reset concluído", "Banco restaurado para dados de demonstração.");
+    setTimeout(() => location.reload(), 200);
+  });
+
   function importarBackup() {
     const input = document.createElement("input");
     input.type = "file";
@@ -2152,141 +2161,6 @@ function pageConfiguracoes() {
   }
 }
 
-/* ------------------ PÁGINA IA PREDITIVA ------------------ */
-function pageIA() {
-  const db = getDB();
-  const pragas = onlyEmpresa(db.pragas || []);
-  const produtos = onlyEmpresa(db.produtos || []);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const clima = onlyEmpresa(db.clima || []).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 1);
-
-  const culturas = ["soja", "milho", "algodao"];
-  const [culturaFiltro, setCulturaFiltro] = useState("todas");
-  const [pesquisa, setPesquisa] = useState("");
-
-  // Para simular estado, vamos usar um atributo data no JS
-  let filtroCultura = "todas";
-  let textoPesquisa = "";
-
-  function aplicarFiltros() {
-    filtroCultura = document.getElementById("filtroCultura")?.value || "todas";
-    textoPesquisa = document.getElementById("pesquisaPraga")?.value.toLowerCase() || "";
-    renderTabela();
-  }
-
-  function renderTabela() {
-    const tbody = document.getElementById("tbodyPragas");
-    if (!tbody) return;
-
-    let pragasFiltradas = pragas.filter(p => {
-      if (filtroCultura !== "todas" && !p.culturas.includes(filtroCultura)) return false;
-      if (textoPesquisa && !p.nome.toLowerCase().includes(textoPesquisa) && !p.nomeCientifico.toLowerCase().includes(textoPesquisa)) return false;
-      return true;
-    });
-
-    tbody.innerHTML = pragasFiltradas.map(p => {
-      const produtosRecomendados = produtos.filter(prod => (prod.pragasAlvo || []).some(alvo => 
-        p.nome.toLowerCase().includes(alvo.toLowerCase()) || alvo.toLowerCase().includes(p.nome.toLowerCase())
-      )).slice(0, 3);
-
-      const tempAtual = clima[0]?.tempMax ? (clima[0].tempMax + clima[0].tempMin) / 2 : null;
-      const umidAtual = clima[0]?.umidade;
-      const alertaTemp = tempAtual && p.tempMin && p.tempMax && tempAtual >= p.tempMin && tempAtual <= p.tempMax;
-      const alertaUmid = umidAtual && p.umidadeMin && umidAtual >= p.umidadeMin;
-
-      return `
-        <tr>
-          <td><b>${escapeHtml(p.nome)}</b><br><small>${escapeHtml(p.nomeCientifico || '')}</small></td>
-          <td>${(p.culturas || []).join(', ')}</td>
-          <td>${p.tempMin || '-'}°C - ${p.tempMax || '-'}°C<br>Umidade > ${p.umidadeMin || '-'}%</td>
-          <td>
-            ${alertaTemp && alertaUmid ? '<span class="pill bad">🔴 Risco alto</span>' : 
-              (alertaTemp || alertaUmid) ? '<span class="pill warn">🟡 Risco médio</span>' : 
-              '<span class="pill ok">🟢 Baixo risco</span>'}
-            ${tempAtual ? `<br><small>Atual: ${tempAtual.toFixed(1)}°C, ${umidAtual}%</small>` : ''}
-          </td>
-          <td>
-            ${produtosRecomendados.map(pr => `• ${escapeHtml(pr.nome)}<br>`).join('')}
-            ${produtosRecomendados.length === 0 ? '—' : ''}
-          </td>
-        </tr>
-      `;
-    }).join('') || '<tr><td colspan="5">Nenhuma praga encontrada.</td></tr>';
-  }
-
-  const content = document.getElementById("content");
-  content.innerHTML = `
-    <div class="kpi">
-      <div class="card"><h3>🐛 Pragas cadastradas</h3><div class="big">${pragas.length}</div></div>
-      <div class="card"><h3>🧪 Produtos</h3><div class="big">${produtos.length}</div></div>
-      <div class="card"><h3>🌡️ Clima atual</h3><div class="big">${clima[0] ? `${(clima[0].tempMax + clima[0].tempMin) / 2}°C` : 'N/A'}</div></div>
-    </div>
-
-    <div class="card">
-      <h3>🔍 Filtros</h3>
-      <div class="row" style="gap:15px;">
-        <div style="flex:1;">
-          <small>Cultura</small>
-          <select class="select" id="filtroCultura" onchange="aplicarFiltros()">
-            <option value="todas">Todas</option>
-            <option value="soja">Soja</option>
-            <option value="milho">Milho</option>
-            <option value="algodao">Algodão</option>
-          </select>
-        </div>
-        <div style="flex:2;">
-          <small>Pesquisar praga (nome ou científico)</small>
-          <input class="input" type="text" id="pesquisaPraga" placeholder="Digite..." onkeyup="aplicarFiltros()" />
-        </div>
-      </div>
-    </div>
-
-    <div class="tableWrap" style="margin-top:20px;">
-      <h3>📋 Tabela de Pragas e Recomendações</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Praga</th>
-            <th>Culturas</th>
-            <th>Condições favoráveis</th>
-            <th>Alerta atual</th>
-            <th>Produtos recomendados</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyPragas"></tbody>
-      </table>
-    </div>
-
-    <div class="card" style="margin-top:20px;">
-      <h3>📊 Gráfico de Risco por Cultura</h3>
-      <div style="height:200px; display:flex; align-items:flex-end; gap:20px; padding:20px;">
-        ${culturas.map(cultura => {
-          const pragasCultura = pragas.filter(p => p.culturas.includes(cultura));
-          const riscoAlto = pragasCultura.filter(p => {
-            const tempAtual = clima[0]?.tempMax ? (clima[0].tempMax + clima[0].tempMin) / 2 : null;
-            const umidAtual = clima[0]?.umidade;
-            return tempAtual && p.tempMin && p.tempMax && umidAtual && p.umidadeMin &&
-                   tempAtual >= p.tempMin && tempAtual <= p.tempMax && umidAtual >= p.umidadeMin;
-          }).length;
-          const percentual = pragasCultura.length ? (riscoAlto / pragasCultura.length) * 100 : 0;
-          const altura = percentual * 2; // max 200px
-          return `
-            <div style="flex:1; text-align:center;">
-              <div style="height: ${altura}px; background: ${percentual > 50 ? '#f44336' : percentual > 20 ? '#FF9800' : '#4CAF50'}; width:40px; margin:0 auto; border-radius:4px 4px 0 0;"></div>
-              <div style="margin-top:10px;"><b>${cultura}</b></div>
-              <div style="font-size:12px;">${riscoAlto}/${pragasCultura.length} pragas</div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-    </div>
-  `;
-
-  // Expor função para o onchange
-  window.aplicarFiltros = aplicarFiltros;
-  renderTabela();
-}
-
 /* ------------------ Boot ------------------ */
 function boot() {
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
@@ -2304,8 +2178,7 @@ function boot() {
     equipe: ["Equipe", "Operadores, agrônomos e times de campo"],
     maquinas: ["Máquinas", "Equipamentos usados nas operações"],
     relatorios: ["Relatórios", "Resumo + impressão/PDF + exportação"],
-    config: ["Configurações", "Parâmetros de mercado e backup"],
-    ia: ["IA Preditiva", "Análise de pragas e recomendações inteligentes"]
+    config: ["Configurações", "Parâmetros de mercado, backup e reset"]
   };
 
   const [t, s] = titles[pageKey] || ["Agro Pro", ""];
@@ -2325,7 +2198,6 @@ function boot() {
   else if (pageKey === "maquinas") pageMaquinas();
   else if (pageKey === "relatorios") pageRelatorios();
   else if (pageKey === "config") pageConfiguracoes();
-  else if (pageKey === "ia") pageIA();
 
   toast("Agro Pro", "Sistema carregado. Dados salvos no navegador.");
 }
