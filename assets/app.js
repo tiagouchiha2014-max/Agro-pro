@@ -250,15 +250,18 @@ const PAGES = [
   { href:"equipe.html", label:"Equipe", key:"equipe", icon:"👷" },
   { href:"maquinas.html", label:"Máquinas", key:"maquinas", icon:"🛠️" },
   { href:"relatorios.html", label:"Relatórios", key:"relatorios", icon:"🧾" },
+  { href:"custos.html", label:"Custos", key:"custos", icon:"💼" },
   { href:"configuracoes.html", label:"Configurações", key:"config", icon:"⚙️" },
 ];
 
 function renderShell(pageKey, title, subtitle){
 
-  // ===== Páginas externas: NÃO renderizar o shell do app =====
-  if(pageKey === "financeiro" || pageKey === "produtividade"){
-    return;
-  }
+  // Página externa (render por JS próprio)
+  if(pageKey === "custos") return;
+
+  const db = getDB();
+  ...
+}
 
   const db = getDB();
   const empresaId = getEmpresaId();
