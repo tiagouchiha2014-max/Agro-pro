@@ -1,5 +1,5 @@
 /* ============================================================
-   AGRO PRO — app.js (OFFLINE / MULTIEMPRESA)
+   AGRO PRO — app.js (OFFLINE / MULTIEMPRESA) - CORRIGIDO
    Atualização:
    + OPS CENTER (monitoramento)
    + Combustível com BAIXA automática no estoque de Diesel (saldo pode ficar negativo)
@@ -118,8 +118,8 @@ function seedDB(){
     ],
 
     produtos: [
-      { id: prd1, empresaId, tipo:"Herbicida", nome:"Glifosato 480", ingrediente:"Glifosato", fabricante:"Genérico", registro:"", carenciaDias: 7, reentradaHoras: 24, unidade:"L", obs:"" },
-      { id: prd2, empresaId, tipo:"Fungicida", nome:"Triazol+Estrobilurina", ingrediente:"Mistura", fabricante:"Genérico", registro:"", carenciaDias: 14, reentradaHoras: 24, unidade:"L", obs:"" }
+      { id: prd1, empresaId, tipo:"Herbicida", nome:"Glifosato 480", ingrediente:"Glifosato", fabricante:"Genérico", registro:"", carenciaDias: 7, reentradaHoras: 24, unidade:"L", preco: 45.90, obs:"" },
+      { id: prd2, empresaId, tipo:"Fungicida", nome:"Triazol+Estrobilurina", ingrediente:"Mistura", fabricante:"Genérico", registro:"", carenciaDias: 14, reentradaHoras: 24, unidade:"L", preco: 89.90, obs:"" }
     ],
 
     // Estoque de insumos (pode ficar negativo)
@@ -254,10 +254,6 @@ const PAGES = [
 ];
 
 function renderShell(pageKey, title, subtitle){
-  const db = getDB();
-  ...
-}
-
   const db = getDB();
   const empresaId = getEmpresaId();
   const empresa = db.empresas.find(e=>e.id===empresaId);
@@ -994,24 +990,72 @@ function pageFazendas(){
   });
 }
 
-
-function pageFazendas(){
+function pageProdutos(){
   crudPage({
-    entityKey:"fazendas",
-    subtitle:"Unidades produtivas por empresa.",
+    entityKey:"produtos",
+    subtitle:"Cadastre defensivos, fertilizantes e adjuvantes com carência e reentrada.",
     fields:[
-      {key:"nome", label:"Nome da fazenda", type:"text"},
-      {key:"cidade", label:"Cidade", type:"text"},
-      {key:"uf", label:"UF", type:"text"},
-      {key:"areaHa", label:"Área total (ha)", type:"number"},
-      {key:"observacoes", label:"Observações", type:"textarea", full:true}
+      {key:"tipo", label:"Tipo", type:"text", placeholder:"Herbicida/Fungicida/Inseticida/Fertilizante/Adjuvante"},
+      {key:"nome", label:"Nome comercial", type:"text"},
+      {key:"ingrediente", label:"Ingrediente ativo", type:"text"},
+      {key:"fabricante", label:"Fabricante", type:"text"},
+      {key:"registro", label:"Registro/Mapa", type:"text"},
+
+      // ✅ NOVO (simples)
+      {key:"preco", label:"Preço por unidade (R$)", type:"number", placeholder:"Ex: 45.90"},
+
+      {key:"carenciaDias", label:"Carência (dias)", type:"number"},
+      {key:"reentradaHoras", label:"Reentrada (horas)", type:"number"},
+      {key:"unidade", label:"Unidade padrão", type:"text", placeholder:"L / kg"},
+      {key:"obs", label:"Observações", type:"textarea", full:true}
     ],
     columns:[
-      {key:"nome", label:"Fazenda"},
-      {key:"cidade", label:"Cidade"},
-      {key:"uf", label:"UF"},
-      {key:"areaHa", label:"Área (ha)"},
-      {key:"observacoes", label:"Obs."}
+      {key:"tipo", label:"Tipo"},
+      {key:"nome", label:"Produto"},
+      {key:"ingrediente", label:"Ingrediente"},
+      {key:"carenciaDias", label:"Carência (d)"},
+      {key:"reentradaHoras", label:"Reentrada (h)"},
+      {key:"unidade", label:"Unid."},
+
+      // ✅ NOVO (sem fmt)
+      {key:"preco", label:"Preço (R$)"}
+    ],
+    helpers:{
+      onDelete:(id,db)=>{
+        db.estoque = (db.estoque||[]).filter(s=>s.produtoId!==id);
+      }
+    }
+  });
+}
+
+function pageEstoque(){
+  crudPage({
+    entityKey:"estoque",
+    subtitle:"Controle por depósito, lote e validade. Saldo pode ficar negativo (furo de estoque).",
+    fields:[
+      {key:"produtoId", label:"Produto", type:"select",
+        options:(db)=> {
+          const ps = onlyEmpresa(db.produtos);
+          return [{value:"", label:"(Selecione)"}].concat(ps.map(p=>({value:p.id, label:`${p.nome} — ${p.tipo}`})));
+        }
+      },
+      {key:"deposito", label:"Depósito", type:"text", placeholder:"Central / Galpão / Unidade..."},
+      {key:"lote", label:"Lote", type:"text"},
+      {key:"validade", label:"Validade (YYYY-MM-DD)", type:"text", placeholder:"2026-12-31"},
+      {key:"qtd", label:"Quantidade", type:"number"},
+      {key:"unidade", label:"Unidade", type:"text", placeholder:"L / kg"},
+      {key:"obs", label:"Observações", type:"textarea", full:true}
+    ],
+    columns:[
+      {key:"produtoId", label:"Produto", render:(r,db)=>{
+        const p = onlyEmpresa(db.produtos).find(p=>p.id===r.produtoId);
+        return p ? `${p.nome} (${p.tipo})` : "(sem produto)";
+      }},
+      {key:"deposito", label:"Depósito"},
+      {key:"lote", label:"Lote"},
+      {key:"validade", label:"Validade"},
+      {key:"qtd", label:"Qtd"},
+      {key:"unidade", label:"Unid."}
     ]
   });
 }
@@ -1152,79 +1196,6 @@ function pageTalhoes(){
   render();
 }
 
-
-  });
-}
-
-function pageEstoque(){
-  const db = getDB();
-  const produtos = onlyEmpresa(db.produtos);
-
-  crudPage({
-    entityKey:"estoque",
-    subtitle:"Controle por depósito, lote e validade. Saldo pode ficar negativo (furo de estoque).",
-    fields:[
-      {key:"produtoId", label:"Produto", type:"select",
-        options:(db)=> {
-          const ps = onlyEmpresa(db.produtos);
-          return [{value:"", label:"(Selecione)"}].concat(ps.map(p=>({value:p.id, label:`${p.nome} — ${p.tipo}`})));
-        }
-      },
-      {key:"deposito", label:"Depósito", type:"text", placeholder:"Central / Galpão / Unidade..."},
-      {key:"lote", label:"Lote", type:"text"},
-      {key:"validade", label:"Validade (YYYY-MM-DD)", type:"text", placeholder:"2026-12-31"},
-      {key:"qtd", label:"Quantidade", type:"number"},
-      {key:"unidade", label:"Unidade", type:"text", placeholder:"L / kg"},
-      {key:"obs", label:"Observações", type:"textarea", full:true}
-    ],
-    columns:[
-      {key:"produtoId", label:"Produto", render:(r,db)=>{
-        const p = onlyEmpresa(db.produtos).find(p=>p.id===r.produtoId);
-        return p ? `${p.nome} (${p.tipo})` : "(sem produto)";
-      }},
-      {key:"deposito", label:"Depósito"},
-      {key:"lote", label:"Lote"},
-      {key:"validade", label:"Validade"},
-      {key:"qtd", label:"Qtd"},
-      {key:"unidade", label:"Unid."}
-    ]
-function pageProdutos(){
-  crudPage({
-    entityKey:"produtos",
-    subtitle:"Cadastre defensivos, fertilizantes e adjuvantes com carência e reentrada.",
-    fields:[
-      {key:"tipo", label:"Tipo", type:"text", placeholder:"Herbicida/Fungicida/Inseticida/Fertilizante/Adjuvante"},
-      {key:"nome", label:"Nome comercial", type:"text"},
-      {key:"ingrediente", label:"Ingrediente ativo", type:"text"},
-      {key:"fabricante", label:"Fabricante", type:"text"},
-      {key:"registro", label:"Registro/Mapa", type:"text"},
-
-      // ✅ NOVO (simples)
-      {key:"preco", label:"Preço por unidade (R$)", type:"number", placeholder:"Ex: 45.90"},
-
-      {key:"carenciaDias", label:"Carência (dias)", type:"number"},
-      {key:"reentradaHoras", label:"Reentrada (horas)", type:"number"},
-      {key:"unidade", label:"Unidade padrão", type:"text", placeholder:"L / kg"},
-      {key:"obs", label:"Observações", type:"textarea", full:true}
-    ],
-    columns:[
-      {key:"tipo", label:"Tipo"},
-      {key:"nome", label:"Produto"},
-      {key:"ingrediente", label:"Ingrediente"},
-      {key:"carenciaDias", label:"Carência (d)"},
-      {key:"reentradaHoras", label:"Reentrada (h)"},
-      {key:"unidade", label:"Unid."},
-
-      // ✅ NOVO (sem fmt)
-      {key:"preco", label:"Preço (R$)"}
-    ],
-    helpers:{
-      onDelete:(id,db)=>{
-        db.estoque = (db.estoque||[]).filter(s=>s.produtoId!==id);
-      }
-    }
-  });
-} 
 function pageCombustivel(){
   const db = getDB();
   const fazendas = onlyEmpresa(db.fazendas);
@@ -2182,3 +2153,5 @@ function boot(){
   toast("Agro Pro", "Sistema carregado. Dados salvos no navegador.");
 }
 
+// Inicializa quando a página carregar
+document.addEventListener("DOMContentLoaded", boot);
