@@ -1,6 +1,6 @@
 /* ============================================================
    AGRO PRO — app.js (OFFLINE / MULTIEMPRESA) - COM IA PREDITIVA
-   Versão completa com Inteligência Artificial
+   Versão completa com Inteligência Artificial - CORRIGIDO
    ============================================================ */
 
 // ==================== 1. FUNÇÕES UTILITÁRIAS ====================
@@ -212,14 +212,12 @@ function getDB(){
 }
 
 function setDB(db){ Storage.save(db); }
-function clampStr(s, max=60){
-  s = String(s ?? "");
-  return s.length>max ? s.slice(0,max-1)+"…" : s; // "…" em vez de "_"
-}s21
+
 function getEmpresaId(){
   const db = getDB();
   return db.session?.empresaId || (db.empresas[0]?.id ?? null);
 }
+
 function setEmpresaId(id){
   const db = getDB();
   db.session = db.session || {};
@@ -363,6 +361,7 @@ function clampStr(s, max=60){
   s = String(s ?? "");
   return s.length>max ? s.slice(0,max-1)+"…" : s;
 }
+
 // ==================== 5. MÓDULO DE IA PREDITIVA ====================
 const IA_CONFIG = {
   pesos: {
@@ -2558,6 +2557,7 @@ function pageConfiguracoes(){
     input.click();
   });
 }
+
 // ==================== 10. BOOT ====================
 function boot(){
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
@@ -2566,7 +2566,7 @@ function boot(){
   const titles = {
     dashboard:["Dashboard","Visão geral, indicadores e últimos registros"],
     opscenter:["Ops Center","Alertas, custos por talhão e monitoramento"],
-    ia:["IA Preditiva","Análises e previsões inteligentes com machine learning"], // ✅ ADICIONADO
+    ia:["IA Preditiva","Análises e previsões inteligentes com machine learning"],
     empresas:["Empresas","Cadastre e gerencie organizações (multiempresa)"],
     fazendas:["Fazendas","Unidades produtivas por empresa"],
     talhoes:["Talhões","Área, cultura, safra e custos por talhão"],
@@ -2608,6 +2608,7 @@ function boot(){
   console.log("✅ Título:", t);
 }
 
+// Inicializar o sistema quando o DOM estiver pronto
 document.addEventListener("DOMContentLoaded", boot);
 
 // Diagnóstico adicional (opcional)
@@ -2615,6 +2616,7 @@ setTimeout(() => {
   console.log("📊 Páginas disponíveis:", PAGES.map(p => p.key).join(", "));
   if (typeof pageIAPreditiva === 'function') {
     console.log("✅ Função pageIAPreditiva carregada!");
+  } else {
+    console.error("❌ Função pageIAPreditiva NÃO encontrada!");
   }
 }, 100);
-    
