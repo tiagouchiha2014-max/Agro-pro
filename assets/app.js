@@ -361,19 +361,6 @@ function clampStr(s, max=60){
   s = String(s ?? "");
   return s.length>max ? s.slice(0,max-1)+"…" : s;
 }
-function pageIAPreditiva() {
-  console.log("🚀 Iniciando pageIAPreditiva");
-  console.log("getDB disponível?", typeof getDB);
-  console.log("onlyEmpresa disponível?", typeof onlyEmpresa);
-  
-  const db = getDB();
-  console.log("DB carregado:", db);
-  
-  const talhoes = onlyEmpresa(db.talhoes);
-  console.log("Talhões encontrados:", talhoes);
-  
-  // ... resto do código
-}
 // ==================== 5. MÓDULO DE IA PREDITIVA ====================
 const IA_CONFIG = {
   pesos: {
