@@ -2602,3 +2602,14 @@ function boot(){
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+// DIAGNÓSTICO - Remova depois
+console.log("Páginas disponíveis:", PAGES);
+console.log("Página atual:", document.body.getAttribute("data-page"));
+console.log("Arquivo atual:", window.location.pathname);
+
+// Teste se a função pageIAPreditiva existe
+if (typeof pageIAPreditiva === 'function') {
+    console.log("✅ Função pageIAPreditiva carregada!");
+} else {
+    console.error("❌ Função pageIAPreditiva NÃO encontrada!");
+}
