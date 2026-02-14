@@ -212,12 +212,14 @@ function getDB(){
 }
 
 function setDB(db){ Storage.save(db); }
-
+function clampStr(s, max=60){
+  s = String(s ?? "");
+  return s.length>max ? s.slice(0,max-1)+"…" : s; // "…" em vez de "_"
+}s21
 function getEmpresaId(){
   const db = getDB();
   return db.session?.empresaId || (db.empresas[0]?.id ?? null);
 }
-
 function setEmpresaId(id){
   const db = getDB();
   db.session = db.session || {};
@@ -2556,14 +2558,15 @@ function pageConfiguracoes(){
     input.click();
   });
 }
-
 // ==================== 10. BOOT ====================
 function boot(){
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
+  
+  // Objeto TITLES completo com todas as páginas
   const titles = {
     dashboard:["Dashboard","Visão geral, indicadores e últimos registros"],
     opscenter:["Ops Center","Alertas, custos por talhão e monitoramento"],
-    ia:["IA Preditiva","Análises e previsões inteligentes com machine learning"],
+    ia:["IA Preditiva","Análises e previsões inteligentes com machine learning"], // ✅ ADICIONADO
     empresas:["Empresas","Cadastre e gerencie organizações (multiempresa)"],
     fazendas:["Fazendas","Unidades produtivas por empresa"],
     talhoes:["Talhões","Área, cultura, safra e custos por talhão"],
@@ -2581,6 +2584,7 @@ function boot(){
   const [t, s] = titles[pageKey] || ["Agro Pro",""];
   renderShell(pageKey, t, s);
 
+  // Renderizar a página correta
   if(pageKey==="dashboard") pageDashboard();
   else if(pageKey==="opscenter") pageOpsCenter();
   else if(pageKey==="ia") pageIAPreditiva();
@@ -2598,17 +2602,19 @@ function boot(){
   else if(pageKey==="config") pageConfiguracoes();
 
   toast("Agro Pro IA", "Sistema carregado com Inteligência Artificial!");
+  
+  // Diagnóstico (opcional - pode remover depois)
+  console.log("✅ Página atual:", pageKey);
+  console.log("✅ Título:", t);
 }
 
 document.addEventListener("DOMContentLoaded", boot);
-// DIAGNÓSTICO - Remova depois
-console.log("Páginas disponíveis:", PAGES);
-console.log("Página atual:", document.body.getAttribute("data-page"));
-console.log("Arquivo atual:", window.location.pathname);
 
-// Teste se a função pageIAPreditiva existe
-if (typeof pageIAPreditiva === 'function') {
+// Diagnóstico adicional (opcional)
+setTimeout(() => {
+  console.log("📊 Páginas disponíveis:", PAGES.map(p => p.key).join(", "));
+  if (typeof pageIAPreditiva === 'function') {
     console.log("✅ Função pageIAPreditiva carregada!");
-} else {
-    console.error("❌ Função pageIAPreditiva NÃO encontrada!");
-}
+  }
+}, 100);
+    
