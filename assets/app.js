@@ -249,8 +249,6 @@ const PAGES = [
   { href:"clima.html", label:"Clima/Chuva", key:"clima", icon:"🌧️" },
   { href:"equipe.html", label:"Equipe", key:"equipe", icon:"👷" },
   { href:"maquinas.html", label:"Máquinas", key:"maquinas", icon:"🛠️" },
-  { href:"financeiro.html", label:"Financeiro", key:"financeiro", icon:"💰" },
-  { href:"produtividade.html", label:"Produtividade", key:"produtividade", icon:"🌾" },
   { href:"relatorios.html", label:"Relatórios", key:"relatorios", icon:"🧾" },
   { href:"configuracoes.html", label:"Configurações", key:"config", icon:"⚙️" },
 ];
