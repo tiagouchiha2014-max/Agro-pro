@@ -233,13 +233,7 @@ function setEmpresaId(id){
   db.session.empresaId = id;
   setDB(db);
 }
-// ===== Páginas externas (não renderizadas pelo app principal) =====
-if(page === "financeiro" || page === "produtividade"){
-  // deixa os JS dessas páginas renderizarem
-  // evita o app principal sobrescrever o conteúdo
-  console.log("Página externa detectada:", page);
-  return;
-}
+} 
 
 /* ------------------ UI shell ------------------ */
 const PAGES = [
