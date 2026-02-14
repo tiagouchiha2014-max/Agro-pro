@@ -236,6 +236,13 @@ function setEmpresaId(id){
 
 /* ------------------ UI shell ------------------ */
 const PAGES = [
+// ===== Páginas externas (não renderizadas pelo app principal) =====
+if(page === "financeiro" || page === "produtividade"){
+  // deixa os JS dessas páginas renderizarem
+  // evita o app principal sobrescrever o conteúdo
+  console.log("Página externa detectada:", page);
+  return;
+}
   { href:"index.html", label:"Dashboard", key:"dashboard", icon:"📊" },
   { href:"opscenter.html", label:"Ops Center", key:"opscenter", icon:"🛰️" },
   { href:"empresas.html", label:"Empresas", key:"empresas", icon:"🏢" },
