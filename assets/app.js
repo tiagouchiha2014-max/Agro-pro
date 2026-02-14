@@ -1167,6 +1167,10 @@ function pageProdutos(){
       {key:"ingrediente", label:"Ingrediente ativo", type:"text"},
       {key:"fabricante", label:"Fabricante", type:"text"},
       {key:"registro", label:"Registro/Mapa", type:"text"},
+
+      // ✅ NOVO: preço por unidade (base do cálculo de custos)
+      {key:"preco", label:"Preço por unidade (R$)", type:"number", placeholder:"Ex: 45.90"},
+
       {key:"carenciaDias", label:"Carência (dias)", type:"number"},
       {key:"reentradaHoras", label:"Reentrada (horas)", type:"number"},
       {key:"unidade", label:"Unidade padrão", type:"text", placeholder:"L / kg"},
@@ -1178,9 +1182,20 @@ function pageProdutos(){
       {key:"ingrediente", label:"Ingrediente"},
       {key:"carenciaDias", label:"Carência (d)"},
       {key:"reentradaHoras", label:"Reentrada (h)"},
-      {key:"unidade", label:"Unid."}
+      {key:"unidade", label:"Unid."},
+
+      // ✅ NOVO: mostrar preço na listagem
+      {key:"preco", label:"Preço (R$)", fmt:(v)=> `R$ ${Number(v||0).toFixed(2)}`}
     ],
+
+    // ✅ Normalização: garante que preço/carência/reentrada sejam números
     helpers:{
+      onBeforeSave:(obj)=>{
+        obj.preco = Number(obj.preco || 0);
+        obj.carenciaDias = Number(obj.carenciaDias || 0);
+        obj.reentradaHoras = Number(obj.reentradaHoras || 0);
+        return obj;
+      },
       onDelete:(id,db)=>{
         db.estoque = (db.estoque||[]).filter(s=>s.produtoId!==id);
       }
