@@ -2172,3 +2172,21 @@ function boot(){
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+// ===== Agro Pro Bridge (para páginas extras) =====
+window.AgroPro = window.AgroPro || {};
+try{
+  // Ajuste os nomes se no seu app forem diferentes
+  window.AgroPro.Storage = Storage;
+  window.AgroPro.uid = uid;
+  window.AgroPro.nowISO = (typeof nowISO === "function") ? nowISO : null;
+
+  // db pode estar como let db / const db no topo
+  // Se estiver acessível aqui, expõe:
+  window.AgroPro.getDb = () => db;
+  window.AgroPro.saveDb = () => Storage.save(db);
+
+  // helpers opcionais
+  window.AgroPro.escapeHtml = (typeof escapeHtml === "function") ? escapeHtml : (s)=>String(s??"");
+}catch(e){
+  console.warn("Bridge AgroPro não conseguiu exportar tudo:", e);
+}
