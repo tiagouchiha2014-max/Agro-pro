@@ -361,423 +361,349 @@ function clampStr(s, max=60){
   s = String(s ?? "");
   return s.length>max ? s.slice(0,max-1)+"…" : s;
 }
+// ==================== NOVA PÁGINA IA SIMPLIFICADA ====================
+// Substitua a função pageIAPreditiva() por esta versão
 
-// ==================== 5. MÓDULO DE IA PREDITIVA ====================
-const IA_CONFIG = {
-  pesos: {
-    produtividade: {
-      historico: 0.25,
-      clima: 0.20,
-      solo: 0.15,
-      aplicacoes: 0.25,
-      manejo: 0.15
-    },
-    riscoPragas: {
-      temperatura: 0.20,
-      umidade: 0.25,
-      historico: 0.30,
-      cultura: 0.15,
-      epoca: 0.10
+function pageIAPreditiva() {
+  console.log("🚀 Iniciando IA Simplificada");
+  
+  const db = getDB();
+  const empresaId = getEmpresaId();
+  
+  if (!empresaId) {
+    toast("Atenção", "Selecione uma empresa primeiro");
+    return;
+  }
+
+  const fazendas = onlyEmpresa(db.fazendas);
+  const talhoes = onlyEmpresa(db.talhoes);
+  const produtos = onlyEmpresa(db.produtos);
+  const aplicacoes = onlyEmpresa(db.aplicacoes);
+  const clima = onlyEmpresa(db.clima);
+  const combustivel = onlyEmpresa(db.combustivel);
+
+  setTopActions(`
+    <button class="btn" id="btnAtualizar">🔄 Atualizar Dados</button>
+    <button class="btn primary" id="btnExportar">📊 Exportar Análise</button>
+  `);
+
+  const content = document.getElementById("content");
+
+  // Calcular estatísticas básicas
+  const totalTalhoes = talhoes.length;
+  const totalAplicacoes = aplicacoes.length;
+  const totalArea = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
+  
+  // Calcular custo total
+  const custoAplicacoes = aplicacoes.reduce((s, a) => s + Number(a.custoTotal || 0), 0);
+  const custoCombustivel = combustivel.reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
+  const custoTotal = custoAplicacoes + custoCombustivel;
+  
+  // Calcular média de chuvas
+  const chuvas = clima.filter(c => c.chuvaMm).map(c => Number(c.chuvaMm));
+  const mediaChuva = chuvas.length ? chuvas.reduce((a, b) => a + b, 0) / chuvas.length : 0;
+
+  // Identificar talhões mais ativos
+  const atividadesPorTalhao = {};
+  aplicacoes.forEach(a => {
+    if (a.talhaoId) {
+      atividadesPorTalhao[a.talhaoId] = (atividadesPorTalhao[a.talhaoId] || 0) + 1;
     }
-  },
-  alertas: {
-    produtividadeBaixa: 0.7,
-    riscoPragaAlto: 0.8,
-    janelaIdeal: 3
-  }
-};
+  });
 
-class IAPredictiva {
-  constructor(db) {
-    this.db = db;
-    this.modelos = this.carregarModelos();
-  }
+  const talhoesOrdenados = talhoes
+    .map(t => ({
+      ...t,
+      atividades: atividadesPorTalhao[t.id] || 0,
+      fazenda: findNameById(fazendas, t.fazendaId)
+    }))
+    .sort((a, b) => b.atividades - a.atividades);
 
-  carregarModelos() {
-    let modelos = localStorage.getItem('agro_ia_models');
-    if (modelos) {
-      return JSON.parse(modelos);
-    }
-    return {
-      produtividade: {},
-      riscoPragas: {},
-      treinadoEm: null
-    };
-  }
+  // Identificar produtos mais usados
+  const usoProdutos = {};
+  aplicacoes.forEach(a => {
+    (a.produtos || []).forEach(p => {
+      if (p.produtoNome) {
+        usoProdutos[p.produtoNome] = (usoProdutos[p.produtoNome] || 0) + 1;
+      }
+    });
+  });
 
-  salvarModelos() {
-    localStorage.setItem('agro_ia_models', JSON.stringify(this.modelos));
-  }
+  const produtosOrdenados = Object.entries(usoProdutos)
+    .map(([nome, qtd]) => ({ nome, qtd }))
+    .sort((a, b) => b.qtd - a.qtd)
+    .slice(0, 5);
 
-  // ========== PREVISÃO DE PRODUTIVIDADE ==========
-  preverProdutividade(talhaoId, safra) {
-    const talhao = onlyEmpresa(this.db.talhoes).find(t => t.id === talhaoId);
-    if (!talhao) return null;
+  // Template da página
+  content.innerHTML = `
+    <style>
+      .ia-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+      }
+      .ia-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin: 20px 0;
+      }
+      .stat-box {
+        background: rgba(255,255,255,0.1);
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+      }
+      .stat-value {
+        font-size: 2em;
+        font-weight: bold;
+        margin: 5px 0;
+      }
+      .stat-label {
+        font-size: 0.9em;
+        opacity: 0.9;
+      }
+      .insight-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .insight-title {
+        color: #333;
+        font-weight: bold;
+        margin-bottom: 10px;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 5px;
+      }
+      .badge-success {
+        background: #4CAF50;
+        color: white;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.8em;
+      }
+      .badge-warning {
+        background: #FF9800;
+        color: white;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.8em;
+      }
+    </style>
 
-    const historico = this.coletarDadosHistoricos(talhaoId);
-    const clima = this.coletarDadosClimaticos(talhaoId);
-    const solo = this.analisarSolo(talhao);
-    const aplicacoes = this.analisarAplicacoes(talhaoId);
-    const manejo = this.analisarManejo(talhaoId);
+    <div class="ia-card">
+      <h2 style="margin:0; display: flex; align-items: center; gap: 10px;">
+        <span>🤖</span> Análise Inteligente Agro Pro
+      </h2>
+      <p style="opacity:0.9; margin-top:10px;">
+        Análise em tempo real baseada em ${aplicacoes.length} aplicações, ${clima.length} registros climáticos e ${combustivel.length} abastecimentos.
+      </p>
+      
+      <div class="ia-stats">
+        <div class="stat-box">
+          <div class="stat-value">${totalTalhoes}</div>
+          <div class="stat-label">Talhões</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${totalArea.toFixed(1)} ha</div>
+          <div class="stat-label">Área Total</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${custoTotal.toFixed(2)}</div>
+          <div class="stat-label">Custo Total (R$)</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${mediaChuva.toFixed(1)} mm</div>
+          <div class="stat-label">Média de Chuvas</div>
+        </div>
+      </div>
+    </div>
 
-    const score = 
-      (historico.score * IA_CONFIG.pesos.produtividade.historico) +
-      (clima.score * IA_CONFIG.pesos.produtividade.clima) +
-      (solo.score * IA_CONFIG.pesos.produtividade.solo) +
-      (aplicacoes.score * IA_CONFIG.pesos.produtividade.aplicacoes) +
-      (manejo.score * IA_CONFIG.pesos.produtividade.manejo);
+    <div class="section" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <!-- Coluna Esquerda -->
+      <div>
+        <div class="insight-card">
+          <div class="insight-title">🌱 TOP 5 Talhões Mais Ativos</div>
+          <table style="width:100%;">
+            <thead>
+              <tr>
+                <th>Talhão</th>
+                <th>Fazenda</th>
+                <th>Atividades</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${talhoesOrdenados.slice(0, 5).map(t => `
+                <tr>
+                  <td><b>${escapeHtml(t.nome)}</b></td>
+                  <td>${escapeHtml(t.fazenda)}</td>
+                  <td>${t.atividades}</td>
+                  <td>
+                    <span class="${t.atividades > 0 ? 'badge-success' : 'badge-warning'}">
+                      ${t.atividades > 0 ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
 
-    const prodBase = this.getProdutividadeBase(talhao.cultura);
-    const prodEstimada = prodBase * score;
+        <div class="insight-card">
+          <div class="insight-title">🧪 Produtos Mais Utilizados</div>
+          ${produtosOrdenados.length > 0 ? `
+            <table style="width:100%;">
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Vezes Usado</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${produtosOrdenados.map(p => `
+                  <tr>
+                    <td>${escapeHtml(p.nome)}</td>
+                    <td>${p.qtd}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          ` : '<p>Nenhum produto registrado ainda.</p>'}
+        </div>
+      </div>
 
-    return {
-      talhaoId,
-      talhao: talhao.nome,
-      cultura: talhao.cultura,
-      safra,
-      produtividadeEstimada: prodEstimada,
-      produtividadeMin: prodEstimada * 0.85,
-      produtividadeMax: prodEstimada * 1.15,
-      score: score * 100,
-      confianca: this.calcularConfianca(historico, clima, solo),
-      fatores: {
-        historico: historico.score * 100,
-        clima: clima.score * 100,
-        solo: solo.score * 100,
-        aplicacoes: aplicacoes.score * 100,
-        manejo: manejo.score * 100
-      },
-      alertas: this.gerarAlertasProdutividade(score, prodEstimada)
-    };
-  }
+      <!-- Coluna Direita -->
+      <div>
+        <div class="insight-card">
+          <div class="insight-title">💰 Análise de Custos</div>
+          <table style="width:100%;">
+            <tr>
+              <td><b>Custo com Aplicações:</b></td>
+              <td>R$ ${custoAplicacoes.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td><b>Custo com Combustível:</b></td>
+              <td>R$ ${custoCombustivel.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td><b>Custo por Hectare:</b></td>
+              <td>R$ ${totalArea > 0 ? (custoTotal / totalArea).toFixed(2) : '0.00'}</td>
+            </tr>
+            <tr>
+              <td><b>Custo por Aplicação:</b></td>
+              <td>R$ ${aplicacoes.length > 0 ? (custoAplicacoes / aplicacoes.length).toFixed(2) : '0.00'}</td>
+            </tr>
+          </table>
+        </div>
 
-  coletarDadosHistoricos(talhaoId) {
-    const aplicacoes = onlyEmpresa(this.db.aplicacoes || [])
-      .filter(a => a.talhaoId === talhaoId);
+        <div class="insight-card">
+          <div class="insight-title">🌤️ Resumo Climático</div>
+          <table style="width:100%;">
+            <tr>
+              <td><b>Total de Registros:</b></td>
+              <td>${clima.length}</td>
+            </tr>
+            <tr>
+              <td><b>Chuva Acumulada:</b></td>
+              <td>${chuvas.reduce((a, b) => a + b, 0).toFixed(1)} mm</td>
+            </tr>
+            <tr>
+              <td><b>Média por Registro:</b></td>
+              <td>${mediaChuva.toFixed(1)} mm</td>
+            </tr>
+            <tr>
+              <td><b>Maior Chuva:</b></td>
+              <td>${Math.max(...chuvas, 0).toFixed(1)} mm</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="insight-card">
+          <div class="insight-title">🎯 Recomendações Rápidas</div>
+          <ul style="margin:0; padding-left:20px;">
+            ${gerarRecomendacoes(talhoes, aplicacoes, clima)}
+          </ul>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Função para gerar recomendações baseadas em dados
+  function gerarRecomendacoes(talhoes, aplicacoes, clima) {
+    const recomendacoes = [];
     
-    if (aplicacoes.length === 0) {
-      return { score: 0.7, dados: [] };
-    }
-
-    return { score: 0.8, dados: aplicacoes };
-  }
-
-  coletarDadosClimaticos(talhaoId) {
-    const clima = onlyEmpresa(this.db.clima || [])
-      .filter(c => c.talhaoId === talhaoId)
-      .slice(-30);
-
-    if (clima.length === 0) {
-      return { score: 0.75, dados: [] };
-    }
-
-    const tempMedia = clima.reduce((s, c) => s + (c.tempMax || 0), 0) / clima.length;
-    const chuvaTotal = clima.reduce((s, c) => s + (c.chuvaMm || 0), 0);
-    
-    let score = 0.8;
-    if (chuvaTotal > 200) score -= 0.1;
-    if (tempMedia > 35) score -= 0.1;
-    
-    return { score, dados: clima };
-  }
-
-  analisarSolo(talhao) {
-    const solo = talhao.solo?.toLowerCase() || '';
-    let score = 0.8;
-
-    if (solo.includes('argiloso')) score += 0.1;
-    if (solo.includes('arenoso')) score -= 0.1;
-    if (solo.includes('organico')) score += 0.15;
-
-    return { score: Math.min(1, Math.max(0.5, score)) };
-  }
-
-  analisarAplicacoes(talhaoId) {
-    const apps = onlyEmpresa(this.db.aplicacoes || [])
-      .filter(a => a.talhaoId === talhaoId);
-
-    let score = 0.75;
-    if (apps.length > 5) score += 0.1;
-    if (apps.length > 10) score += 0.1;
-
-    return { score: Math.min(1, score) };
-  }
-
-  analisarManejo(talhaoId) {
-    return { score: 0.8 };
-  }
-
-  getProdutividadeBase(cultura) {
-    const bases = {
-      'soja': 60,
-      'milho': 120,
-      'algodao': 180,
-      'cafe': 30,
-      'cana': 80
-    };
-    return bases[cultura?.toLowerCase()] || 50;
-  }
-
-  calcularConfianca(historico, clima, solo) {
-    let confianca = 0.7;
-    if (historico.dados?.length > 10) confianca += 0.2;
-    if (clima.dados?.length > 20) confianca += 0.1;
-    return Math.min(1, confianca) * 100;
-  }
-
-  gerarAlertasProdutividade(score, prodEstimada) {
-    const alertas = [];
-    if (score < 0.6) {
-      alertas.push({
-        tipo: 'critico',
-        mensagem: `Produtividade estimada baixa (${prodEstimada.toFixed(1)} sc/ha)`,
-        acao: 'Revisar manejo e nutrição do talhão'
-      });
-    } else if (score < 0.8) {
-      alertas.push({
-        tipo: 'atencao',
-        mensagem: 'Produtividade abaixo do potencial',
-        acao: 'Aplicar fertilizantes e monitorar pragas'
-      });
-    }
-    return alertas;
-  }
-
-  // ========== PREVISÃO DE PRAGAS ==========
-  preverRiscoPragas(talhaoId) {
-    const talhao = onlyEmpresa(this.db.talhoes).find(t => t.id === talhaoId);
-    if (!talhao) return null;
-
-    const climaAtual = this.getClimaAtual(talhaoId);
-    const historicoPragas = this.getHistoricoPragas(talhaoId);
-    const epoca = this.getEpocaAtual();
-
-    const pragasAlvo = this.getPragasPorCultura(talhao.cultura);
-
-    const riscos = pragasAlvo.map(praga => {
-      const prob = this.calcularProbabilidadePraga(praga, {
-        temperatura: climaAtual.tempMedia,
-        umidade: climaAtual.umidadeMedia,
-        historico: historicoPragas[praga.nome] || 0,
-        cultura: talhao.cultura,
-        epoca: epoca
-      });
-
-      return {
-        praga: praga.nome,
-        nomeCientifico: praga.cientifico,
-        probabilidade: prob * 100,
-        nivelRisco: this.classificarRisco(prob),
-        recomendacao: this.gerarRecomendacaoPraga(praga, prob, climaAtual),
-        produtosRecomendados: this.recomendarProdutos(praga, prob),
-        janelaAcao: this.calcularJanelaAcao(prob, climaAtual)
-      };
+    // Verificar talhões sem aplicação recente
+    const ultimasAplicacoes = {};
+    aplicacoes.forEach(a => {
+      if (a.talhaoId && (!ultimasAplicacoes[a.talhaoId] || a.data > ultimasAplicacoes[a.talhaoId])) {
+        ultimasAplicacoes[a.talhaoId] = a.data;
+      }
     });
 
-    const riscoGeral = riscos.reduce((acc, r) => acc + r.probabilidade, 0) / riscos.length;
+    const hoje = new Date();
+    talhoes.forEach(t => {
+      if (!ultimasAplicacoes[t.id]) {
+        recomendacoes.push(`🌱 Talhão ${t.nome} nunca recebeu aplicação`);
+      } else {
+        const dataAplicacao = new Date(ultimasAplicacoes[t.id]);
+        const diasDiff = Math.floor((hoje - dataAplicacao) / (1000 * 60 * 60 * 24));
+        if (diasDiff > 30) {
+          recomendacoes.push(`⚠️ Talhão ${t.nome} está há ${diasDiff} dias sem aplicação`);
+        }
+      }
+    });
 
-    return {
-      talhaoId,
-      talhao: talhao.nome,
+    // Verificar chuvas recentes
+    const chuvasRecentes = clima.filter(c => {
+      const dataRegistro = new Date(c.data);
+      const diasDiff = Math.floor((hoje - dataRegistro) / (1000 * 60 * 60 * 24));
+      return diasDiff <= 7 && c.chuvaMm > 0;
+    });
+
+    if (chuvasRecentes.length > 0) {
+      const totalChuvaRecente = chuvasRecentes.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
+      recomendacoes.push(`🌧️ ${totalChuvaRecente.toFixed(1)}mm de chuva nos últimos 7 dias`);
+    }
+
+    if (recomendacoes.length === 0) {
+      recomendacoes.push('✅ Todas as operações estão em dia');
+      recomendacoes.push('📊 Continue monitorando seus talhões');
+    }
+
+    return recomendacoes.map(r => `<li>${escapeHtml(r)}</li>`).join('');
+  }
+
+  // Event listeners
+  document.getElementById("btnAtualizar").addEventListener("click", () => {
+    toast("Atualizando", "Recarregando dados...");
+    setTimeout(() => location.reload(), 500);
+  });
+
+  document.getElementById("btnExportar").addEventListener("click", () => {
+    const relatorio = {
       data: nowISO(),
-      riscoGeral,
-      nivelGeral: this.classificarRisco(riscoGeral / 100),
-      pragas: riscos.sort((a, b) => b.probabilidade - a.probabilidade),
-      condicoesAtuais: climaAtual,
-      alertas: this.gerarAlertasPragas(riscos)
+      estatisticas: {
+        totalTalhoes,
+        totalArea,
+        custoTotal,
+        mediaChuva,
+        totalAplicacoes
+      },
+      talhoesAtivos: talhoesOrdenados.slice(0, 5),
+      produtosMaisUsados: produtosOrdenados
     };
-  }
-
-  getClimaAtual(talhaoId) {
-    const ultimoClima = onlyEmpresa(this.db.clima || [])
-      .filter(c => !talhaoId || c.talhaoId === talhaoId)
-      .sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0];
-
-    return {
-      tempMedia: ultimoClima?.tempMax ? (ultimoClima.tempMax + (ultimoClima.tempMin || 20)) / 2 : 25,
-      umidadeMedia: ultimoClima?.umidade || 70,
-      vento: ultimoClima?.vento || 10,
-      chuva: ultimoClima?.chuvaMm || 0
-    };
-  }
-
-  getHistoricoPragas(talhaoId) {
-    return {};
-  }
-
-  getEpocaAtual() {
-    const mes = new Date().getMonth() + 1;
-    if (mes >= 10 && mes <= 3) return 'verao';
-    if (mes >= 4 && mes <= 9) return 'inverno';
-    return 'entressafra';
-  }
-
-  getPragasPorCultura(cultura) {
-    const pragas = {
-      'soja': [
-        { nome: 'Ferrugem Asiática', cientifico: 'Phakopsora pachyrhizi' },
-        { nome: 'Lagarta-da-soja', cientifico: 'Anticarsia gemmatalis' },
-        { nome: 'Percevejo-marrom', cientifico: 'Euschistus heros' }
-      ],
-      'milho': [
-        { nome: 'Lagarta-do-cartucho', cientifico: 'Spodoptera frugiperda' },
-        { nome: 'Cigarrinha-do-milho', cientifico: 'Dalbulus maidis' }
-      ],
-      'algodao': [
-        { nome: 'Bicudo-do-algodoeiro', cientifico: 'Anthonomus grandis' }
-      ]
-    };
-    return pragas[cultura?.toLowerCase()] || pragas['soja'];
-  }
-
-  calcularProbabilidadePraga(praga, fatores) {
-    let prob = 0.3;
-
-    if (fatores.temperatura > 25 && fatores.temperatura < 30) prob += 0.2;
-    if (fatores.umidade > 70) prob += 0.2;
-    if (fatores.historico > 0.5) prob += 0.3;
-    if (fatores.epoca === 'verao') prob += 0.1;
-
-    return Math.min(0.95, prob);
-  }
-
-  classificarRisco(prob) {
-    if (prob >= 0.8) return 'ALTO';
-    if (prob >= 0.5) return 'MÉDIO';
-    return 'BAIXO';
-  }
-
-  gerarRecomendacaoPraga(praga, prob, clima) {
-    if (prob >= 0.8) {
-      return `Aplicar fungicida/inseticida URGENTE para controle de ${praga.nome}`;
-    }
-    if (prob >= 0.5) {
-      return `Monitorar ${praga.nome} diariamente. Preparar para aplicação preventiva.`;
-    }
-    return `Condições desfavoráveis para ${praga.nome}. Manter monitoramento.`;
-  }
-
-  recomendarProdutos(praga, prob) {
-    const produtos = onlyEmpresa(this.db.produtos || [])
-      .filter(p => p.tipo?.toLowerCase().includes('fungicida') || 
-                   p.tipo?.toLowerCase().includes('inseticida'))
-      .slice(0, 3);
     
-    return produtos.map(p => p.nome);
-  }
+    downloadText(`analise-ia-${nowISO()}.json`, JSON.stringify(relatorio, null, 2));
+    toast("Exportado", "Análise salva com sucesso!");
+  });
 
-  calcularJanelaAcao(prob, clima) {
-    if (prob < 0.5) return 7;
-    if (prob < 0.8) return 3;
-    return 1;
-  }
-
-  gerarAlertasPragas(riscos) {
-    return riscos
-      .filter(r => r.probabilidade >= 80)
-      .map(r => ({
-        tipo: 'urgente',
-        mensagem: `Risco ALTO de ${r.praga}`,
-        acao: r.recomendacao
-      }));
-  }
-
-  // ========== JANELA IDEAL DE APLICAÇÃO ==========
-  previsaoClima7Dias(talhaoId) {
-    const previsao = [];
-    for (let i = 0; i < 7; i++) {
-      const data = new Date();
-      data.setDate(data.getDate() + i);
-      const dataStr = data.toISOString().split('T')[0];
-      
-      previsao.push({
-        data: dataStr,
-        temperatura: 25 + Math.random() * 10,
-        umidade: 60 + Math.random() * 20,
-        vento: 5 + Math.random() * 15,
-        chuva: Math.random() * 10
-      });
-    }
-    return previsao;
-  }
-
-  verificarCondicoesAplicacao(dia) {
-    return {
-      ventoIdeal: dia.vento >= 3 && dia.vento <= 10,
-      temperaturaIdeal: dia.temperatura >= 15 && dia.temperatura <= 30,
-      umidadeIdeal: dia.umidade >= 50 && dia.umidade <= 80,
-      semChuva: dia.chuva < 5
-    };
-  }
-
-  calcularJanelaIdeal(talhaoId, produtoId = null) {
-    const clima = this.previsaoClima7Dias(talhaoId);
-    const pragas = this.preverRiscoPragas(talhaoId);
-    const talhao = onlyEmpresa(this.db.talhoes).find(t => t.id === talhaoId);
-
-    const janelas = clima.map(dia => {
-      const condicoesIdeais = this.verificarCondicoesAplicacao(dia);
-      const riscoPraga = pragas?.pragas[0]?.probabilidade || 0;
-      
-      let score = 0;
-      if (condicoesIdeais.ventoIdeal) score += 25;
-      if (condicoesIdeais.temperaturaIdeal) score += 25;
-      if (condicoesIdeais.umidadeIdeal) score += 25;
-      if (condicoesIdeais.semChuva) score += 25;
-      
-      score += riscoPraga * 0.3;
-      
-      return {
-        data: dia.data,
-        diaSemana: this.getDiaSemana(dia.data),
-        condicoes: condicoesIdeais,
-        score: Math.min(100, score),
-        vento: dia.vento,
-        temperatura: dia.temperatura,
-        umidade: dia.umidade,
-        chuva: dia.chuva
-      };
-    });
-
-    const melhoresDias = janelas
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
-
-    return {
-      talhaoId,
-      talhao: talhao?.nome,
-      dataAnalise: nowISO(),
-      melhoresDias,
-      recomendacao: this.gerarRecomendacaoJanela(melhoresDias[0]),
-      alertas: this.gerarAlertasJanela(janelas)
-    };
-  }
-
-  getDiaSemana(dataStr) {
-    const dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const data = new Date(dataStr + 'T12:00:00');
-    return dias[data.getDay()];
-  }
-
-  gerarRecomendacaoJanela(melhorDia) {
-    if (!melhorDia) return 'Sem dados suficientes';
-    
-    return `Melhor dia para aplicação: ${melhorDia.data} (${melhorDia.diaSemana}) - 
-            Vento: ${melhorDia.vento.toFixed(1)} km/h, 
-            Temp: ${melhorDia.temperatura.toFixed(1)}°C`;
-  }
-
-  gerarAlertasJanela(janelas) {
-    return janelas
-      .filter(j => j.score < 50)
-      .map(j => ({
-        tipo: 'alerta',
-        mensagem: `Condições desfavoráveis em ${j.data}`,
-        detalhe: 'Evitar aplicação neste dia'
-      }));
-  }
+  console.log("✅ IA Simplificada carregada com sucesso!");
 }
-
 // ==================== 6. FUNÇÕES CRUD ====================
 function crudPage({
   entityKey, subtitle,
