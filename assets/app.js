@@ -1,9 +1,15 @@
 /* ============================================================
-   AGRO PRO — app.js (OFFLINE / MULTIEMPRESA) - COM IA PREDITIVA
-   Versão completa com Inteligência Artificial - CORRIGIDO
+   AGRO PRO — app.js (OFFLINE / MULTIEMPRESA) - CORRIGIDO
+   Atualização:
+   + OPS CENTER (monitoramento)
+   + Combustível com BAIXA automática no estoque de Diesel (saldo pode ficar negativo)
+   + Aplicações com:
+       - Área aplicada (ha) por operação
+       - 10 linhas de produtos
+       - BAIXA automática no estoque (saldo pode ficar negativo)
+       - Custo por talhão (R$) e Custo/ha (acumulado tipo “chuva por talhão”)
    ============================================================ */
 
-// ==================== 1. FUNÇÕES UTILITÁRIAS ====================
 const Storage = {
   key: "agro_pro_v1",
   load(){
@@ -76,7 +82,7 @@ function toCSV(rows){
   return [header, ...lines].join("\n");
 }
 
-// ==================== 2. DB / SEED ====================
+/* ------------------ DB / Seed ------------------ */
 function seedDB(){
   const empresaId = uid("emp");
   const fazendaId = uid("faz");
@@ -116,6 +122,7 @@ function seedDB(){
       { id: prd2, empresaId, tipo:"Fungicida", nome:"Triazol+Estrobilurina", ingrediente:"Mistura", fabricante:"Genérico", registro:"", carenciaDias: 14, reentradaHoras: 24, unidade:"L", preco: 89.90, obs:"" }
     ],
 
+    // Estoque de insumos (pode ficar negativo)
     estoque: [
       { id: uid("stk"), empresaId, produtoId: prd1, deposito:"Central", lote:"", validade:"", qtd: 1200, unidade:"L", obs:"Demo" },
       { id: uid("stk"), empresaId, produtoId: prd2, deposito:"Central", lote:"", validade:"", qtd: 240, unidade:"L", obs:"Demo" }
@@ -129,14 +136,15 @@ function seedDB(){
       { id: maqId, empresaId, nome:"Pulverizador Autopropelido", placa:"", horimetro: 0, capacidadeL: 3000, bicos:"", obs:"" }
     ],
 
+    // Clima: histórico (acumulado por talhão é soma dos lançamentos)
     clima: [
       { id: uid("cli"), empresaId, data: nowISO(), fazendaId, talhaoId, chuvaMm: 12, tempMin: 22, tempMax: 33, umidade: 68, vento: 9, obs:"Chuva isolada à tarde" }
     ],
 
+    // Combustível: estoque de diesel (litros) + abastecimentos (baixa automática)
     dieselEstoque: [
       { id: uid("dsl"), empresaId, deposito:"Tanque Principal", litros: 5000, obs:"Saldo pode ficar negativo (furo de estoque)" }
     ],
-    
     combustivel: [
       {
         id: uid("cmb"),
@@ -156,6 +164,7 @@ function seedDB(){
       }
     ],
 
+    // Aplicações: com área aplicada (ha), produtos e custoTotal (R$) opcional
     aplicacoes: [
       {
         id: uid("apl"),
@@ -163,7 +172,7 @@ function seedDB(){
         data: nowISO(),
         fazendaId,
         talhaoId,
-        areaHaAplicada: 25,
+        areaHaAplicada: 25, // <= área aplicada nessa operação
         cultura:"Soja",
         alvo:"Plantas daninhas",
         operacao:"Pulverização terrestre",
@@ -177,7 +186,7 @@ function seedDB(){
         produtos: [
           { produtoNome:"Glifosato 480", dosePorHa: 2.0, unidade:"L/ha" }
         ],
-        custoTotal: 0,
+        custoTotal: 0, // R$ (opcional)
         obs:"Aplicação padrão (demo)."
       }
     ]
@@ -191,6 +200,7 @@ function getDB(){
   let db = Storage.load();
   if(!db) db = seedDB();
 
+  // migração leve para versões antigas
   db.meta = db.meta || { createdAt: new Date().toISOString(), version: 2 };
   db.session = db.session || {};
   db.empresas = db.empresas || [];
@@ -205,19 +215,18 @@ function getDB(){
   db.combustivel = db.combustivel || [];
   db.dieselEstoque = db.dieselEstoque || [{ id: uid("dsl"), empresaId: (db.session.empresaId||db.empresas?.[0]?.id||uid("emp")), deposito:"Tanque Principal", litros: 0, obs:"" }];
 
+  // normaliza: talhaoId vazio vira "" (para clima)
   db.clima.forEach(c=>{ if(c.talhaoId==null) c.talhaoId=""; });
 
   Storage.save(db);
   return db;
 }
-
 function setDB(db){ Storage.save(db); }
 
 function getEmpresaId(){
   const db = getDB();
   return db.session?.empresaId || (db.empresas[0]?.id ?? null);
 }
-
 function setEmpresaId(id){
   const db = getDB();
   db.session = db.session || {};
@@ -225,11 +234,11 @@ function setEmpresaId(id){
   setDB(db);
 }
 
-// ==================== 3. UI SHELL ====================
+
+/* ------------------ UI shell ------------------ */
 const PAGES = [
   { href:"index.html", label:"Dashboard", key:"dashboard", icon:"📊" },
   { href:"opscenter.html", label:"Ops Center", key:"opscenter", icon:"🛰️" },
-  { href:"ia-preditiva.html", label:"IA Preditiva", key:"ia", icon:"🤖" },
   { href:"empresas.html", label:"Empresas", key:"empresas", icon:"🏢" },
   { href:"fazendas.html", label:"Fazendas", key:"fazendas", icon:"🌾" },
   { href:"talhoes.html", label:"Talhões", key:"talhoes", icon:"🧭" },
@@ -266,7 +275,7 @@ function renderShell(pageKey, title, subtitle){
           <div class="logo"></div>
           <div>
             <h1>Agro Pro</h1>
-            <p>Controle Agronômico • Multiempresa • IA</p>
+            <p>Controle Agronômico • Multiempresa</p>
           </div>
         </div>
 
@@ -282,9 +291,16 @@ function renderShell(pageKey, title, subtitle){
             <button class="btn primary" id="btnNovaEmpresa">+ Nova empresa</button>
             <button class="btn danger" id="btnResetDemo">Reset demo</button>
           </div>
+          <div style="margin-top:10px" class="help">
+            Trocar a empresa muda todos os dados exibidos (fazendas, talhões, estoque, aplicações).
+          </div>
         </div>
 
         <nav class="nav">${nav}</nav>
+
+        <div style="margin-top:14px" class="help">
+          <b>Dica:</b> Para gerar PDF, vá em Relatórios e use <b>Imprimir</b>.
+        </div>
       </aside>
 
       <main class="main">
@@ -334,7 +350,7 @@ function renderShell(pageKey, title, subtitle){
   });
 }
 
-// ==================== 4. HELPERS ====================
+/* ------------------ Helpers ------------------ */
 function onlyEmpresa(arr){
   const eid = getEmpresaId();
   return (arr||[]).filter(x => x.empresaId === eid);
@@ -345,11 +361,13 @@ function findNameById(arr, id, fallback="-"){
   return o ? (o.nome ?? fallback) : fallback;
 }
 
+// ===== Formatação BR (vírgula / moeda) =====
 const FMT_BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 function brl(v){ return FMT_BRL.format(Number(v || 0)); }
 function num(v, casas=2){
   return new Intl.NumberFormat("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas }).format(Number(v || 0));
 }
+function kmoney(n){ return num(n, 2); }
 function kbrl(n){ return brl(n); }
 
 function setTopActions(html){
@@ -361,350 +379,350 @@ function clampStr(s, max=60){
   s = String(s ?? "");
   return s.length>max ? s.slice(0,max-1)+"…" : s;
 }
-// ==================== NOVA PÁGINA IA SIMPLIFICADA ====================
-// Substitua a função pageIAPreditiva() por esta versão
 
-function pageIAPreditiva() {
-  console.log("🚀 Iniciando IA Simplificada");
-  
-  const db = getDB();
-  const empresaId = getEmpresaId();
-  
-  if (!empresaId) {
-    toast("Atenção", "Selecione uma empresa primeiro");
-    return;
+function safeNumber(v){ return Number(v||0); }
+
+function talhaoArea(db, talhaoId){
+  const t = onlyEmpresa(db.talhoes).find(x=>x.id===talhaoId);
+  return t ? Number(t.areaHa||0) : 0;
+}
+
+/* ------------------ Estoque: baixas automáticas ------------------ */
+function ensureStockRow(db, produtoId, deposito="Central", unidade=""){
+  db.estoque = db.estoque || [];
+  let row = db.estoque.find(s => s.empresaId===getEmpresaId() && s.produtoId===produtoId && (s.deposito||"Central")===deposito);
+  if(!row){
+    row = { id: uid("stk"), empresaId: getEmpresaId(), produtoId, deposito, lote:"", validade:"", qtd:0, unidade, obs:"(auto)" };
+    db.estoque.push(row);
+  }
+  return row;
+}
+
+function baixaEstoqueProdutoPorNome(db, produtoNome, quantidade, unidadePreferida=""){
+  if(!produtoNome || !quantidade) return { ok:false, msg:"Sem produto/quantidade" };
+  const prod = onlyEmpresa(db.produtos).find(p => String(p.nome||"").trim().toLowerCase() === String(produtoNome).trim().toLowerCase());
+  if(!prod){
+    // Não encontrado no cadastro → não dá para linkar em produtoId.
+    return { ok:false, msg:`Produto não cadastrado: ${produtoNome}` };
+  }
+  const unidade = unidadePreferida || prod.unidade || "";
+  const row = ensureStockRow(db, prod.id, "Central", unidade);
+  row.unidade = row.unidade || unidade;
+  row.qtd = Number(row.qtd||0) - Number(quantidade||0); // pode ficar negativo
+  return { ok:true, msg:`Baixa estoque: ${produtoNome} -${num(quantidade,2)} ${row.unidade||""}` };
+}
+
+/* ------------------ Diesel: baixa automática ------------------ */
+function ensureDieselTank(db, deposito="Tanque Principal"){
+  db.dieselEstoque = db.dieselEstoque || [];
+  let t = db.dieselEstoque.find(x => x.empresaId===getEmpresaId() && (x.deposito||"Tanque Principal")===deposito);
+  if(!t){
+    t = { id: uid("dsl"), empresaId: getEmpresaId(), deposito, litros: 0, obs:"(auto)" };
+    db.dieselEstoque.push(t);
+  }
+  return t;
+}
+function baixaDiesel(db, deposito, litros){
+  const tank = ensureDieselTank(db, deposito || "Tanque Principal");
+  tank.litros = Number(tank.litros||0) - Number(litros||0); // pode ficar negativo
+  return tank;
+}
+
+/* ------------------ Custo por talhão (acumulado tipo chuva) ------------------ */
+function calcCustosPorTalhao(db){
+  const talhoes = onlyEmpresa(db.talhoes);
+  const fazendas = onlyEmpresa(db.fazendas);
+
+  const apl = onlyEmpresa(db.aplicacoes||[]);
+  const cmb = onlyEmpresa(db.combustivel||[]);
+
+  const map = new Map(); // talhaoId -> {custo: number, last: string, ops: number}
+  for(const t of talhoes){
+    map.set(t.id, { custo:0, last:"", ops:0 });
   }
 
+  for(const a of apl){
+    if(!a.talhaoId) continue;
+    const rec = map.get(a.talhaoId) || { custo:0, last:"", ops:0 };
+    rec.custo += Number(a.custoTotal||0);
+    rec.ops += 1;
+    if((a.data||"") > (rec.last||"")) rec.last = a.data||"";
+    map.set(a.talhaoId, rec);
+  }
+
+  for(const c of cmb){
+    if(!c.talhaoId) continue;
+    const rec = map.get(c.talhaoId) || { custo:0, last:"", ops:0 };
+    rec.custo += Number(c.litros||0) * Number(c.precoLitro||0);
+    rec.ops += 1;
+    if((c.data||"") > (rec.last||"")) rec.last = c.data||"";
+    map.set(c.talhaoId, rec);
+  }
+
+  return talhoes.map(t=>{
+    const info = map.get(t.id) || { custo:0, last:"", ops:0 };
+    const area = Number(t.areaHa||0) || 0;
+    const custoHa = area>0 ? (info.custo/area) : 0;
+    return {
+      talhaoId: t.id,
+      talhao: t.nome,
+      fazenda: findNameById(fazendas, t.fazendaId),
+      areaHa: area,
+      custoTotal: info.custo,
+      custoHa,
+      last: info.last || "-",
+      ops: info.ops || 0
+    };
+  }).sort((a,b)=>b.custoTotal - a.custoTotal);
+}
+
+/* ------------------ Pages ------------------ */
+function pageDashboard(){
+  const db = getDB();
   const fazendas = onlyEmpresa(db.fazendas);
   const talhoes = onlyEmpresa(db.talhoes);
   const produtos = onlyEmpresa(db.produtos);
   const aplicacoes = onlyEmpresa(db.aplicacoes);
   const clima = onlyEmpresa(db.clima);
-  const combustivel = onlyEmpresa(db.combustivel);
 
-  setTopActions(`
-    <button class="btn" id="btnAtualizar">🔄 Atualizar Dados</button>
-    <button class="btn primary" id="btnExportar">📊 Exportar Análise</button>
-  `);
+  const hoje = nowISO();
+  const aplHoje = aplicacoes.filter(a=>a.data===hoje).length;
+  const chuvaHoje = clima.filter(c=>c.data===hoje).reduce((s,c)=>s+Number(c.chuvaMm||0),0);
 
   const content = document.getElementById("content");
-
-  // Calcular estatísticas básicas
-  const totalTalhoes = talhoes.length;
-  const totalAplicacoes = aplicacoes.length;
-  const totalArea = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
-  
-  // Calcular custo total
-  const custoAplicacoes = aplicacoes.reduce((s, a) => s + Number(a.custoTotal || 0), 0);
-  const custoCombustivel = combustivel.reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
-  const custoTotal = custoAplicacoes + custoCombustivel;
-  
-  // Calcular média de chuvas
-  const chuvas = clima.filter(c => c.chuvaMm).map(c => Number(c.chuvaMm));
-  const mediaChuva = chuvas.length ? chuvas.reduce((a, b) => a + b, 0) / chuvas.length : 0;
-
-  // Identificar talhões mais ativos
-  const atividadesPorTalhao = {};
-  aplicacoes.forEach(a => {
-    if (a.talhaoId) {
-      atividadesPorTalhao[a.talhaoId] = (atividadesPorTalhao[a.talhaoId] || 0) + 1;
-    }
-  });
-
-  const talhoesOrdenados = talhoes
-    .map(t => ({
-      ...t,
-      atividades: atividadesPorTalhao[t.id] || 0,
-      fazenda: findNameById(fazendas, t.fazendaId)
-    }))
-    .sort((a, b) => b.atividades - a.atividades);
-
-  // Identificar produtos mais usados
-  const usoProdutos = {};
-  aplicacoes.forEach(a => {
-    (a.produtos || []).forEach(p => {
-      if (p.produtoNome) {
-        usoProdutos[p.produtoNome] = (usoProdutos[p.produtoNome] || 0) + 1;
-      }
-    });
-  });
-
-  const produtosOrdenados = Object.entries(usoProdutos)
-    .map(([nome, qtd]) => ({ nome, qtd }))
-    .sort((a, b) => b.qtd - a.qtd)
-    .slice(0, 5);
-
-  // Template da página
   content.innerHTML = `
-    <style>
-      .ia-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-      }
-      .ia-stats {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
-        margin: 20px 0;
-      }
-      .stat-box {
-        background: rgba(255,255,255,0.1);
-        padding: 15px;
-        border-radius: 8px;
-        text-align: center;
-      }
-      .stat-value {
-        font-size: 2em;
-        font-weight: bold;
-        margin: 5px 0;
-      }
-      .stat-label {
-        font-size: 0.9em;
-        opacity: 0.9;
-      }
-      .insight-card {
-        background: white;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 15px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      }
-      .insight-title {
-        color: #333;
-        font-weight: bold;
-        margin-bottom: 10px;
-        border-bottom: 2px solid #667eea;
-        padding-bottom: 5px;
-      }
-      .badge-success {
-        background: #4CAF50;
-        color: white;
-        padding: 3px 8px;
-        border-radius: 12px;
-        font-size: 0.8em;
-      }
-      .badge-warning {
-        background: #FF9800;
-        color: white;
-        padding: 3px 8px;
-        border-radius: 12px;
-        font-size: 0.8em;
-      }
-    </style>
-
-    <div class="ia-card">
-      <h2 style="margin:0; display: flex; align-items: center; gap: 10px;">
-        <span>🤖</span> Análise Inteligente Agro Pro
-      </h2>
-      <p style="opacity:0.9; margin-top:10px;">
-        Análise em tempo real baseada em ${aplicacoes.length} aplicações, ${clima.length} registros climáticos e ${combustivel.length} abastecimentos.
-      </p>
-      
-      <div class="ia-stats">
-        <div class="stat-box">
-          <div class="stat-value">${totalTalhoes}</div>
-          <div class="stat-label">Talhões</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${totalArea.toFixed(1)} ha</div>
-          <div class="stat-label">Área Total</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${custoTotal.toFixed(2)}</div>
-          <div class="stat-label">Custo Total (R$)</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${mediaChuva.toFixed(1)} mm</div>
-          <div class="stat-label">Média de Chuvas</div>
-        </div>
+    <div class="kpi">
+      <div class="card">
+        <h3>Fazendas</h3>
+        <div class="big">${fazendas.length}</div>
+        <div class="sub">Cadastradas na empresa</div>
+      </div>
+      <div class="card">
+        <h3>Talhões</h3>
+        <div class="big">${talhoes.length}</div>
+        <div class="sub">Área total: ${num(talhoes.reduce((s,t)=>s+Number(t.areaHa||0),0),1)} ha</div>
+      </div>
+      <div class="card">
+        <h3>Aplicações (hoje)</h3>
+        <div class="big">${aplHoje}</div>
+        <div class="sub"><span class="pill info">Operações registradas</span></div>
+      </div>
+      <div class="card">
+        <h3>Chuva (hoje)</h3>
+        <div class="big">${num(chuvaHoje,1)} mm</div>
+        <div class="sub"><span class="pill ok">Lançamento manual</span></div>
       </div>
     </div>
 
-    <div class="section" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-      <!-- Coluna Esquerda -->
-      <div>
-        <div class="insight-card">
-          <div class="insight-title">🌱 TOP 5 Talhões Mais Ativos</div>
-          <table style="width:100%;">
-            <thead>
-              <tr>
-                <th>Talhão</th>
-                <th>Fazenda</th>
-                <th>Atividades</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${talhoesOrdenados.slice(0, 5).map(t => `
-                <tr>
-                  <td><b>${escapeHtml(t.nome)}</b></td>
-                  <td>${escapeHtml(t.fazenda)}</td>
-                  <td>${t.atividades}</td>
-                  <td>
-                    <span class="${t.atividades > 0 ? 'badge-success' : 'badge-warning'}">
-                      ${t.atividades > 0 ? 'Ativo' : 'Inativo'}
-                    </span>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+    <div class="section">
+      <div class="card">
+        <h3>Checklist Agro (operacional)</h3>
+        <div class="help">
+          • Conferir estoque e validade<br/>
+          • Registrar chuva/vento do dia<br/>
+          • Validar talhão/cultura/safra<br/>
+          • Registrar aplicação (produto, dose, área aplicada)<br/>
+          • Registrar abastecimentos e diesel<br/>
+          • Emitir relatório e assinar (PDF)
         </div>
-
-        <div class="insight-card">
-          <div class="insight-title">🧪 Produtos Mais Utilizados</div>
-          ${produtosOrdenados.length > 0 ? `
-            <table style="width:100%;">
-              <thead>
-                <tr>
-                  <th>Produto</th>
-                  <th>Vezes Usado</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${produtosOrdenados.map(p => `
-                  <tr>
-                    <td>${escapeHtml(p.nome)}</td>
-                    <td>${p.qtd}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          ` : '<p>Nenhum produto registrado ainda.</p>'}
-        </div>
+        <div class="hr"></div>
+        <span class="pill warn">Pronto para auditoria</span>
+        <span class="pill info">Rastreabilidade</span>
       </div>
 
-      <!-- Coluna Direita -->
-      <div>
-        <div class="insight-card">
-          <div class="insight-title">💰 Análise de Custos</div>
-          <table style="width:100%;">
+      <div class="tableWrap">
+        <table>
+          <thead>
             <tr>
-              <td><b>Custo com Aplicações:</b></td>
-              <td>R$ ${custoAplicacoes.toFixed(2)}</td>
+              <th>Últimas aplicações</th>
+              <th>Data</th>
+              <th>Fazenda</th>
+              <th>Talhão</th>
+              <th>Área aplicada</th>
+              <th>Alvo</th>
             </tr>
-            <tr>
-              <td><b>Custo com Combustível:</b></td>
-              <td>R$ ${custoCombustivel.toFixed(2)}</td>
-            </tr>
-            <tr>
-              <td><b>Custo por Hectare:</b></td>
-              <td>R$ ${totalArea > 0 ? (custoTotal / totalArea).toFixed(2) : '0.00'}</td>
-            </tr>
-            <tr>
-              <td><b>Custo por Aplicação:</b></td>
-              <td>R$ ${aplicacoes.length > 0 ? (custoAplicacoes / aplicacoes.length).toFixed(2) : '0.00'}</td>
-            </tr>
-          </table>
-        </div>
+          </thead>
+          <tbody>
+            ${
+              (aplicacoes.slice().reverse().slice(0,8)).map(a=>`
+                <tr>
+                  <td><b>${escapeHtml((a.produtos?.[0]?.produtoNome)||"—")}</b></td>
+                  <td>${escapeHtml(a.data||"")}</td>
+                  <td>${escapeHtml(findNameById(fazendas, a.fazendaId))}</td>
+                  <td>${escapeHtml(findNameById(talhoes, a.talhaoId))}</td>
+                  <td>${escapeHtml(num(a.areaHaAplicada||0,1))} ha</td>
+                  <td>${escapeHtml(a.alvo||"")}</td>
+                </tr>
+              `).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-        <div class="insight-card">
-          <div class="insight-title">🌤️ Resumo Climático</div>
-          <table style="width:100%;">
-            <tr>
-              <td><b>Total de Registros:</b></td>
-              <td>${clima.length}</td>
-            </tr>
-            <tr>
-              <td><b>Chuva Acumulada:</b></td>
-              <td>${chuvas.reduce((a, b) => a + b, 0).toFixed(1)} mm</td>
-            </tr>
-            <tr>
-              <td><b>Média por Registro:</b></td>
-              <td>${mediaChuva.toFixed(1)} mm</td>
-            </tr>
-            <tr>
-              <td><b>Maior Chuva:</b></td>
-              <td>${Math.max(...chuvas, 0).toFixed(1)} mm</td>
-            </tr>
-          </table>
-        </div>
+    <div class="section">
+      <div class="card">
+        <h3>Produtos cadastrados</h3>
+        <div class="big">${produtos.length}</div>
+        <div class="sub">Defensivos, fertilizantes, adjuvantes</div>
+        <div class="hr"></div>
+        <a class="btn primary" href="produtos.html">Gerenciar produtos</a>
+      </div>
 
-        <div class="insight-card">
-          <div class="insight-title">🎯 Recomendações Rápidas</div>
-          <ul style="margin:0; padding-left:20px;">
-            ${gerarRecomendacoes(talhoes, aplicacoes, clima)}
-          </ul>
+      <div class="card">
+        <h3>Ops Center</h3>
+        <div class="help">
+          Monitoramento de alertas:<br/>
+          • Estoque negativo • Diesel baixo/negativo • Custos por talhão<br/>
         </div>
+        <div class="hr"></div>
+        <a class="btn primary" href="opscenter.html">Abrir Ops Center</a>
       </div>
     </div>
   `;
+}
 
-  // Função para gerar recomendações baseadas em dados
-  function gerarRecomendacoes(talhoes, aplicacoes, clima) {
-    const recomendacoes = [];
-    
-    // Verificar talhões sem aplicação recente
-    const ultimasAplicacoes = {};
-    aplicacoes.forEach(a => {
-      if (a.talhaoId && (!ultimasAplicacoes[a.talhaoId] || a.data > ultimasAplicacoes[a.talhaoId])) {
-        ultimasAplicacoes[a.talhaoId] = a.data;
-      }
-    });
+function pageOpsCenter(){
+  const db = getDB();
+  const fazendas = onlyEmpresa(db.fazendas);
+  const talhoes = onlyEmpresa(db.talhoes);
 
-    const hoje = new Date();
-    talhoes.forEach(t => {
-      if (!ultimasAplicacoes[t.id]) {
-        recomendacoes.push(`🌱 Talhão ${t.nome} nunca recebeu aplicação`);
-      } else {
-        const dataAplicacao = new Date(ultimasAplicacoes[t.id]);
-        const diasDiff = Math.floor((hoje - dataAplicacao) / (1000 * 60 * 60 * 24));
-        if (diasDiff > 30) {
-          recomendacoes.push(`⚠️ Talhão ${t.nome} está há ${diasDiff} dias sem aplicação`);
-        }
-      }
-    });
+  const estoque = onlyEmpresa(db.estoque||[]);
+  const diesel = onlyEmpresa(db.dieselEstoque||[]);
+  const aplicacoes = onlyEmpresa(db.aplicacoes||[]);
+  const combustivel = onlyEmpresa(db.combustivel||[]);
+  const clima = onlyEmpresa(db.clima||[]);
 
-    // Verificar chuvas recentes
-    const chuvasRecentes = clima.filter(c => {
-      const dataRegistro = new Date(c.data);
-      const diasDiff = Math.floor((hoje - dataRegistro) / (1000 * 60 * 60 * 24));
-      return diasDiff <= 7 && c.chuvaMm > 0;
-    });
+  const negEstoque = estoque.filter(s => Number(s.qtd||0) < 0);
+  const negDiesel = diesel.filter(d => Number(d.litros||0) < 0);
+  const custoTal = calcCustosPorTalhao(db);
 
-    if (chuvasRecentes.length > 0) {
-      const totalChuvaRecente = chuvasRecentes.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
-      recomendacoes.push(`🌧️ ${totalChuvaRecente.toFixed(1)}mm de chuva nos últimos 7 dias`);
-    }
-
-    if (recomendacoes.length === 0) {
-      recomendacoes.push('✅ Todas as operações estão em dia');
-      recomendacoes.push('📊 Continue monitorando seus talhões');
-    }
-
-    return recomendacoes.map(r => `<li>${escapeHtml(r)}</li>`).join('');
+  // chuva 7d por talhão (simples)
+  const chuvaTal = new Map();
+  const hoje = new Date();
+  const start = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0,0,0,0);
+  const min = new Date(start.getTime() - 6*24*60*60*1000);
+  function parseISO(d){
+    const [y,m,day] = String(d||"").split("-").map(Number);
+    if(!y||!m||!day) return null;
+    return new Date(y, m-1, day, 0,0,0,0);
+  }
+  for(const r of clima){
+    if(!r.talhaoId) continue;
+    const dt = parseISO(r.data);
+    if(!dt) continue;
+    if(dt < min || dt > start) continue;
+    chuvaTal.set(r.talhaoId, (chuvaTal.get(r.talhaoId)||0) + Number(r.chuvaMm||0));
   }
 
-  // Event listeners
-  document.getElementById("btnAtualizar").addEventListener("click", () => {
-    toast("Atualizando", "Recarregando dados...");
-    setTimeout(() => location.reload(), 500);
-  });
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="kpi">
+      <div class="card">
+        <h3>Alertas de estoque</h3>
+        <div class="big">${negEstoque.length}</div>
+        <div class="sub">${negEstoque.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
+      </div>
+      <div class="card">
+        <h3>Alertas de diesel</h3>
+        <div class="big">${negDiesel.length}</div>
+        <div class="sub">${negDiesel.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
+      </div>
+      <div class="card">
+        <h3>Aplicações</h3>
+        <div class="big">${aplicacoes.length}</div>
+        <div class="sub"><span class="pill info">Rastreabilidade</span></div>
+      </div>
+      <div class="card">
+        <h3>Abastecimentos</h3>
+        <div class="big">${combustivel.length}</div>
+        <div class="sub"><span class="pill info">Controle diesel</span></div>
+      </div>
+    </div>
 
-  document.getElementById("btnExportar").addEventListener("click", () => {
-    const relatorio = {
-      data: nowISO(),
-      estatisticas: {
-        totalTalhoes,
-        totalArea,
-        custoTotal,
-        mediaChuva,
-        totalAplicacoes
-      },
-      talhoesAtivos: talhoesOrdenados.slice(0, 5),
-      produtosMaisUsados: produtosOrdenados
-    };
-    
-    downloadText(`analise-ia-${nowISO()}.json`, JSON.stringify(relatorio, null, 2));
-    toast("Exportado", "Análise salva com sucesso!");
-  });
+    <div class="section">
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr><th colspan="6">Estoque com saldo negativo</th></tr>
+            <tr>
+              <th>Produto</th><th>Depósito</th><th>Qtd</th><th>Unid.</th><th>Obs</th><th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              negEstoque.map(s=>{
+                const p = onlyEmpresa(db.produtos).find(p=>p.id===s.produtoId);
+                const nome = p ? p.nome : "(sem produto)";
+                return `
+                  <tr>
+                    <td><b>${escapeHtml(nome)}</b></td>
+                    <td>${escapeHtml(s.deposito||"")}</td>
+                    <td><b>${escapeHtml(num(s.qtd||0,2))}</b></td>
+                    <td>${escapeHtml(s.unidade||"")}</td>
+                    <td>${escapeHtml(clampStr(s.obs||"",50))}</td>
+                    <td><a class="btn" href="estoque.html">Ajustar</a></td>
+                  </tr>
+                `;
+              }).join("") || `<tr><td colspan="6">Nenhum.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
 
-  console.log("✅ IA Simplificada carregada com sucesso!");
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr><th colspan="5">Diesel (tanques)</th></tr>
+            <tr>
+              <th>Depósito</th><th>Litros</th><th>Status</th><th>Obs</th><th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              diesel.map(d=>`
+                <tr>
+                  <td><b>${escapeHtml(d.deposito||"")}</b></td>
+                  <td><b>${escapeHtml(num(d.litros||0,1))}</b></td>
+                  <td>${Number(d.litros||0)<0?'<span class="pill bad">Negativo</span>':'<span class="pill ok">OK</span>'}</td>
+                  <td>${escapeHtml(clampStr(d.obs||"",50))}</td>
+                  <td><a class="btn" href="combustivel.html">Ver</a></td>
+                </tr>
+              `).join("") || `<tr><td colspan="5">Sem tanques.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tableWrap" style="margin-top:12px">
+      <table>
+        <thead>
+          <tr><th colspan="7">Custo por talhão (acumulado)</th></tr>
+          <tr>
+            <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Custo total</th><th>Custo/ha</th><th>Chuva 7d</th><th>Último</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${
+            custoTal.map(r=>`
+              <tr>
+                <td><b>${escapeHtml(r.talhao)}</b></td>
+                <td>${escapeHtml(r.fazenda)}</td>
+                <td>${escapeHtml(num(r.areaHa||0,1))}</td>
+                <td><b>${escapeHtml(kbrl(r.custoTotal||0))}</b></td>
+                <td>${escapeHtml(kbrl(r.custoHa||0))}</td>
+                <td>${escapeHtml(num(chuvaTal.get(r.talhaoId)||0,1))} mm</td>
+                <td>${escapeHtml(r.last||"-")}</td>
+              </tr>
+            `).join("") || `<tr><td colspan="7">Sem talhões.</td></tr>`
+          }
+        </tbody>
+      </table>
+    </div>
+  `;
 }
-// ==================== 6. FUNÇÕES CRUD ====================
+
 function crudPage({
   entityKey, subtitle,
   fields,
@@ -838,572 +856,7 @@ function crudPage({
   renderTable();
 }
 
-// ==================== 7. PÁGINAS ESPECÍFICAS ====================
-function pageDashboard(){
-  const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const produtos = onlyEmpresa(db.produtos);
-  const aplicacoes = onlyEmpresa(db.aplicacoes);
-  const clima = onlyEmpresa(db.clima);
-
-  const hoje = nowISO();
-  const aplHoje = aplicacoes.filter(a=>a.data===hoje).length;
-  const chuvaHoje = clima.filter(c=>c.data===hoje).reduce((s,c)=>s+Number(c.chuvaMm||0),0);
-
-  const content = document.getElementById("content");
-  content.innerHTML = `
-    <div class="kpi">
-      <div class="card">
-        <h3>Fazendas</h3>
-        <div class="big">${fazendas.length}</div>
-        <div class="sub">Cadastradas na empresa</div>
-      </div>
-      <div class="card">
-        <h3>Talhões</h3>
-        <div class="big">${talhoes.length}</div>
-        <div class="sub">Área total: ${num(talhoes.reduce((s,t)=>s+Number(t.areaHa||0),0),1)} ha</div>
-      </div>
-      <div class="card">
-        <h3>Aplicações (hoje)</h3>
-        <div class="big">${aplHoje}</div>
-        <div class="sub"><span class="pill info">Operações registradas</span></div>
-      </div>
-      <div class="card">
-        <h3>Chuva (hoje)</h3>
-        <div class="big">${num(chuvaHoje,1)} mm</div>
-        <div class="sub"><span class="pill ok">Lançamento manual</span></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="card">
-        <h3>Checklist Agro (operacional)</h3>
-        <div class="help">
-          • Conferir estoque e validade<br/>
-          • Registrar chuva/vento do dia<br/>
-          • Validar talhão/cultura/safra<br/>
-          • Registrar aplicação (produto, dose, área aplicada)<br/>
-          • Registrar abastecimentos e diesel<br/>
-          • Emitir relatório e assinar (PDF)
-        </div>
-        <div class="hr"></div>
-        <span class="pill warn">Pronto para auditoria</span>
-        <span class="pill info">Rastreabilidade</span>
-      </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Últimas aplicações</th>
-              <th>Data</th>
-              <th>Fazenda</th>
-              <th>Talhão</th>
-              <th>Área aplicada</th>
-              <th>Alvo</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              (aplicacoes.slice().reverse().slice(0,8)).map(a=>`
-                <tr>
-                  <td><b>${escapeHtml((a.produtos?.[0]?.produtoNome)||"—")}</b></td>
-                  <td>${escapeHtml(a.data||"")}</td>
-                  <td>${escapeHtml(findNameById(fazendas, a.fazendaId))}</td>
-                  <td>${escapeHtml(findNameById(talhoes, a.talhaoId))}</td>
-                  <td>${escapeHtml(num(a.areaHaAplicada||0,1))} ha</td>
-                  <td>${escapeHtml(a.alvo||"")}</td>
-                </tr>
-              `).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="card">
-        <h3>Produtos cadastrados</h3>
-        <div class="big">${produtos.length}</div>
-        <div class="sub">Defensivos, fertilizantes, adjuvantes</div>
-        <div class="hr"></div>
-        <a class="btn primary" href="produtos.html">Gerenciar produtos</a>
-      </div>
-
-      <div class="card">
-        <h3>IA Preditiva</h3>
-        <div class="help">
-          Previsão de produtividade • Risco de pragas • Janela ideal de aplicação
-        </div>
-        <div class="hr"></div>
-        <a class="btn primary" href="ia-preditiva.html">Abrir IA</a>
-      </div>
-    </div>
-  `;
-}
-
-function pageOpsCenter(){
-  const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-
-  const estoque = onlyEmpresa(db.estoque||[]);
-  const diesel = onlyEmpresa(db.dieselEstoque||[]);
-  const aplicacoes = onlyEmpresa(db.aplicacoes||[]);
-  const combustivel = onlyEmpresa(db.combustivel||[]);
-  const clima = onlyEmpresa(db.clima||[]);
-
-  const negEstoque = estoque.filter(s => Number(s.qtd||0) < 0);
-  const negDiesel = diesel.filter(d => Number(d.litros||0) < 0);
-  const custoTal = calcCustosPorTalhao(db);
-
-  const chuvaTal = new Map();
-  const hoje = new Date();
-  const start = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0,0,0,0);
-  const min = new Date(start.getTime() - 6*24*60*60*1000);
-  function parseISO(d){
-    const [y,m,day] = String(d||"").split("-").map(Number);
-    if(!y||!m||!day) return null;
-    return new Date(y, m-1, day, 0,0,0,0);
-  }
-  for(const r of clima){
-    if(!r.talhaoId) continue;
-    const dt = parseISO(r.data);
-    if(!dt) continue;
-    if(dt < min || dt > start) continue;
-    chuvaTal.set(r.talhaoId, (chuvaTal.get(r.talhaoId)||0) + Number(r.chuvaMm||0));
-  }
-
-  const content = document.getElementById("content");
-  content.innerHTML = `
-    <div class="kpi">
-      <div class="card">
-        <h3>Alertas de estoque</h3>
-        <div class="big">${negEstoque.length}</div>
-        <div class="sub">${negEstoque.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
-      </div>
-      <div class="card">
-        <h3>Alertas de diesel</h3>
-        <div class="big">${negDiesel.length}</div>
-        <div class="sub">${negDiesel.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
-      </div>
-      <div class="card">
-        <h3>Aplicações</h3>
-        <div class="big">${aplicacoes.length}</div>
-        <div class="sub"><span class="pill info">Rastreabilidade</span></div>
-      </div>
-      <div class="card">
-        <h3>Abastecimentos</h3>
-        <div class="big">${combustivel.length}</div>
-        <div class="sub"><span class="pill info">Controle diesel</span></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr><th colspan="6">Estoque com saldo negativo</th></tr>
-            <tr>
-              <th>Produto</th><th>Depósito</th><th>Qtd</th><th>Unid.</th><th>Obs</th><th>Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              negEstoque.map(s=>{
-                const p = onlyEmpresa(db.produtos).find(p=>p.id===s.produtoId);
-                const nome = p ? p.nome : "(sem produto)";
-                return `
-                  <tr>
-                    <td><b>${escapeHtml(nome)}</b></td>
-                    <td>${escapeHtml(s.deposito||"")}</td>
-                    <td><b>${escapeHtml(num(s.qtd||0,2))}</b></td>
-                    <td>${escapeHtml(s.unidade||"")}</td>
-                    <td>${escapeHtml(clampStr(s.obs||"",50))}</td>
-                    <td><a class="btn" href="estoque.html">Ajustar</a></td>
-                  </tr>
-                `;
-              }).join("") || `<tr><td colspan="6">Nenhum.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr><th colspan="5">Diesel (tanques)</th></tr>
-            <tr>
-              <th>Depósito</th><th>Litros</th><th>Status</th><th>Obs</th><th>Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              diesel.map(d=>`
-                <tr>
-                  <td><b>${escapeHtml(d.deposito||"")}</b></td>
-                  <td><b>${escapeHtml(num(d.litros||0,1))}</b></td>
-                  <td>${Number(d.litros||0)<0?'<span class="pill bad">Negativo</span>':'<span class="pill ok">OK</span>'}</td>
-                  <td>${escapeHtml(clampStr(d.obs||"",50))}</td>
-                  <td><a class="btn" href="combustivel.html">Ver</a></td>
-                </tr>
-              `).join("") || `<tr><td colspan="5">Sem tanques.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="tableWrap" style="margin-top:12px">
-      <table>
-        <thead>
-          <tr><th colspan="7">Custo por talhão (acumulado)</th></tr>
-          <tr>
-            <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Custo total</th><th>Custo/ha</th><th>Chuva 7d</th><th>Último</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${
-            custoTal.map(r=>`
-              <tr>
-                <td><b>${escapeHtml(r.talhao)}</b></td>
-                <td>${escapeHtml(r.fazenda)}</td>
-                <td>${escapeHtml(num(r.areaHa||0,1))}</td>
-                <td><b>${escapeHtml(kbrl(r.custoTotal||0))}</b></td>
-                <td>${escapeHtml(kbrl(r.custoHa||0))}</td>
-                <td>${escapeHtml(num(chuvaTal.get(r.talhaoId)||0,1))} mm</td>
-                <td>${escapeHtml(r.last||"-")}</td>
-              </tr>
-            `).join("") || `<tr><td colspan="7">Sem talhões.</td></tr>`
-          }
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function calcCustosPorTalhao(db){
-  const talhoes = onlyEmpresa(db.talhoes);
-  const fazendas = onlyEmpresa(db.fazendas);
-
-  const apl = onlyEmpresa(db.aplicacoes||[]);
-  const cmb = onlyEmpresa(db.combustivel||[]);
-
-  const map = new Map();
-  for(const t of talhoes){
-    map.set(t.id, { custo:0, last:"", ops:0 });
-  }
-
-  for(const a of apl){
-    if(!a.talhaoId) continue;
-    const rec = map.get(a.talhaoId) || { custo:0, last:"", ops:0 };
-    rec.custo += Number(a.custoTotal||0);
-    rec.ops += 1;
-    if((a.data||"") > (rec.last||"")) rec.last = a.data||"";
-    map.set(a.talhaoId, rec);
-  }
-
-  for(const c of cmb){
-    if(!c.talhaoId) continue;
-    const rec = map.get(c.talhaoId) || { custo:0, last:"", ops:0 };
-    rec.custo += Number(c.litros||0) * Number(c.precoLitro||0);
-    rec.ops += 1;
-    if((c.data||"") > (rec.last||"")) rec.last = c.data||"";
-    map.set(c.talhaoId, rec);
-  }
-
-  return talhoes.map(t=>{
-    const info = map.get(t.id) || { custo:0, last:"", ops:0 };
-    const area = Number(t.areaHa||0) || 0;
-    const custoHa = area>0 ? (info.custo/area) : 0;
-    return {
-      talhaoId: t.id,
-      talhao: t.nome,
-      fazenda: findNameById(fazendas, t.fazendaId),
-      areaHa: area,
-      custoTotal: info.custo,
-      custoHa,
-      last: info.last || "-",
-      ops: info.ops || 0
-    };
-  }).sort((a,b)=>b.custoTotal - a.custoTotal);
-}
-
-// ==================== 8. NOVA PÁGINA: IA PREDITIVA ====================
-function pageIAPreditiva() {
-  const db = getDB();
-  const talhoes = onlyEmpresa(db.talhoes);
-  const ia = new IAPredictiva(db);
-
-  setTopActions(`
-    <button class="btn" id="btnTreinarIA">Treinar Modelos</button>
-    <button class="btn primary" id="btnExportarIA">Exportar Previsões</button>
-  `);
-
-  const content = document.getElementById("content");
-  
-  const talhaoOptions = talhoes.map(t => 
-    `<option value="${t.id}">${escapeHtml(t.nome)} (${t.cultura || 'Sem cultura'})</option>`
-  ).join('');
-
-  content.innerHTML = `
-    <style>
-      .progress-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
-      .alert.critico { background: #ffebee; border-left: 4px solid #f44336; padding: 10px; margin: 10px 0; border-radius: 8px; }
-      .alert.atencao { background: #fff3e0; border-left: 4px solid #FF9800; padding: 10px; margin: 10px 0; border-radius: 8px; }
-      .alert.urgente { background: #ffebee; border-left: 4px solid #d32f2f; padding: 10px; margin: 10px 0; border-radius: 8px; }
-      .loading { text-align: center; padding: 40px; color: rgba(255,255,255,0.5); }
-    </style>
-
-    <div class="kpi">
-      <div class="card">
-        <h3>Talhões Analisados</h3>
-        <div class="big">${talhoes.length}</div>
-        <div class="sub">Com IA preditiva</div>
-      </div>
-      <div class="card">
-        <h3>Risco Médio</h3>
-        <div class="big" id="riscoMedio">0%</div>
-        <div class="sub"><span class="pill" id="riscoLabel">Calculando...</span></div>
-      </div>
-      <div class="card">
-        <h3>Alertas Ativos</h3>
-        <div class="big" id="totalAlertas">0</div>
-        <div class="sub"><span class="pill warn">Monitorar</span></div>
-      </div>
-      <div class="card">
-        <h3>Confiança IA</h3>
-        <div class="big" id="confiancaIA">75%</div>
-        <div class="sub">Modelo treinado</div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="card">
-        <h3>🔮 Análise Preditiva por Talhão</h3>
-        <div class="help">
-          Selecione um talhão para ver previsões de produtividade, riscos de pragas e janelas ideais de aplicação.
-        </div>
-        <div class="hr"></div>
-
-        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-          <select class="select" id="selectTalhao" style="flex: 1;">
-            <option value="">Selecione um talhão...</option>
-            ${talhaoOptions}
-          </select>
-          <button class="btn primary" id="btnAnalisar">Analisar</button>
-        </div>
-
-        <div id="resultadoIA" style="display: none;">
-          <div class="hr"></div>
-          
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0;">
-            <div class="card" style="background: rgba(76, 175, 80, 0.1);">
-              <h4>🌱 Produtividade</h4>
-              <div class="big" id="prodValue">0 sc/ha</div>
-              <div class="sub" id="prodRange">0 - 0 sc/ha</div>
-              <div class="progress-bar" style="margin-top: 10px;">
-                <div id="prodProgress" style="width: 0%; height: 6px; background: #4CAF50; border-radius: 3px;"></div>
-              </div>
-            </div>
-
-            <div class="card" style="background: rgba(255, 152, 0, 0.1);">
-              <h4>⚠️ Risco de Pragas</h4>
-              <div class="big" id="riscoValue">0%</div>
-              <div class="sub" id="riscoNivel">Nível BAIXO</div>
-              <div class="progress-bar" style="margin-top: 10px;">
-                <div id="riscoProgress" style="width: 0%; height: 6px; background: #FF9800; border-radius: 3px;"></div>
-              </div>
-            </div>
-
-            <div class="card" style="background: rgba(33, 150, 243, 0.1);">
-              <h4>📅 Janela Ideal</h4>
-              <div class="big" id="janelaData">--/--</div>
-              <div class="sub" id="janelaInfo">Aguardando análise</div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h4>📊 Fatores de Influência</h4>
-            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 15px;">
-              <div><small>Histórico</small><div class="big" id="fatorHistorico">0%</div></div>
-              <div><small>Clima</small><div class="big" id="fatorClima">0%</div></div>
-              <div><small>Solo</small><div class="big" id="fatorSolo">0%</div></div>
-              <div><small>Aplicações</small><div class="big" id="fatorAplicacoes">0%</div></div>
-              <div><small>Manejo</small><div class="big" id="fatorManejo">0%</div></div>
-            </div>
-          </div>
-
-          <div class="card" id="alertasContainer" style="margin-top: 15px;">
-            <h4>🚨 Alertas e Recomendações</h4>
-            <div id="listaAlertas"></div>
-          </div>
-
-          <div class="card" style="margin-top: 15px;">
-            <h4>🐛 Análise de Pragas</h4>
-            <div class="tableWrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Praga</th>
-                    <th>Probabilidade</th>
-                    <th>Nível</th>
-                    <th>Recomendação</th>
-                    <th>Janela (dias)</th>
-                  </tr>
-                </thead>
-                <tbody id="tabelaPragas"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="card" style="margin-top: 15px;">
-            <h4>🌟 Melhores Dias para Aplicação</h4>
-            <div class="tableWrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Data</th>
-                    <th>Dia</th>
-                    <th>Score</th>
-                    <th>Vento</th>
-                    <th>Temperatura</th>
-                    <th>Umidade</th>
-                    <th>Chuva</th>
-                  </tr>
-                </thead>
-                <tbody id="tabelaJanelas"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.getElementById("btnAnalisar").addEventListener("click", () => {
-    const talhaoId = document.getElementById("selectTalhao").value;
-    if (!talhaoId) {
-      toast("Atenção", "Selecione um talhão primeiro");
-      return;
-    }
-
-    document.getElementById("resultadoIA").style.display = "block";
-    
-    const loadingDiv = document.createElement("div");
-    loadingDiv.className = "loading";
-    loadingDiv.id = "loadingIA";
-    loadingDiv.innerHTML = "Analisando dados com IA...";
-    document.getElementById("resultadoIA").prepend(loadingDiv);
-
-    setTimeout(() => {
-      const prod = ia.preverProdutividade(talhaoId, "2025/26");
-      const risco = ia.preverRiscoPragas(talhaoId);
-      const janela = ia.calcularJanelaIdeal(talhaoId);
-
-      document.getElementById("loadingIA")?.remove();
-      atualizarResultados(prod, risco, janela);
-    }, 800);
-  });
-
-  function atualizarResultados(prod, risco, janela) {
-    if (prod) {
-      document.getElementById("prodValue").textContent = 
-        `${prod.produtividadeEstimada.toFixed(1)} sc/ha`;
-      document.getElementById("prodRange").textContent = 
-        `${prod.produtividadeMin.toFixed(1)} - ${prod.produtividadeMax.toFixed(1)} sc/ha`;
-      document.getElementById("prodProgress").style.width = `${prod.score}%`;
-
-      document.getElementById("fatorHistorico").textContent = `${prod.fatores.historico.toFixed(0)}%`;
-      document.getElementById("fatorClima").textContent = `${prod.fatores.clima.toFixed(0)}%`;
-      document.getElementById("fatorSolo").textContent = `${prod.fatores.solo.toFixed(0)}%`;
-      document.getElementById("fatorAplicacoes").textContent = `${prod.fatores.aplicacoes.toFixed(0)}%`;
-      document.getElementById("fatorManejo").textContent = `${prod.fatores.manejo.toFixed(0)}%`;
-    }
-
-    if (risco) {
-      document.getElementById("riscoValue").textContent = `${risco.riscoGeral.toFixed(1)}%`;
-      document.getElementById("riscoNivel").textContent = `Nível ${risco.nivelGeral}`;
-      document.getElementById("riscoProgress").style.width = `${risco.riscoGeral}%`;
-      
-      const riscoLabel = document.getElementById("riscoNivel");
-      if (risco.nivelGeral === 'ALTO') {
-        riscoLabel.style.color = '#f44336';
-      } else if (risco.nivelGeral === 'MÉDIO') {
-        riscoLabel.style.color = '#FF9800';
-      } else {
-        riscoLabel.style.color = '#4CAF50';
-      }
-
-      const tbody = document.getElementById("tabelaPragas");
-      tbody.innerHTML = risco.pragas.map(p => `
-        <tr>
-          <td><b>${p.praga}</b><br><small>${p.nomeCientifico}</small></td>
-          <td><b>${p.probabilidade.toFixed(1)}%</b></td>
-          <td><span class="pill ${p.nivelRisco === 'ALTO' ? 'bad' : p.nivelRisco === 'MÉDIO' ? 'warn' : 'ok'}">${p.nivelRisco}</span></td>
-          <td>${p.recomendacao}</td>
-          <td>${p.janelaAcao} dias</td>
-        </tr>
-      `).join('');
-    }
-
-    if (janela && janela.melhoresDias.length > 0) {
-      const melhor = janela.melhoresDias[0];
-      document.getElementById("janelaData").textContent = melhor.data;
-      document.getElementById("janelaInfo").textContent = 
-        `Score: ${melhor.score.toFixed(0)}% - Vento: ${melhor.vento.toFixed(1)} km/h`;
-
-      const tbody = document.getElementById("tabelaJanelas");
-      tbody.innerHTML = janela.melhoresDias.map(d => `
-        <tr>
-          <td><b>${d.data}</b></td>
-          <td>${d.diaSemana}</td>
-          <td><b>${d.score.toFixed(0)}%</b></td>
-          <td>${d.vento.toFixed(1)} km/h</td>
-          <td>${d.temperatura.toFixed(1)}°C</td>
-          <td>${d.umidade.toFixed(0)}%</td>
-          <td>${d.chuva.toFixed(1)} mm</td>
-        </tr>
-      `).join('');
-    }
-
-    const alertas = [];
-    if (prod?.alertas) alertas.push(...prod.alertas);
-    if (risco?.alertas) alertas.push(...risco.alertas);
-
-    const container = document.getElementById("listaAlertas");
-    if (alertas.length > 0) {
-      container.innerHTML = alertas.map(a => `
-        <div class="alert ${a.tipo}" style="margin: 10px 0;">
-          <b>${a.mensagem}</b><br>
-          <small>${a.acao || ''}</small>
-        </div>
-      `).join('');
-    } else {
-      container.innerHTML = '<p>Nenhum alerta no momento. Condições favoráveis.</p>';
-    }
-
-    document.getElementById("totalAlertas").textContent = alertas.length;
-  }
-
-  document.getElementById("btnTreinarIA")?.addEventListener("click", () => {
-    ia.salvarModelos();
-    toast("IA Treinada", "Modelos atualizados com sucesso!");
-    document.getElementById("confiancaIA").textContent = "85%";
-  });
-
-  document.getElementById("btnExportarIA")?.addEventListener("click", () => {
-    const relatorio = {
-      data: nowISO(),
-      talhoes: talhoes.map(t => ia.preverProdutividade(t.id, "2025/26"))
-    };
-    downloadText(`ia-preditiva-${nowISO()}.json`, JSON.stringify(relatorio, null, 2));
-    toast("Exportado", "Relatório da IA baixado");
-  });
-}
-
-// ==================== 9. DEMAIS PÁGINAS ====================
+/* --------- Páginas específicas --------- */
 function pageEmpresas(){
   const db = getDB();
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
@@ -1412,7 +865,7 @@ function pageEmpresas(){
     <div class="section">
       <div class="card">
         <h3>Cadastrar empresa</h3>
-        <div class="help">Multiempresa: cada empresa tem seus próprios dados.</div>
+        <div class="help">Multiempresa: cada empresa tem seus próprios talhões, estoque, aplicações e combustível.</div>
         <div class="hr"></div>
         <form id="frm" class="formGrid">
           <div><small>Nome</small><input class="input" name="nome" required></div>
@@ -1473,7 +926,7 @@ function pageEmpresas(){
       alert("Você precisa ter pelo menos 1 empresa.");
       return;
     }
-    if(!confirm("Excluir empresa e TODOS os dados dela?")) return;
+    if(!confirm("Excluir empresa e TODOS os dados dela (fazendas, talhões, aplicações etc.)?")) return;
 
     db2.empresas = db2.empresas.filter(x=>x.id!==id);
     const wipe = key => db2[key] = (db2[key]||[]).filter(x=>x.empresaId!==id);
@@ -1540,14 +993,17 @@ function pageFazendas(){
 function pageProdutos(){
   crudPage({
     entityKey:"produtos",
-    subtitle:"Cadastre defensivos, fertilizantes e adjuvantes.",
+    subtitle:"Cadastre defensivos, fertilizantes e adjuvantes com carência e reentrada.",
     fields:[
-      {key:"tipo", label:"Tipo", type:"text", placeholder:"Herbicida/Fungicida..."},
+      {key:"tipo", label:"Tipo", type:"text", placeholder:"Herbicida/Fungicida/Inseticida/Fertilizante/Adjuvante"},
       {key:"nome", label:"Nome comercial", type:"text"},
       {key:"ingrediente", label:"Ingrediente ativo", type:"text"},
       {key:"fabricante", label:"Fabricante", type:"text"},
       {key:"registro", label:"Registro/Mapa", type:"text"},
+
+      // ✅ NOVO (simples)
       {key:"preco", label:"Preço por unidade (R$)", type:"number", placeholder:"Ex: 45.90"},
+
       {key:"carenciaDias", label:"Carência (dias)", type:"number"},
       {key:"reentradaHoras", label:"Reentrada (horas)", type:"number"},
       {key:"unidade", label:"Unidade padrão", type:"text", placeholder:"L / kg"},
@@ -1560,6 +1016,8 @@ function pageProdutos(){
       {key:"carenciaDias", label:"Carência (d)"},
       {key:"reentradaHoras", label:"Reentrada (h)"},
       {key:"unidade", label:"Unid."},
+
+      // ✅ NOVO (sem fmt)
       {key:"preco", label:"Preço (R$)"}
     ],
     helpers:{
@@ -1573,7 +1031,7 @@ function pageProdutos(){
 function pageEstoque(){
   crudPage({
     entityKey:"estoque",
-    subtitle:"Controle por depósito, lote e validade. Saldo pode ficar negativo.",
+    subtitle:"Controle por depósito, lote e validade. Saldo pode ficar negativo (furo de estoque).",
     fields:[
       {key:"produtoId", label:"Produto", type:"select",
         options:(db)=> {
@@ -1581,7 +1039,7 @@ function pageEstoque(){
           return [{value:"", label:"(Selecione)"}].concat(ps.map(p=>({value:p.id, label:`${p.nome} — ${p.tipo}`})));
         }
       },
-      {key:"deposito", label:"Depósito", type:"text", placeholder:"Central / Galpão..."},
+      {key:"deposito", label:"Depósito", type:"text", placeholder:"Central / Galpão / Unidade..."},
       {key:"lote", label:"Lote", type:"text"},
       {key:"validade", label:"Validade (YYYY-MM-DD)", type:"text", placeholder:"2026-12-31"},
       {key:"qtd", label:"Quantidade", type:"number"},
@@ -1650,7 +1108,7 @@ function pageTalhoes(){
     <div class="tableWrap" style="margin-top:12px">
       <table>
         <thead>
-          <tr><th colspan="7">Custo por talhão (acumulado)</th></tr>
+          <tr><th colspan="7">Custo por talhão (acumulado) — tipo “chuva por talhão”</th></tr>
           <tr>
             <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Custo total</th><th>Custo/ha</th><th>Operações</th><th>Último</th>
           </tr>
@@ -1679,6 +1137,7 @@ function pageTalhoes(){
       `;
     }).join("") || `<tr><td colspan="7">Sem talhões.</td></tr>`;
 
+    // custos por talhão
     const custos = calcCustosPorTalhao(db2);
     const tbC = document.getElementById("tbodyCustos");
     tbC.innerHTML = custos.map(r=>`
@@ -1698,6 +1157,7 @@ function pageTalhoes(){
     if(!confirm("Excluir este talhão?")) return;
     const db2 = getDB();
     db2.talhoes = (db2.talhoes||[]).filter(x=>x.id!==id);
+    // opcional: mantém histórico (aplicações/clima) para auditoria. Se quiser apagar também, você apaga manual.
     setDB(db2);
     toast("Excluído","Talhão removido.");
     render();
@@ -1771,6 +1231,11 @@ function pageCombustivel(){
         <div class="big">${kbrl(onlyEmpresa(db.combustivel||[]).reduce((s,c)=>s+Number(c.litros||0)*Number(c.precoLitro||0),0))}</div>
         <div class="sub"><span class="pill info">Somatório</span></div>
       </div>
+      <div class="card">
+        <h3>Saldo pode negativo</h3>
+        <div class="big">✔</div>
+        <div class="sub">Furo de estoque visível</div>
+      </div>
     </div>
 
     <div class="section">
@@ -1831,6 +1296,9 @@ function pageCombustivel(){
             <button class="btn primary" type="submit">Salvar e dar baixa</button>
           </div>
         </form>
+
+        <div class="hr"></div>
+        <div class="help"><b>Tanques:</b> para ajustar saldo manual, edite no próprio backup (ou peça que eu crie a tela de ajuste).</div>
       </div>
 
       <div class="tableWrap">
@@ -1929,11 +1397,9 @@ function pageCombustivel(){
     const db2 = getDB();
     db2.combustivel = db2.combustivel || [];
     db2.combustivel.push(obj);
-    
-    const tank = db2.dieselEstoque.find(t => t.empresaId === getEmpresaId() && t.deposito === obj.deposito);
-    if (tank) {
-      tank.litros = Number(tank.litros||0) - litros;
-    }
+
+    // BAIXA automática no diesel
+    baixaDiesel(db2, obj.deposito, litros);
 
     setDB(db2);
     e.target.reset();
@@ -1985,6 +1451,9 @@ function pageClima(){
     <div class="section">
       <div class="card">
         <h3>Registrar chuva / clima</h3>
+        <div class="help">
+          Cada lançamento fica salvo no histórico. O acumulado do talhão é a soma de todos os lançamentos desse talhão.
+        </div>
         <div class="hr"></div>
 
         <form id="frm" class="formGrid">
@@ -2013,7 +1482,7 @@ function pageClima(){
 
           <div class="full">
             <small>Observações</small>
-            <textarea class="textarea" name="obs"></textarea>
+            <textarea class="textarea" name="obs" placeholder="Ex.: chuva isolada, temporal, estação, observações..."></textarea>
           </div>
 
           <div class="full row" style="justify-content:flex-end">
@@ -2026,23 +1495,63 @@ function pageClima(){
         <table>
           <thead>
             <tr>
-              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Chuva (mm)</th><th>Temp máx</th><th>Vento</th><th>Obs</th><th class="noPrint">Ações</th>
+              <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Acumulado (mm)</th><th>Última data</th>
             </tr>
           </thead>
-          <tbody id="tbody"></tbody>
+          <tbody id="tbodyAcum"></tbody>
         </table>
       </div>
     </div>
+
+    <div class="tableWrap" style="margin-top:12px">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Chuva (mm)</th><th>Temp máx</th><th>Vento</th><th>Obs</th><th class="noPrint">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
   `;
+
+  function parseISO(d){
+    const [y,m,day] = String(d||"").split("-").map(Number);
+    if(!y||!m||!day) return null;
+    return new Date(y, m-1, day, 0,0,0,0);
+  }
+
+  function inLastDays(recDateISO, days){
+    const dt = parseISO(recDateISO);
+    if(!dt) return false;
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0,0,0,0);
+    const min = new Date(start.getTime() - (days-1)*24*60*60*1000);
+    return dt >= min && dt <= start;
+  }
+
+  function calcKPIs(rows){
+    const hoje = nowISO();
+    const chuvaHoje = rows.filter(r=>r.data===hoje).reduce((s,x)=>s+Number(x.chuvaMm||0),0);
+    const chuva7d = rows.filter(r=>inLastDays(r.data, 7)).reduce((s,x)=>s+Number(x.chuvaMm||0),0);
+    const chuva30d = rows.filter(r=>inLastDays(r.data, 30)).reduce((s,x)=>s+Number(x.chuvaMm||0),0);
+
+    const elHoje = document.getElementById("kpiHoje");
+    const el7 = document.getElementById("kpi7d");
+    const el30 = document.getElementById("kpi30d");
+    const elCnt = document.getElementById("kpiCount");
+
+    if(elHoje) elHoje.textContent = `${num(chuvaHoje,1)} mm`;
+    if(el7) el7.textContent = `${num(chuva7d,1)} mm`;
+    if(el30) el30.textContent = `${num(chuva30d,1)} mm`;
+    if(elCnt) elCnt.textContent = String(rows.length);
+  }
 
   function render(){
     const db2 = getDB();
     const rows = onlyEmpresa(db2.clima||[]);
 
-    const hoje = nowISO();
-    const chuvaHoje = rows.filter(r=>r.data===hoje).reduce((s,x)=>s+Number(x.chuvaMm||0),0);
-    document.getElementById("kpiHoje").textContent = `${num(chuvaHoje,1)} mm`;
-    document.getElementById("kpiCount").textContent = rows.length;
+    calcKPIs(rows);
 
     const tb = document.getElementById("tbody");
     tb.innerHTML = rows.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).map(c=>{
@@ -2061,10 +1570,37 @@ function pageClima(){
         </tr>
       `;
     }).join("") || `<tr><td colspan="8">Sem registros.</td></tr>`;
+
+    // acumulado por talhão
+    const byTalhao = new Map();
+    for(const r of rows){
+      if(!r.talhaoId) continue;
+      const cur = byTalhao.get(r.talhaoId) || { mm:0, last:"" };
+      cur.mm += Number(r.chuvaMm||0);
+      if((r.data||"") > (cur.last||"")) cur.last = r.data||"";
+      byTalhao.set(r.talhaoId, cur);
+    }
+
+    const tbA = document.getElementById("tbodyAcum");
+    const list = talhoes.map(t=>{
+      const info = byTalhao.get(t.id) || {mm:0, last:""};
+      const faz = findNameById(onlyEmpresa(db2.fazendas), t.fazendaId);
+      return { talhao: t.nome, fazenda: faz, areaHa: Number(t.areaHa||0), mm: info.mm, last: info.last || "-" };
+    }).sort((a,b)=>b.mm-a.mm);
+
+    tbA.innerHTML = list.map(r=>`
+      <tr>
+        <td><b>${escapeHtml(r.talhao)}</b></td>
+        <td>${escapeHtml(r.fazenda)}</td>
+        <td>${escapeHtml(num(r.areaHa||0,1))}</td>
+        <td><b>${escapeHtml(num(r.mm||0,1))}</b></td>
+        <td>${escapeHtml(r.last)}</td>
+      </tr>
+    `).join("") || `<tr><td colspan="5">Sem talhões.</td></tr>`;
   }
 
   window.__delClima = (id)=>{
-    if(!confirm("Excluir este lançamento?")) return;
+    if(!confirm("Excluir este lançamento de clima/chuva?")) return;
     const db2 = getDB();
     db2.clima = (db2.clima||[]).filter(x=>x.id!==id);
     setDB(db2);
@@ -2173,6 +1709,11 @@ function pageAplicacoes(){
     <div class="section">
       <div class="card">
         <h3>Registrar aplicação</h3>
+        <div class="help">
+          • Informe <b>Área aplicada (ha)</b> (não precisa ser o talhão inteiro).<br/>
+          • Ao salvar, o sistema dá baixa automática no estoque: <b>dose/ha × área aplicada</b>.<br/>
+          • Saldo pode ficar negativo para mostrar furo de estoque.
+        </div>
         <div class="hr"></div>
 
         <form id="frm" class="formGrid">
@@ -2209,8 +1750,18 @@ function pageAplicacoes(){
             </select>
           </div>
 
+          <div><small>Calda (L/ha)</small><input class="input" name="caldaLHa" type="number" placeholder="120" /></div>
+          <div><small>Velocidade (km/h)</small><input class="input" name="velocidadeKmH" type="number" placeholder="14" /></div>
+          <div><small>Bico</small><input class="input" name="bico" placeholder="Leque 11002" /></div>
+          <div><small>Pressão (bar)</small><input class="input" name="pressaoBar" type="number" placeholder="3" /></div>
+
+          <div><small>Vento (km/h)</small><input class="input" name="vento" type="number" placeholder="8" /></div>
+          <div><small>Temperatura (°C)</small><input class="input" name="temp" type="number" placeholder="30" /></div>
+          <div><small>Umidade (%)</small><input class="input" name="umidade" type="number" placeholder="60" /></div>
+
           <div class="full">
             <small>Produtos (até 10 linhas)</small>
+            <div class="help">Dose por hectare. A baixa será calculada automaticamente.</div>
             <div class="hr"></div>
 
             <div class="formGrid">
@@ -2232,13 +1783,18 @@ function pageAplicacoes(){
 
           <div class="full">
             <small>Observações</small>
-            <textarea class="textarea" name="obs"></textarea>
+            <textarea class="textarea" name="obs" placeholder="Deriva, falhas, reentrada, carência, ocorrências..."></textarea>
           </div>
 
           <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Salvar aplicação</button>
+            <button class="btn primary" type="submit">Salvar aplicação e dar baixa</button>
           </div>
         </form>
+
+        <div class="hr"></div>
+        <div class="help">
+          <b>Obs:</b> Se um produto não estiver cadastrado em “Produtos”, a baixa não consegue linkar no estoque.
+        </div>
       </div>
 
       <div class="tableWrap">
@@ -2278,7 +1834,7 @@ function pageAplicacoes(){
   }
 
   window.__delA = (id)=>{
-    if(!confirm("Excluir esta aplicação?")) return;
+    if(!confirm("Excluir esta aplicação? (não reverte baixa automaticamente)")) return;
     const db2 = getDB();
     db2.aplicacoes = (db2.aplicacoes||[]).filter(x=>x.id!==id);
     setDB(db2);
@@ -2335,10 +1891,22 @@ function pageAplicacoes(){
     db2.aplicacoes = db2.aplicacoes || [];
     db2.aplicacoes.push(obj);
 
+    // ===== BAIXA AUTOMÁTICA NO ESTOQUE =====
+    const msgs = [];
+    for(const p of (obj.produtos||[])){
+      const qty = Number(p.dosePorHa||0) * area; // dose/ha * ha
+      if(!qty) continue;
+      const unidadePreferida = (p.unidade||"").split("/")[0] || ""; // "L/ha" -> "L"
+      const res = baixaEstoqueProdutoPorNome(db2, p.produtoNome, qty, unidadePreferida);
+      if(res.ok) msgs.push(res.msg);
+      else msgs.push(res.msg);
+    }
+
     setDB(db2);
 
     e.target.reset();
-    toast("Salvo","Aplicação registrada.");
+    toast("Salvo","Aplicação registrada. Baixa no estoque aplicada.");
+    if(msgs.length) toast("Baixas", msgs.slice(0,3).join(" • ")+(msgs.length>3?" • ...":""));
     render();
   });
 
@@ -2377,20 +1945,24 @@ function pageRelatorios(){
 
     <div class="kpi">
       <div class="card">
-        <h3>Área total</h3>
+        <h3>Área total (talhões)</h3>
         <div class="big">${num(totalArea,1)} ha</div>
+        <div class="sub">Somatório da empresa ativa</div>
       </div>
       <div class="card">
         <h3>Aplicações</h3>
         <div class="big">${aplicacoes.length}</div>
+        <div class="sub"><span class="pill info">Rastreabilidade</span></div>
       </div>
       <div class="card">
-        <h3>Registros clima</h3>
+        <h3>Registros de clima</h3>
         <div class="big">${clima.length}</div>
+        <div class="sub"><span class="pill ok">Histórico</span></div>
       </div>
       <div class="card">
         <h3>Fazendas</h3>
         <div class="big">${fazendas.length}</div>
+        <div class="sub"><span class="pill warn">Multiunidade</span></div>
       </div>
     </div>
 
@@ -2423,6 +1995,42 @@ function pageRelatorios(){
           </tbody>
         </table>
       </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr><th colspan="6">Últimos registros de clima</th></tr>
+            <tr>
+              <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Chuva (mm)</th><th>Temp máx</th><th>Vento</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              ultClima.map(c=>`
+                <tr>
+                  <td>${escapeHtml(c.data||"")}</td>
+                  <td>${escapeHtml(findNameById(fazendas, c.fazendaId))}</td>
+                  <td>${escapeHtml(c.talhaoId ? findNameById(talhoes, c.talhaoId) : "Geral")}</td>
+                  <td>${escapeHtml(num(c.chuvaMm||0,1))}</td>
+                  <td>${escapeHtml(c.tempMax)}</td>
+                  <td>${escapeHtml(c.vento)}</td>
+                </tr>
+              `).join("") || `<tr><td colspan="6">Sem registros.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3>Observações e assinatura</h3>
+      <div class="help">
+        Ao imprimir em PDF, assine manualmente ou utilize assinatura digital.
+      </div>
+      <div class="hr"></div>
+      <div style="height:90px;border:1px dashed rgba(255,255,255,.20); border-radius:16px; padding:12px" class="noPrint">
+        (campo livre — versão offline)
+      </div>
     </div>
   `;
 
@@ -2447,8 +2055,28 @@ function pageConfiguracoes(){
         <h3>Configurações</h3>
         <div class="help">
           • Este sistema salva tudo no navegador (localStorage).<br/>
-          • Use backup para trocar de aparelho sem perder dados.
+          • Use backup para trocar de aparelho sem perder dados.<br/>
+          • Importar substitui o banco local atual.
         </div>
+        <div class="hr"></div>
+        <div class="help">
+          <b>Boas práticas (Agro):</b><br/>
+          • Registrar clima no dia de aplicação (vento/umidade/temperatura).<br/>
+          • Registrar máquina/operador quando possível.<br/>
+          • Guardar relatórios em PDF por safra e por talhão.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Como evoluir para Supabase</h3>
+        <div class="help">
+          Próximo upgrade:<br/>
+          • Login por e-mail • Multiusuário • Permissões • Postgres<br/>
+          • Logs de auditoria • Upload de documentos • API
+        </div>
+        <div class="hr"></div>
+        <span class="pill info">Pronto para backend</span>
+        <span class="pill ok">Offline-first</span>
       </div>
     </div>
   `;
@@ -2484,36 +2112,31 @@ function pageConfiguracoes(){
   });
 }
 
-// ==================== 10. BOOT ====================
+/* ------------------ Boot ------------------ */
 function boot(){
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
-  
-  // Objeto TITLES completo com todas as páginas
   const titles = {
     dashboard:["Dashboard","Visão geral, indicadores e últimos registros"],
     opscenter:["Ops Center","Alertas, custos por talhão e monitoramento"],
-    ia:["IA Preditiva","Análises e previsões inteligentes com machine learning"],
     empresas:["Empresas","Cadastre e gerencie organizações (multiempresa)"],
     fazendas:["Fazendas","Unidades produtivas por empresa"],
     talhoes:["Talhões","Área, cultura, safra e custos por talhão"],
     produtos:["Produtos","Cadastro de defensivos e insumos"],
-    estoque:["Estoque","Controle por depósito/lote/validade"],
-    aplicacoes:["Aplicações","Rastreabilidade de operações"],
-    combustivel:["Combustível","Abastecimentos e controle de diesel"],
-    clima:["Clima/Chuva","Histórico manual por fazenda/talhão"],
+    estoque:["Estoque","Controle por depósito/lote/validade (saldo pode negativo)"],
+    aplicacoes:["Aplicações","Rastreabilidade + baixa automática no estoque"],
+    combustivel:["Combustível","Abastecimentos + baixa automática no diesel"],
+    clima:["Clima/Chuva","Histórico manual por fazenda/talhão (acumulado)"],
     equipe:["Equipe","Operadores, agrônomos e times de campo"],
     maquinas:["Máquinas","Equipamentos usados nas operações"],
     relatorios:["Relatórios","Resumo + impressão/PDF + exportação"],
-    config:["Configurações","Backup/restore e configurações do sistema"],
+    config:["Configurações","Backup/restore e preparação para backend"],
   };
 
   const [t, s] = titles[pageKey] || ["Agro Pro",""];
   renderShell(pageKey, t, s);
 
-  // Renderizar a página correta
   if(pageKey==="dashboard") pageDashboard();
   else if(pageKey==="opscenter") pageOpsCenter();
-  else if(pageKey==="ia") pageIAPreditiva();
   else if(pageKey==="empresas") pageEmpresas();
   else if(pageKey==="fazendas") pageFazendas();
   else if(pageKey==="talhoes") pageTalhoes();
@@ -2527,22 +2150,8 @@ function boot(){
   else if(pageKey==="relatorios") pageRelatorios();
   else if(pageKey==="config") pageConfiguracoes();
 
-  toast("Agro Pro IA", "Sistema carregado com Inteligência Artificial!");
-  
-  // Diagnóstico (opcional - pode remover depois)
-  console.log("✅ Página atual:", pageKey);
-  console.log("✅ Título:", t);
+  toast("Agro Pro", "Sistema carregado. Dados salvos no navegador.");
 }
 
-// Inicializar o sistema quando o DOM estiver pronto
+// Inicializa quando a página carregar
 document.addEventListener("DOMContentLoaded", boot);
-
-// Diagnóstico adicional (opcional)
-setTimeout(() => {
-  console.log("📊 Páginas disponíveis:", PAGES.map(p => p.key).join(", "));
-  if (typeof pageIAPreditiva === 'function') {
-    console.log("✅ Função pageIAPreditiva carregada!");
-  } else {
-    console.error("❌ Função pageIAPreditiva NÃO encontrada!");
-  }
-}, 100);
