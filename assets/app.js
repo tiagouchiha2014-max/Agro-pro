@@ -233,9 +233,6 @@ function setEmpresaId(id){
   db.session.empresaId = id;
   setDB(db);
 }
-
-/* ------------------ UI shell ------------------ */
-const PAGES = [
 // ===== Páginas externas (não renderizadas pelo app principal) =====
 if(page === "financeiro" || page === "produtividade"){
   // deixa os JS dessas páginas renderizarem
@@ -243,6 +240,9 @@ if(page === "financeiro" || page === "produtividade"){
   console.log("Página externa detectada:", page);
   return;
 }
+
+/* ------------------ UI shell ------------------ */
+const PAGES = [
   { href:"index.html", label:"Dashboard", key:"dashboard", icon:"📊" },
   { href:"opscenter.html", label:"Ops Center", key:"opscenter", icon:"🛰️" },
   { href:"empresas.html", label:"Empresas", key:"empresas", icon:"🏢" },
