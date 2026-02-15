@@ -1,18 +1,15 @@
 /* ============================================================
-   AGRO PRO — app.js (OFFLINE / MULTIEMPRESA) - VERSÃO FINAL
+   AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL
    Atualizações:
-   + Cálculo automático de custos por aplicação (com preço dos produtos)
-   + Preço da soja configurável para estimativa de lucro
-   + Estimativa de produtividade configurável por cultura
-   + Entrada de diesel com preço (UEPS)
-   + Alertas automáticos de pragas baseados no clima
-   + Dashboard com alertas e lembretes (design melhorado)
-   + Ops Center com custos precisos por talhão
-   + Reset demo movido para Configurações (com confirmação)
+   + Sistema de SAFRAS (substitui empresas como filtro principal)
+   + Dados isolados por safra
+   + Acumulação de estoque corrigida
+   + Preços de mercado configuráveis
+   + Controle de diesel com UEPS
    ============================================================ */
 
 const Storage = {
-  key: "agro_pro_v5",
+  key: "agro_pro_v6",
   load() {
     try {
       const raw = localStorage.getItem(this.key);
@@ -159,7 +156,8 @@ function getProdutosBase() {
 }
 
 function seedDB() {
-  const empresaId = uid("emp");
+  const safraId = uid("saf");
+  const safra2Id = uid("saf");
   const fazendaId = uid("faz");
   const talhaoId = uid("tal");
   const talhao2Id = uid("tal");
@@ -171,18 +169,25 @@ function seedDB() {
   const pragasBase = getPragasBase();
 
   const db = {
-    meta: { createdAt: new Date().toISOString(), version: 5 },
-    session: { empresaId },
+    meta: { createdAt: new Date().toISOString(), version: 6 },
+    session: { safraId },
 
-    empresas: [
+    safras: [
       {
-        id: empresaId,
-        nome: "Agro Demo LTDA",
-        cnpj: "00.000.000/0001-00",
-        responsavel: "Admin",
-        cidade: "Sorriso",
-        uf: "MT",
-        observacoes: "Ambiente de demonstração."
+        id: safraId,
+        nome: "Safra 2025/26",
+        dataInicio: "2025-09-01",
+        dataFim: "2026-08-31",
+        ativa: true,
+        observacoes: "Safra de verão - Soja/Milho"
+      },
+      {
+        id: safra2Id,
+        nome: "Safra 2024/25",
+        dataInicio: "2024-09-01",
+        dataFim: "2025-08-31",
+        ativa: false,
+        observacoes: "Safra anterior"
       }
     ],
 
@@ -197,19 +202,19 @@ function seedDB() {
     },
 
     fazendas: [
-      { id: fazendaId, empresaId, nome: "Fazenda Horizonte", cidade: "Sorriso", uf: "MT", areaHa: 1450, observacoes: "Soja/Milho safrinha" }
+      { id: fazendaId, safraId, nome: "Fazenda Horizonte", cidade: "Sorriso", uf: "MT", areaHa: 1450, observacoes: "Soja/Milho safrinha" }
     ],
 
     talhoes: [
-      { id: talhaoId, empresaId, fazendaId, nome: "T-12", areaHa: 78.5, cultura: "Soja", safra: "2025/26", solo: "Argiloso", coordenadas: "", observacoes: "" },
-      { id: talhao2Id, empresaId, fazendaId, nome: "T-15", areaHa: 120.0, cultura: "Milho", safra: "2025/26", solo: "Argiloso", coordenadas: "", observacoes: "" }
+      { id: talhaoId, safraId, fazendaId, nome: "T-12", areaHa: 78.5, cultura: "Soja", safra: "2025/26", solo: "Argiloso", coordenadas: "", observacoes: "" },
+      { id: talhao2Id, safraId, fazendaId, nome: "T-15", areaHa: 120.0, cultura: "Milho", safra: "2025/26", solo: "Argiloso", coordenadas: "", observacoes: "" }
     ],
 
-    produtos: produtosBase.map(p => ({ ...p, id: uid("prd"), empresaId })),
+    produtos: produtosBase.map(p => ({ ...p, id: uid("prd"), safraId })),
 
     estoque: produtosBase.map(p => ({
       id: uid("stk"),
-      empresaId,
+      safraId,
       produtoId: p.id,
       deposito: "Central",
       lote: "",
@@ -220,30 +225,30 @@ function seedDB() {
     })),
 
     equipe: [
-      { id: opId, empresaId, nome: "Operador 1", funcao: "Tratorista", telefone: "", nr: "", obs: "" }
+      { id: opId, safraId, nome: "Operador 1", funcao: "Tratorista", telefone: "", nr: "", obs: "" }
     ],
 
     maquinas: [
-      { id: maqId, empresaId, nome: "Pulverizador Autopropelido", placa: "", horimetro: 0, capacidadeL: 3000, bicos: "", obs: "" }
+      { id: maqId, safraId, nome: "Pulverizador Autopropelido", placa: "", horimetro: 0, capacidadeL: 3000, bicos: "", obs: "" }
     ],
 
     clima: [
-      { id: uid("cli"), empresaId, data: nowISO(), fazendaId, talhaoId, chuvaMm: 12, tempMin: 22, tempMax: 33, umidade: 68, vento: 9, obs: "Chuva isolada à tarde" },
-      { id: uid("cli"), empresaId, data: "2026-02-10", fazendaId, talhaoId, chuvaMm: 0, tempMin: 24, tempMax: 35, umidade: 55, vento: 12, obs: "Dia seco" }
+      { id: uid("cli"), safraId, data: nowISO(), fazendaId, talhaoId, chuvaMm: 12, tempMin: 22, tempMax: 33, umidade: 68, vento: 9, obs: "Chuva isolada à tarde" },
+      { id: uid("cli"), safraId, data: "2026-02-10", fazendaId, talhaoId, chuvaMm: 0, tempMin: 24, tempMax: 35, umidade: 55, vento: 12, obs: "Dia seco" }
     ],
 
     dieselEntradas: [
-      { id: uid("de"), empresaId, data: nowISO(), litros: 5000, precoLitro: 6.19, deposito: "Tanque Principal", obs: "Compra inicial" }
+      { id: uid("de"), safraId, data: nowISO(), litros: 5000, precoLitro: 6.19, deposito: "Tanque Principal", obs: "Compra inicial" }
     ],
 
     dieselEstoque: [
-      { id: uid("dsl"), empresaId, deposito: "Tanque Principal", litros: 5000, precoVigente: 6.19, obs: "Estoque inicial" }
+      { id: uid("dsl"), safraId, deposito: "Tanque Principal", litros: 5000, precoVigente: 6.19, obs: "Estoque inicial" }
     ],
 
     combustivel: [
       {
         id: uid("cmb"),
-        empresaId,
+        safraId,
         data: nowISO(),
         tipo: "Diesel S10",
         deposito: "Tanque Principal",
@@ -262,7 +267,7 @@ function seedDB() {
     aplicacoes: [
       {
         id: uid("apl"),
-        empresaId,
+        safraId,
         data: nowISO(),
         fazendaId,
         talhaoId,
@@ -286,10 +291,10 @@ function seedDB() {
     ],
 
     lembretes: [
-      { id: uid("lem"), empresaId, data: "2026-03-01", mensagem: "Aplicar fungicida no talhão T-12", tipo: "aplicacao", concluido: false }
+      { id: uid("lem"), safraId, data: "2026-03-01", mensagem: "Aplicar fungicida no talhão T-12", tipo: "aplicacao", concluido: false }
     ],
 
-    pragas: pragasBase.map(p => ({ ...p, id: uid("praga"), empresaId }))
+    pragas: pragasBase.map(p => ({ ...p, id: uid("praga"), safraId }))
   };
 
   Storage.save(db);
@@ -301,9 +306,9 @@ function getDB() {
   if (!db) db = seedDB();
 
   // migrações
-  db.meta = db.meta || { createdAt: new Date().toISOString(), version: 5 };
+  db.meta = db.meta || { createdAt: new Date().toISOString(), version: 6 };
   db.session = db.session || {};
-  db.empresas = db.empresas || [];
+  db.safras = db.safras || [];
   db.parametros = db.parametros || { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75 };
   db.fazendas = db.fazendas || [];
   db.talhoes = db.talhoes || [];
@@ -313,7 +318,7 @@ function getDB() {
   db.maquinas = db.maquinas || [];
   db.clima = db.clima || [];
   db.dieselEntradas = db.dieselEntradas || [];
-  db.dieselEstoque = db.dieselEstoque || [{ id: uid("dsl"), empresaId: (db.session.empresaId || db.empresas?.[0]?.id || uid("emp")), deposito: "Tanque Principal", litros: 0, precoVigente: 0, obs: "" }];
+  db.dieselEstoque = db.dieselEstoque || [{ id: uid("dsl"), safraId: (db.session.safraId || db.safras?.[0]?.id || uid("saf")), deposito: "Tanque Principal", litros: 0, precoVigente: 0, obs: "" }];
   db.combustivel = db.combustivel || [];
   db.aplicacoes = db.aplicacoes || [];
   db.lembretes = db.lembretes || [];
@@ -326,22 +331,28 @@ function getDB() {
 }
 function setDB(db) { Storage.save(db); }
 
-function getEmpresaId() {
+function getSafraId() {
   const db = getDB();
-  return db.session?.empresaId || (db.empresas[0]?.id ?? null);
+  return db.session?.safraId || (db.safras[0]?.id ?? null);
 }
-function setEmpresaId(id) {
+function setSafraId(id) {
   const db = getDB();
   db.session = db.session || {};
-  db.session.empresaId = id;
+  db.session.safraId = id;
   setDB(db);
+}
+
+function getSafraAtual() {
+  const db = getDB();
+  const sid = getSafraId();
+  return db.safras?.find(s => s.id === sid);
 }
 
 /* ------------------ UI shell ------------------ */
 const PAGES = [
   { href: "index.html", label: "Dashboard", key: "dashboard", icon: "📊" },
   { href: "opscenter.html", label: "Ops Center", key: "opscenter", icon: "🛰️" },
-  { href: "empresas.html", label: "Empresas", key: "empresas", icon: "🏢" },
+  { href: "safras.html", label: "Safras", key: "safras", icon: "🌱" },
   { href: "fazendas.html", label: "Fazendas", key: "fazendas", icon: "🌾" },
   { href: "talhoes.html", label: "Talhões", key: "talhoes", icon: "🧭" },
   { href: "produtos.html", label: "Produtos", key: "produtos", icon: "🧪" },
@@ -357,16 +368,17 @@ const PAGES = [
 
 function renderShell(pageKey, title, subtitle) {
   const db = getDB();
-  const empresaId = getEmpresaId();
-  const empresa = db.empresas.find(e => e.id === empresaId);
+  const safraId = getSafraId();
+  const safra = getSafraAtual();
+  
   const nav = PAGES.map(p => {
     const active = (p.key === pageKey) ? "active" : "";
     return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span> ${escapeHtml(p.label)}</a>`;
   }).join("");
 
-  const empresaOptions = db.empresas.map(e => {
-    const sel = e.id === empresaId ? "selected" : "";
-    return `<option value="${e.id}" ${sel}>${escapeHtml(e.nome)}</option>`;
+  const safraOptions = db.safras.map(s => {
+    const sel = s.id === safraId ? "selected" : "";
+    return `<option value="${s.id}" ${sel}>${escapeHtml(s.nome)} ${s.ativa ? '✅' : ''}</option>`;
   }).join("");
 
   const root = document.getElementById("app");
@@ -377,7 +389,7 @@ function renderShell(pageKey, title, subtitle) {
           <div class="logo"></div>
           <div>
             <h1>Agro Pro</h1>
-            <p>Controle Agronômico • Multiempresa</p>
+            <p>Controle por Safras</p>
           </div>
         </div>
 
@@ -387,20 +399,23 @@ function renderShell(pageKey, title, subtitle) {
             <button class="btn noPrint" id="btnBackup">Backup</button>
           </div>
           <div class="hr"></div>
-          <small>Empresa ativa</small>
-          <select class="select" id="empresaSelect">${empresaOptions}</select>
+          
+          <small>🌱 Safra ativa</small>
+          <select class="select" id="safraSelect">${safraOptions}</select>
+          
           <div style="margin-top:10px" class="row">
-            <button class="btn primary" id="btnNovaEmpresa">+ Nova empresa</button>
+            <button class="btn primary" id="btnNovaSafra">+ Nova safra</button>
           </div>
+          
           <div style="margin-top:10px" class="help">
-            Trocar a empresa muda todos os dados exibidos.
+            Trocar de safra filtra todos os dados (talhões, produtos, estoque, etc).
           </div>
         </div>
 
         <nav class="nav">${nav}</nav>
 
         <div style="margin-top:14px" class="help">
-          <b>Dica:</b> Use Configurações para ajustar parâmetros de mercado e resetar dados.
+          <b>Dica:</b> Use Configurações para ajustar parâmetros de mercado.
         </div>
       </aside>
 
@@ -408,7 +423,7 @@ function renderShell(pageKey, title, subtitle) {
         <div class="topbar">
           <div class="title">
             <h2>${escapeHtml(title)}</h2>
-            <p>${escapeHtml(subtitle || (empresa ? `Empresa: ${empresa.nome}` : "Selecione uma empresa"))}</p>
+            <p>${escapeHtml(subtitle || (safra ? `Safra: ${safra.nome}` : "Selecione uma safra"))}</p>
           </div>
           <div class="actions noPrint" id="topActions"></div>
         </div>
@@ -418,9 +433,9 @@ function renderShell(pageKey, title, subtitle) {
     </div>
   `;
 
-  document.getElementById("empresaSelect").addEventListener("change", (e) => {
-    setEmpresaId(e.target.value);
-    toast("Empresa alterada", "Atualizando a página…");
+  document.getElementById("safraSelect").addEventListener("change", (e) => {
+    setSafraId(e.target.value);
+    toast("Safra alterada", "Filtrando dados...");
     setTimeout(() => location.reload(), 200);
   });
 
@@ -430,23 +445,31 @@ function renderShell(pageKey, title, subtitle) {
     toast("Backup gerado", "Arquivo .json baixado.");
   });
 
-  document.getElementById("btnNovaEmpresa").addEventListener("click", () => {
-    const nome = prompt("Nome da nova empresa:");
+  document.getElementById("btnNovaSafra").addEventListener("click", () => {
+    const nome = prompt("Nome da nova safra (ex: 2026/27):");
     if (!nome) return;
     const db2 = getDB();
-    const id = uid("emp");
-    db2.empresas.push({ id, nome, cnpj: "", responsavel: "", cidade: "", uf: "", observacoes: "" });
+    if (!db2.safras) db2.safras = [];
+    const id = uid("saf");
+    db2.safras.push({ 
+      id, 
+      nome, 
+      dataInicio: nowISO(),
+      dataFim: "",
+      ativa: true,
+      observacoes: ""
+    });
     setDB(db2);
-    setEmpresaId(id);
-    toast("Empresa criada", "Agora você está nessa empresa.");
+    setSafraId(id);
+    toast("Safra criada", "Nova safra ativada!");
     setTimeout(() => location.reload(), 200);
   });
 }
 
 /* ------------------ Helpers ------------------ */
-function onlyEmpresa(arr) {
-  const eid = getEmpresaId();
-  return (arr || []).filter(x => x.empresaId === eid);
+function onlySafra(arr) {
+  const sid = getSafraId();
+  return (arr || []).filter(x => x.safraId === sid);
 }
 
 function findNameById(arr, id, fallback = "-") {
@@ -474,10 +497,10 @@ function clampStr(s, max = 60) {
 /* ------------------ Estoque: baixas automáticas ------------------ */
 function ensureStockRow(db, produtoId, deposito = "Central", unidade = "") {
   db.estoque = db.estoque || [];
-  let row = db.estoque.find(s => s.empresaId === getEmpresaId() && s.produtoId === produtoId && (s.deposito || "Central") === deposito);
+  let row = db.estoque.find(s => s.safraId === getSafraId() && s.produtoId === produtoId && (s.deposito || "Central") === deposito);
   if (!row) {
     const prod = db.produtos.find(p => p.id === produtoId);
-    row = { id: uid("stk"), empresaId: getEmpresaId(), produtoId, deposito, lote: "", validade: "", qtd: 0, unidade: unidade || (prod ? prod.unidade : ""), obs: "(auto)" };
+    row = { id: uid("stk"), safraId: getSafraId(), produtoId, deposito, lote: "", validade: "", qtd: 0, unidade: unidade || (prod ? prod.unidade : ""), obs: "(auto)" };
     db.estoque.push(row);
   }
   return row;
@@ -485,7 +508,7 @@ function ensureStockRow(db, produtoId, deposito = "Central", unidade = "") {
 
 function baixaEstoqueProdutoPorId(db, produtoId, quantidade, unidade = "") {
   if (!produtoId || !quantidade) return { ok: false, msg: "Sem produto/quantidade" };
-  const prod = onlyEmpresa(db.produtos).find(p => p.id === produtoId);
+  const prod = onlySafra(db.produtos).find(p => p.id === produtoId);
   if (!prod) return { ok: false, msg: `Produto não encontrado` };
   const row = ensureStockRow(db, produtoId, "Central", unidade || prod.unidade);
   row.qtd = Number(row.qtd || 0) - Number(quantidade || 0);
@@ -496,7 +519,7 @@ function baixaEstoqueProdutoPorId(db, produtoId, quantidade, unidade = "") {
 function registrarEntradaDiesel(db, deposito, litros, precoLitro, data, obs = "") {
   const entrada = {
     id: uid("de"),
-    empresaId: getEmpresaId(),
+    safraId: getSafraId(),
     data: data || nowISO(),
     litros,
     precoLitro,
@@ -507,9 +530,9 @@ function registrarEntradaDiesel(db, deposito, litros, precoLitro, data, obs = ""
   db.dieselEntradas.push(entrada);
 
   // Atualizar estoque
-  let tank = db.dieselEstoque.find(t => t.empresaId === getEmpresaId() && t.deposito === deposito);
+  let tank = db.dieselEstoque.find(t => t.safraId === getSafraId() && t.deposito === deposito);
   if (!tank) {
-    tank = { id: uid("dsl"), empresaId: getEmpresaId(), deposito, litros: 0, precoVigente: 0, obs: "" };
+    tank = { id: uid("dsl"), safraId: getSafraId(), deposito, litros: 0, precoVigente: 0, obs: "" };
     db.dieselEstoque.push(tank);
   }
   tank.litros = Number(tank.litros || 0) + litros;
@@ -518,7 +541,7 @@ function registrarEntradaDiesel(db, deposito, litros, precoLitro, data, obs = ""
 }
 
 function baixaDiesel(db, deposito, litros) {
-  const tank = db.dieselEstoque.find(t => t.empresaId === getEmpresaId() && t.deposito === deposito);
+  const tank = db.dieselEstoque.find(t => t.safraId === getSafraId() && t.deposito === deposito);
   if (!tank) return { ok: false, msg: "Tanque não encontrado" };
   const precoVigente = tank.precoVigente || 0;
   tank.litros = Number(tank.litros || 0) - Number(litros || 0); // pode ficar negativo
@@ -527,10 +550,10 @@ function baixaDiesel(db, deposito, litros) {
 
 /* ------------------ Custo por talhão ------------------ */
 function calcCustosPorTalhao(db) {
-  const talhoes = onlyEmpresa(db.talhoes);
-  const fazendas = onlyEmpresa(db.fazendas);
-  const apl = onlyEmpresa(db.aplicacoes || []);
-  const cmb = onlyEmpresa(db.combustivel || []);
+  const talhoes = onlySafra(db.talhoes);
+  const fazendas = onlySafra(db.fazendas);
+  const apl = onlySafra(db.aplicacoes || []);
+  const cmb = onlySafra(db.combustivel || []);
 
   const map = new Map();
   for (const t of talhoes) map.set(t.id, { custo: 0, last: "", ops: 0 });
@@ -573,9 +596,9 @@ function calcCustosPorTalhao(db) {
 /* ------------------ Alertas de pragas baseados no clima ------------------ */
 function gerarAlertasPragas(db) {
   const alertas = [];
-  const clima = onlyEmpresa(db.clima || []).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 3); // últimos 3 registros
-  const talhoes = onlyEmpresa(db.talhoes);
-  const pragas = onlyEmpresa(db.pragas || []);
+  const clima = onlySafra(db.clima || []).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 3);
+  const talhoes = onlySafra(db.talhoes);
+  const pragas = onlySafra(db.pragas || []);
 
   for (const t of talhoes) {
     const climaTalhao = clima.filter(c => c.talhaoId === t.id || c.talhaoId === "");
@@ -606,32 +629,146 @@ function gerarAlertasPragas(db) {
 }
 
 /* ------------------ Páginas ------------------ */
+
+// Página de Safras (substitui a antiga página de Empresas)
+function pageSafras() {
+  const db = getDB();
+  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="section">
+      <div class="card">
+        <h3>Cadastrar nova safra</h3>
+        <div class="help">Cada safra tem seus próprios talhões, estoque e aplicações.</div>
+        <div class="hr"></div>
+        <form id="frm" class="formGrid">
+          <div><small>Nome da safra</small><input class="input" name="nome" required placeholder="Ex: Safra 2026/27"></div>
+          <div><small>Data início</small><input class="input" name="dataInicio" type="date" value="${nowISO()}"></div>
+          <div><small>Data fim</small><input class="input" name="dataFim" type="date"></div>
+          <div class="full"><small>Observações</small><textarea class="textarea" name="observacoes"></textarea></div>
+          <div class="full row" style="justify-content:flex-end">
+            <button class="btn primary" type="submit">Salvar safra</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Safra</th>
+              <th>Início</th>
+              <th>Fim</th>
+              <th>Status</th>
+              <th class="noPrint">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  function render() {
+    const db2 = getDB();
+    const tb = document.getElementById("tbody");
+    tb.innerHTML = db2.safras.slice().reverse().map(s => `
+      <tr>
+        <td><b>${escapeHtml(s.nome)}</b></td>
+        <td>${s.dataInicio || '-'}</td>
+        <td>${s.dataFim || '-'}</td>
+        <td><span class="pill ${s.ativa ? 'success' : ''}">${s.ativa ? 'Ativa' : 'Inativa'}</span></td>
+        <td class="noPrint">
+          <button class="btn" onclick="window.__usar('${s.id}')">Usar</button>
+          <button class="btn danger" onclick="window.__delSafra('${s.id}')">Excluir</button>
+        </td>
+      </tr>
+    `).join("") || `<tr><td colspan="5">Sem safras cadastradas.</td></tr>`;
+  }
+
+  window.__usar = (id) => {
+    setSafraId(id);
+    toast("Safra ativa", "Mudando para a safra selecionada…");
+    setTimeout(() => location.reload(), 200);
+  };
+
+  window.__delSafra = (id) => {
+    const db2 = getDB();
+    if (db2.safras.length <= 1) {
+      alert("Você precisa ter pelo menos 1 safra.");
+      return;
+    }
+    if (!confirm("Excluir safra e TODOS os dados dela? (fazendas, talhões, aplicações)")) return;
+
+    db2.safras = db2.safras.filter(x => x.id !== id);
+    const wipe = key => db2[key] = (db2[key] || []).filter(x => x.safraId !== id);
+    ["fazendas", "talhoes", "produtos", "estoque", "equipe", "maquinas", "clima", "aplicacoes", "combustivel", "dieselEntradas", "dieselEstoque", "lembretes", "pragas"].forEach(wipe);
+
+    if (getSafraId() === id) {
+      db2.session.safraId = db2.safras[0].id;
+    }
+    setDB(db2);
+    toast("Excluída", "Safra removida com dados associados.");
+    setTimeout(() => location.reload(), 200);
+  };
+
+  document.getElementById("frm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const obj = {
+      id: uid("saf"),
+      nome: fd.get("nome"),
+      dataInicio: fd.get("dataInicio") || nowISO(),
+      dataFim: fd.get("dataFim") || "",
+      ativa: true,
+      observacoes: fd.get("observacoes") || ""
+    };
+    const db2 = getDB();
+    db2.safras.push(obj);
+    setDB(db2);
+    setSafraId(obj.id);
+    e.target.reset();
+    toast("Salvo", "Safra adicionada.");
+    render();
+  });
+
+  document.getElementById("btnExportCSV").addEventListener("click", () => {
+    const db2 = getDB();
+    downloadText(`safras-${nowISO()}.csv`, toCSV(db2.safras));
+    toast("Exportado", "CSV baixado.");
+  });
+
+  render();
+}
+
 function pageDashboard() {
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const produtos = onlyEmpresa(db.produtos);
-  const aplicacoes = onlyEmpresa(db.aplicacoes);
-  const clima = onlyEmpresa(db.clima);
-  const lembretes = onlyEmpresa(db.lembretes).filter(l => !l.concluido).slice(0, 5);
+  const safra = getSafraAtual();
+  const fazendas = onlySafra(db.fazendas);
+  const talhoes = onlySafra(db.talhoes);
+  const produtos = onlySafra(db.produtos);
+  const aplicacoes = onlySafra(db.aplicacoes);
+  const clima = onlySafra(db.clima);
+  const lembretes = onlySafra(db.lembretes).filter(l => !l.concluido).slice(0, 5);
   const alertasPragas = gerarAlertasPragas(db).slice(0, 3);
 
   const hoje = nowISO();
   const aplHoje = aplicacoes.filter(a => a.data === hoje).length;
   const chuvaHoje = clima.filter(c => c.data === hoje).reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
+  const areaTotal = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
 
   const content = document.getElementById("content");
   content.innerHTML = `
     <div class="kpi">
-      <div class="card">
-        <h3>Fazendas</h3>
-        <div class="big">${fazendas.length}</div>
-        <div class="sub">Cadastradas</div>
+      <div class="card" style="background: linear-gradient(135deg, #00b09b, #96c93d);">
+        <h3>🌱 Safra Atual</h3>
+        <div class="big">${escapeHtml(safra?.nome || 'N/A')}</div>
+        <div class="sub">${safra?.dataInicio || ''} a ${safra?.dataFim || ''}</div>
       </div>
       <div class="card">
         <h3>Talhões</h3>
         <div class="big">${talhoes.length}</div>
-        <div class="sub">Área total: ${num(talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0), 1)} ha</div>
+        <div class="sub">Área total: ${num(areaTotal, 1)} ha</div>
       </div>
       <div class="card">
         <h3>Aplicações (hoje)</h3>
@@ -707,12 +844,12 @@ function pageDashboard() {
 
 function pageOpsCenter() {
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const estoque = onlyEmpresa(db.estoque || []);
-  const diesel = onlyEmpresa(db.dieselEstoque || []);
-  const aplicacoes = onlyEmpresa(db.aplicacoes || []);
-  const combustivel = onlyEmpresa(db.combustivel || []);
+  const fazendas = onlySafra(db.fazendas);
+  const talhoes = onlySafra(db.talhoes);
+  const estoque = onlySafra(db.estoque || []);
+  const diesel = onlySafra(db.dieselEstoque || []);
+  const aplicacoes = onlySafra(db.aplicacoes || []);
+  const combustivel = onlySafra(db.combustivel || []);
   const parametros = db.parametros || { precoSoja: 120 };
 
   const negEstoque = estoque.filter(s => Number(s.qtd || 0) < 0);
@@ -779,7 +916,7 @@ function pageOpsCenter() {
 
 function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
   const db = getDB();
-  const eid = getEmpresaId();
+  const sid = getSafraId();
 
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
@@ -843,7 +980,7 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
 
   function renderTable() {
     const db2 = getDB();
-    const rows0 = onlyEmpresa(db2[entityKey] || []);
+    const rows0 = onlySafra(db2[entityKey] || []);
     const rows = helpers?.filter ? helpers.filter(rows0, db2) : rows0;
 
     const tb = document.getElementById("tbody");
@@ -876,7 +1013,7 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
   document.getElementById("frm").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const obj = { id: uid(entityKey.slice(0, 3)), empresaId: eid };
+    const obj = { id: uid(entityKey.slice(0, 3)), safraId: sid };
 
     fields.forEach(f => {
       let v = fd.get(f.key);
@@ -897,7 +1034,7 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
 
   document.getElementById("btnExportCSV").addEventListener("click", () => {
     const db2 = getDB();
-    const rows = onlyEmpresa(db2[entityKey] || []);
+    const rows = onlySafra(db2[entityKey] || []);
     downloadText(`${entityKey}-${nowISO()}.csv`, toCSV(rows));
     toast("Exportado", "CSV baixado.");
   });
@@ -905,122 +1042,11 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
   renderTable();
 }
 
-function pageEmpresas() {
-  const db = getDB();
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
-  const content = document.getElementById("content");
-  content.innerHTML = `
-    <div class="section">
-      <div class="card">
-        <h3>Cadastrar empresa</h3>
-        <div class="help">Multiempresa: cada empresa tem seus próprios dados.</div>
-        <div class="hr"></div>
-        <form id="frm" class="formGrid">
-          <div><small>Nome</small><input class="input" name="nome" required></div>
-          <div><small>CNPJ</small><input class="input" name="cnpj"></div>
-          <div><small>Responsável</small><input class="input" name="responsavel"></div>
-          <div><small>Cidade</small><input class="input" name="cidade"></div>
-          <div><small>UF</small><input class="input" name="uf" maxlength="2"></div>
-          <div class="full"><small>Observações</small><textarea class="textarea" name="observacoes"></textarea></div>
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Salvar</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Empresa</th>
-              <th>CNPJ</th>
-              <th>Responsável</th>
-              <th>Local</th>
-              <th class="noPrint">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-    </div>
-  `;
-
-  function render() {
-    const db2 = getDB();
-    const tb = document.getElementById("tbody");
-    tb.innerHTML = db2.empresas.slice().reverse().map(e => `
-      <tr>
-        <td><b>${escapeHtml(e.nome)}</b></td>
-        <td>${escapeHtml(e.cnpj || "")}</td>
-        <td>${escapeHtml(e.responsavel || "")}</td>
-        <td>${escapeHtml((e.cidade || "") + " / " + (e.uf || ""))}</td>
-        <td class="noPrint">
-          <button class="btn" onclick="window.__use('${e.id}')">Usar</button>
-          <button class="btn danger" onclick="window.__delEmp('${e.id}')">Excluir</button>
-        </td>
-      </tr>
-    `).join("") || `<tr><td colspan="5">Sem empresas.</td></tr>`;
-  }
-
-  window.__use = (id) => {
-    setEmpresaId(id);
-    toast("Empresa ativa", "Mudando para a empresa selecionada…");
-    setTimeout(() => location.reload(), 200);
-  };
-
-  window.__delEmp = (id) => {
-    const db2 = getDB();
-    if (db2.empresas.length <= 1) {
-      alert("Você precisa ter pelo menos 1 empresa.");
-      return;
-    }
-    if (!confirm("Excluir empresa e TODOS os dados dela?")) return;
-
-    db2.empresas = db2.empresas.filter(x => x.id !== id);
-    const wipe = key => db2[key] = (db2[key] || []).filter(x => x.empresaId !== id);
-    ["fazendas", "talhoes", "produtos", "estoque", "equipe", "maquinas", "clima", "aplicacoes", "combustivel", "dieselEntradas", "dieselEstoque", "lembretes", "pragas"].forEach(wipe);
-
-    if (getEmpresaId() === id) {
-      db2.session.empresaId = db2.empresas[0].id;
-    }
-    setDB(db2);
-    toast("Excluída", "Empresa removida com dados associados.");
-    setTimeout(() => location.reload(), 200);
-  };
-
-  document.getElementById("frm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const obj = {
-      id: uid("emp"),
-      nome: fd.get("nome"),
-      cnpj: fd.get("cnpj"),
-      responsavel: fd.get("responsavel"),
-      cidade: fd.get("cidade"),
-      uf: fd.get("uf"),
-      observacoes: fd.get("observacoes")
-    };
-    const db2 = getDB();
-    db2.empresas.push(obj);
-    setDB(db2);
-    e.target.reset();
-    toast("Salvo", "Empresa adicionada.");
-    render();
-  });
-
-  document.getElementById("btnExportCSV").addEventListener("click", () => {
-    const db2 = getDB();
-    downloadText(`empresas-${nowISO()}.csv`, toCSV(db2.empresas));
-    toast("Exportado", "CSV baixado.");
-  });
-
-  render();
-}
-
+// Páginas específicas adaptadas para safra
 function pageFazendas() {
   crudPage({
     entityKey: "fazendas",
-    subtitle: "Unidades produtivas por empresa.",
+    subtitle: "Unidades produtivas da safra atual.",
     fields: [
       { key: "nome", label: "Nome da fazenda", type: "text" },
       { key: "cidade", label: "Cidade", type: "text" },
@@ -1041,7 +1067,7 @@ function pageFazendas() {
 function pageProdutos() {
   crudPage({
     entityKey: "produtos",
-    subtitle: "Cadastre defensivos, fertilizantes e adjuvantes.",
+    subtitle: "Produtos disponíveis na safra atual.",
     fields: [
       { key: "tipo", label: "Tipo", type: "text", placeholder: "Herbicida/Fungicida..." },
       { key: "nome", label: "Nome comercial", type: "text" },
@@ -1079,12 +1105,11 @@ function pageProdutos() {
 
 function pageEstoque() {
   const db = getDB();
-  const produtos = onlyEmpresa(db.produtos);
+  const produtos = onlySafra(db.produtos);
 
-  // Função para encontrar um registro de estoque existente
   function encontrarRegistroExistente(db, produtoId, deposito) {
     return db.estoque.find(s => 
-      s.empresaId === getEmpresaId() && 
+      s.safraId === getSafraId() && 
       s.produtoId === produtoId && 
       (s.deposito || "Central") === (deposito || "Central")
     );
@@ -1092,12 +1117,11 @@ function pageEstoque() {
 
   setTopActions(`
     <button class="btn" id="btnExportCSV">Exportar CSV</button>
-    <button class="btn primary" id="btnReabastecer">+ Reabastecer produto existente</button>
+    <button class="btn primary" id="btnReabastecer">+ Reabastecer produto</button>
   `);
 
   const content = document.getElementById("content");
 
-  // Formulário para novo registro (agora com verificação de duplicidade)
   const formHtml = `
     <div class="card">
       <h3>Adicionar produto ao estoque</h3>
@@ -1124,7 +1148,6 @@ function pageEstoque() {
     </div>
   `;
 
-  // Modal para reabastecimento
   const modalReabastecer = `
     <div id="modalReabastecer" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
       <div style="background:#1a1a1f; padding:20px; border-radius:12px; width:400px;">
@@ -1170,7 +1193,6 @@ function pageEstoque() {
 
   content.innerHTML = `<div class="section">${formHtml}${tableHtml}</div>`;
 
-  // Funções do modal
   window.fecharModalReabastecer = () => {
     document.getElementById('modalReabastecer').style.display = 'none';
   };
@@ -1192,25 +1214,22 @@ function pageEstoque() {
     const produto = produtos.find(p => p.id === produtoId);
     if (!produto) return;
 
-    // Verificar se já existe registro
     const existente = db2.estoque.find(s => 
-      s.empresaId === getEmpresaId() && 
+      s.safraId === getSafraId() && 
       s.produtoId === produtoId && 
       s.deposito === deposito
     );
 
     if (existente) {
-      // Soma a quantidade
       existente.qtd = Number(existente.qtd || 0) + qtd;
       existente.obs = obs || existente.obs;
       if (lote) existente.lote = lote;
       if (validade) existente.validade = validade;
       toast("Reabastecido", `${produto.nome} agora tem ${existente.qtd} ${existente.unidade}`);
     } else {
-      // Cria novo registro
       db2.estoque.push({
         id: uid("stk"),
-        empresaId: getEmpresaId(),
+        safraId: getSafraId(),
         produtoId,
         deposito,
         lote: lote || "",
@@ -1231,7 +1250,6 @@ function pageEstoque() {
     document.getElementById('modalReabastecer').style.display = 'flex';
   });
 
-  // Atualizar unidade quando produto for selecionado
   document.querySelector('select[name="produtoId"]').addEventListener('change', (e) => {
     const produto = produtos.find(p => p.id === e.target.value);
     if (produto) {
@@ -1241,7 +1259,7 @@ function pageEstoque() {
 
   function renderTable() {
     const db2 = getDB();
-    const rows = onlyEmpresa(db2.estoque || []);
+    const rows = onlySafra(db2.estoque || []);
     const tb = document.getElementById("tbody");
 
     tb.innerHTML = rows.map(r => {
@@ -1265,7 +1283,6 @@ function pageEstoque() {
     }).join("") || '<tr><td colspan="8">Nenhum item no estoque.</td></tr>';
   }
 
-  // Função para reabastecimento rápido a partir da tabela
   window.reabastecerRapido = (estoqueId) => {
     const db2 = getDB();
     const item = db2.estoque.find(s => s.id === estoqueId);
@@ -1316,25 +1333,22 @@ function pageEstoque() {
     const produto = produtos.find(p => p.id === produtoId);
     if (!produto) return;
 
-    // Verificar se já existe
     const existente = db2.estoque.find(s => 
-      s.empresaId === getEmpresaId() && 
+      s.safraId === getSafraId() && 
       s.produtoId === produtoId && 
       s.deposito === deposito
     );
 
     if (existente) {
-      // Soma a quantidade
       existente.qtd = Number(existente.qtd || 0) + qtd;
       existente.obs = obs || existente.obs;
       if (lote) existente.lote = lote;
       if (validade) existente.validade = validade;
       toast("Estoque atualizado", `${produto.nome} agora tem ${existente.qtd} ${existente.unidade}`);
     } else {
-      // Cria novo
       db2.estoque.push({
         id: uid("stk"),
-        empresaId: getEmpresaId(),
+        safraId: getSafraId(),
         produtoId,
         deposito,
         lote,
@@ -1354,7 +1368,7 @@ function pageEstoque() {
 
   document.getElementById("btnExportCSV").addEventListener("click", () => {
     const db2 = getDB();
-    const rows = onlyEmpresa(db2.estoque || []).map(r => {
+    const rows = onlySafra(db2.estoque || []).map(r => {
       const p = produtos.find(p => p.id === r.produtoId);
       return {
         Produto: p ? p.nome : "Desconhecido",
@@ -1375,7 +1389,7 @@ function pageEstoque() {
 
 function pageTalhoes() {
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
+  const fazendas = onlySafra(db.fazendas);
 
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
@@ -1433,10 +1447,10 @@ function pageTalhoes() {
 
   function render() {
     const db2 = getDB();
-    const rows = onlyEmpresa(db2.talhoes || []);
+    const rows = onlySafra(db2.talhoes || []);
     const tb = document.getElementById("tbody");
     tb.innerHTML = rows.slice().reverse().map(t => {
-      const faz = findNameById(onlyEmpresa(db2.fazendas), t.fazendaId);
+      const faz = findNameById(onlySafra(db2.fazendas), t.fazendaId);
       return `
         <tr>
           <td><b>${escapeHtml(t.nome || "")}</b></td>
@@ -1479,7 +1493,7 @@ function pageTalhoes() {
     const fd = new FormData(e.target);
     const obj = {
       id: uid("tal"),
-      empresaId: getEmpresaId(),
+      safraId: getSafraId(),
       fazendaId: fd.get("fazendaId"),
       nome: fd.get("nome"),
       areaHa: Number(fd.get("areaHa") || 0),
@@ -1500,7 +1514,7 @@ function pageTalhoes() {
 
   document.getElementById("btnExportCSV").addEventListener("click", () => {
     const db2 = getDB();
-    downloadText(`talhoes-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.talhoes || [])));
+    downloadText(`talhoes-${nowISO()}.csv`, toCSV(onlySafra(db2.talhoes || [])));
     toast("Exportado", "CSV baixado.");
   });
 
@@ -1509,12 +1523,12 @@ function pageTalhoes() {
 
 function pageCombustivel() {
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const equipe = onlyEmpresa(db.equipe);
-  const maquinas = onlyEmpresa(db.maquinas);
-  const tanques = onlyEmpresa(db.dieselEstoque);
-  const entradas = onlyEmpresa(db.dieselEntradas || []).sort((a, b) => b.data.localeCompare(a.data));
+  const fazendas = onlySafra(db.fazendas);
+  const talhoes = onlySafra(db.talhoes);
+  const equipe = onlySafra(db.equipe);
+  const maquinas = onlySafra(db.maquinas);
+  const tanques = onlySafra(db.dieselEstoque);
+  const entradas = onlySafra(db.dieselEntradas || []).sort((a, b) => b.data.localeCompare(a.data));
 
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
@@ -1619,11 +1633,11 @@ function pageCombustivel() {
 
   function renderSaidas() {
     const db2 = getDB();
-    const rows = onlyEmpresa(db2.combustivel || []).sort((a, b) => b.data.localeCompare(a.data));
+    const rows = onlySafra(db2.combustivel || []).sort((a, b) => b.data.localeCompare(a.data));
     const tb = document.getElementById("tbodySaidas");
     tb.innerHTML = rows.map(c => {
-      const faz = findNameById(onlyEmpresa(db2.fazendas), c.fazendaId);
-      const tal = c.talhaoId ? findNameById(onlyEmpresa(db2.talhoes), c.talhaoId) : "—";
+      const faz = findNameById(onlySafra(db2.fazendas), c.fazendaId);
+      const tal = c.talhaoId ? findNameById(onlySafra(db2.talhoes), c.talhaoId) : "—";
       return `
         <tr>
           <td>${c.data}</td>
@@ -1668,7 +1682,7 @@ function pageCombustivel() {
 
     const db2 = getDB();
     const deposito = fd.get("deposito") || "Tanque Principal";
-    const tank = db2.dieselEstoque.find(t => t.empresaId === getEmpresaId() && t.deposito === deposito);
+    const tank = db2.dieselEstoque.find(t => t.safraId === getSafraId() && t.deposito === deposito);
     if (!tank) { alert("Tanque não encontrado"); return; }
 
     const res = baixaDiesel(db2, deposito, litros);
@@ -1676,7 +1690,7 @@ function pageCombustivel() {
 
     const obj = {
       id: uid("cmb"),
-      empresaId: getEmpresaId(),
+      safraId: getSafraId(),
       data: fd.get("data") || nowISO(),
       tipo: "Diesel S10",
       deposito,
@@ -1701,7 +1715,7 @@ function pageCombustivel() {
 
   document.getElementById("btnExportCSV").addEventListener("click", () => {
     const db2 = getDB();
-    downloadText(`combustivel-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.combustivel || [])));
+    downloadText(`combustivel-${nowISO()}.csv`, toCSV(onlySafra(db2.combustivel || [])));
     toast("Exportado", "CSV baixado.");
   });
 
@@ -1710,8 +1724,8 @@ function pageCombustivel() {
 
 function pageClima() {
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
+  const fazendas = onlySafra(db.fazendas);
+  const talhoes = onlySafra(db.talhoes);
 
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
@@ -1721,7 +1735,7 @@ function pageClima() {
       <div class="card">
         <h3>Chuva (hoje)</h3>
         <div class="big" id="kpiHoje">0,0 mm</div>
-        <div class="sub">Somatório do dia (empresa)</div>
+        <div class="sub">Somatório do dia (safra)</div>
       </div>
       <div class="card">
         <h3>Últimos 7 dias</h3>
@@ -1841,14 +1855,14 @@ function pageClima() {
 
   function render() {
     const db2 = getDB();
-    const rows = onlyEmpresa(db2.clima || []);
+    const rows = onlySafra(db2.clima || []);
 
     calcKPIs(rows);
 
     const tb = document.getElementById("tbody");
     tb.innerHTML = rows.slice().sort((a, b) => (b.data || "").localeCompare(a.data || "")).map(c => {
-      const faz = findNameById(onlyEmpresa(db2.fazendas), c.fazendaId);
-      const tal = c.talhaoId ? findNameById(onlyEmpresa(db2.talhoes), c.talhaoId) : "Geral";
+      const faz = findNameById(onlySafra(db2.fazendas), c.fazendaId);
+      const tal = c.talhaoId ? findNameById(onlySafra(db2.talhoes), c.talhaoId) : "Geral";
       return `
         <tr>
           <td>${escapeHtml(c.data || "")}</td>
@@ -1876,7 +1890,7 @@ function pageClima() {
     const tbA = document.getElementById("tbodyAcum");
     const list = talhoes.map(t => {
       const info = byTalhao.get(t.id) || { mm: 0, last: "" };
-      const faz = findNameById(onlyEmpresa(db2.fazendas), t.fazendaId);
+      const faz = findNameById(onlySafra(db2.fazendas), t.fazendaId);
       return { talhao: t.nome, fazenda: faz, areaHa: Number(t.areaHa || 0), mm: info.mm, last: info.last || "-" };
     }).sort((a, b) => b.mm - a.mm);
 
@@ -1905,7 +1919,7 @@ function pageClima() {
     const fd = new FormData(e.target);
     const obj = {
       id: uid("cli"),
-      empresaId: getEmpresaId(),
+      safraId: getSafraId(),
       data: fd.get("data") || nowISO(),
       fazendaId: fd.get("fazendaId"),
       talhaoId: fd.get("talhaoId") || "",
@@ -1929,7 +1943,7 @@ function pageClima() {
 
   document.getElementById("btnExportCSV").addEventListener("click", () => {
     const db2 = getDB();
-    downloadText(`clima-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.clima || [])));
+    downloadText(`clima-${nowISO()}.csv`, toCSV(onlySafra(db2.clima || [])));
     toast("Exportado", "CSV baixado.");
   });
 
@@ -1939,7 +1953,7 @@ function pageClima() {
 function pageEquipe() {
   crudPage({
     entityKey: "equipe",
-    subtitle: "Equipe de campo: operadores, agrônomos, terceirizados etc.",
+    subtitle: "Equipe de campo da safra atual.",
     fields: [
       { key: "nome", label: "Nome", type: "text" },
       { key: "funcao", label: "Função", type: "text", placeholder: "Tratorista / Encarregado / Agrônomo..." },
@@ -1960,7 +1974,7 @@ function pageEquipe() {
 function pageMaquinas() {
   crudPage({
     entityKey: "maquinas",
-    subtitle: "Cadastro de equipamentos para rastreabilidade de aplicação.",
+    subtitle: "Equipamentos disponíveis na safra atual.",
     fields: [
       { key: "nome", label: "Máquina/equipamento", type: "text", placeholder: "Pulverizador / Trator / Drone..." },
       { key: "placa", label: "Placa/Identificação", type: "text" },
@@ -1981,11 +1995,11 @@ function pageMaquinas() {
 
 function pageAplicacoes() {
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const equipe = onlyEmpresa(db.equipe);
-  const maquinas = onlyEmpresa(db.maquinas);
-  const produtos = onlyEmpresa(db.produtos);
+  const fazendas = onlySafra(db.fazendas);
+  const talhoes = onlySafra(db.talhoes);
+  const equipe = onlySafra(db.equipe);
+  const maquinas = onlySafra(db.maquinas);
+  const produtos = onlySafra(db.produtos);
 
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
@@ -2088,7 +2102,7 @@ function pageAplicacoes() {
 
   function render() {
     const db2 = getDB();
-    const rows = onlyEmpresa(db2.aplicacoes || []);
+    const rows = onlySafra(db2.aplicacoes || []);
     const tb = document.getElementById("tbody");
     tb.innerHTML = rows.slice().reverse().map(a => {
       const tal = findNameById(talhoes, a.talhaoId);
@@ -2136,7 +2150,7 @@ function pageAplicacoes() {
 
     const obj = {
       id: uid("apl"),
-      empresaId: getEmpresaId(),
+      safraId: getSafraId(),
       data: fd.get("data") || nowISO(),
       fazendaId: fd.get("fazendaId"),
       talhaoId: fd.get("talhaoId"),
@@ -2177,7 +2191,7 @@ function pageAplicacoes() {
 
   document.getElementById("btnExportCSV").addEventListener("click", () => {
     const db2 = getDB();
-    downloadText(`aplicacoes-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.aplicacoes || [])));
+    downloadText(`aplicacoes-${nowISO()}.csv`, toCSV(onlySafra(db2.aplicacoes || [])));
   });
 
   render();
@@ -2185,10 +2199,11 @@ function pageAplicacoes() {
 
 function pageRelatorios() {
   const db = getDB();
-  const fazendas = onlyEmpresa(db.fazendas);
-  const talhoes = onlyEmpresa(db.talhoes);
-  const aplicacoes = onlyEmpresa(db.aplicacoes);
-  const clima = onlyEmpresa(db.clima);
+  const safra = getSafraAtual();
+  const fazendas = onlySafra(db.fazendas);
+  const talhoes = onlySafra(db.talhoes);
+  const aplicacoes = onlySafra(db.aplicacoes);
+  const clima = onlySafra(db.clima);
   const parametros = db.parametros || { precoSoja: 120 };
 
   setTopActions(`
@@ -2203,7 +2218,7 @@ function pageRelatorios() {
   const content = document.getElementById("content");
   content.innerHTML = `
     <div class="printOnly">
-      <h2>Relatório Agro Pro</h2>
+      <h2>Relatório Agro Pro - ${escapeHtml(safra?.nome || 'Safra Atual')}</h2>
       <p>Gerado em: ${new Date().toLocaleString("pt-BR")}</p>
       <div class="hr"></div>
     </div>
@@ -2212,7 +2227,7 @@ function pageRelatorios() {
       <div class="card">
         <h3>Área total (talhões)</h3>
         <div class="big">${num(totalArea, 1)} ha</div>
-        <div class="sub">Somatório da empresa ativa</div>
+        <div class="sub">Somatório da safra</div>
       </div>
       <div class="card">
         <h3>Aplicações</h3>
@@ -2298,7 +2313,7 @@ function pageRelatorios() {
   document.getElementById("btnPrint").addEventListener("click", () => window.print());
   document.getElementById("btnCSV").addEventListener("click", () => {
     const db2 = getDB();
-    downloadText(`relatorio-aplicacoes-${nowISO()}.csv`, toCSV(onlyEmpresa(db2.aplicacoes || [])));
+    downloadText(`relatorio-aplicacoes-${nowISO()}.csv`, toCSV(onlySafra(db2.aplicacoes || [])));
     toast("Exportado", "CSV baixado.");
   });
 }
@@ -2352,7 +2367,8 @@ function pageConfiguracoes() {
       <div class="card">
         <h3>📈 Sobre o sistema</h3>
         <div class="help">
-          <b>Agro Pro v5.0</b><br/>
+          <b>Agro Pro v6.0</b><br/>
+          • Sistema baseado em SAFRAS (dados isolados por safra)<br/>
           • Base de dados com +100 produtos e +20 pragas pré-cadastradas<br/>
           • Alertas automáticos de pragas baseados no clima<br/>
           • Cálculo de custos com preços reais de produtos e diesel (UEPS)<br/>
@@ -2406,7 +2422,7 @@ function pageConfiguracoes() {
       const text = await file.text();
       try {
         const data = JSON.parse(text);
-        if (!data.empresas) {
+        if (!data.safras) {
           alert("Arquivo inválido.");
           return;
         }
@@ -2426,20 +2442,20 @@ function pageConfiguracoes() {
 function boot() {
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
   const titles = {
-    dashboard: ["Dashboard", "Visão geral, indicadores e últimos registros"],
-    opscenter: ["Ops Center", "Alertas, custos por talhão e monitoramento"],
-    empresas: ["Empresas", "Cadastre e gerencie organizações (multiempresa)"],
-    fazendas: ["Fazendas", "Unidades produtivas por empresa"],
-    talhoes: ["Talhões", "Área, cultura, safra e custos por talhão"],
-    produtos: ["Produtos", "Cadastro de defensivos e insumos"],
-    estoque: ["Estoque", "Controle por depósito/lote/validade (saldo pode negativo)"],
-    aplicacoes: ["Aplicações", "Rastreabilidade + baixa automática no estoque"],
-    combustivel: ["Combustível", "Entradas, saídas e estoque de diesel"],
-    clima: ["Clima/Chuva", "Histórico manual por fazenda/talhão (acumulado)"],
-    equipe: ["Equipe", "Operadores, agrônomos e times de campo"],
-    maquinas: ["Máquinas", "Equipamentos usados nas operações"],
-    relatorios: ["Relatórios", "Resumo + impressão/PDF + exportação"],
-    config: ["Configurações", "Parâmetros de mercado, backup e reset"]
+    dashboard: ["Dashboard", "Visão geral da safra atual"],
+    opscenter: ["Ops Center", "Alertas e custos por talhão"],
+    safras: ["Safras", "Gerenciar safras"],
+    fazendas: ["Fazendas", "Unidades produtivas da safra"],
+    talhoes: ["Talhões", "Áreas de cultivo da safra"],
+    produtos: ["Produtos", "Insumos da safra"],
+    estoque: ["Estoque", "Controle de insumos da safra"],
+    aplicacoes: ["Aplicações", "Operações da safra"],
+    combustivel: ["Combustível", "Entradas e saídas de diesel"],
+    clima: ["Clima/Chuva", "Registros climáticos da safra"],
+    equipe: ["Equipe", "Colaboradores da safra"],
+    maquinas: ["Máquinas", "Equipamentos da safra"],
+    relatorios: ["Relatórios", "Exportação de dados da safra"],
+    config: ["Configurações", "Parâmetros e backup"]
   };
 
   const [t, s] = titles[pageKey] || ["Agro Pro", ""];
@@ -2447,7 +2463,7 @@ function boot() {
 
   if (pageKey === "dashboard") pageDashboard();
   else if (pageKey === "opscenter") pageOpsCenter();
-  else if (pageKey === "empresas") pageEmpresas();
+  else if (pageKey === "safras") pageSafras();
   else if (pageKey === "fazendas") pageFazendas();
   else if (pageKey === "talhoes") pageTalhoes();
   else if (pageKey === "produtos") pageProdutos();
@@ -2460,7 +2476,7 @@ function boot() {
   else if (pageKey === "relatorios") pageRelatorios();
   else if (pageKey === "config") pageConfiguracoes();
 
-  toast("Agro Pro", "Sistema carregado. Dados salvos no navegador.");
+  toast("Agro Pro", "Sistema carregado.");
 }
 
 // Inicializa quando a página carregar
