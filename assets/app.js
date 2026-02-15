@@ -1915,71 +1915,81 @@ function pageClima() {
   const content = document.getElementById("content");
   content.innerHTML = `
     <style>
-      /* Garantir que TODOS os textos sejam claros */
-      body, .main, .card, .clima-kpi-card, .form-clima, .tableWrap {
-        color: #fff;
+      /* Fundo geral claro */
+      .main {
+        background: #f5f7fa !important;
+      }
+      .clima-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
       }
       .clima-kpi-card {
-        background: #2a2a30;
+        background: #ffffff;
         border-radius: 12px;
         padding: 20px;
-        border-left: 4px solid #2196f3;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        border-left: 4px solid #2563eb; /* azul */
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        color: #1e293b;
       }
       .clima-kpi-card h3 {
         margin: 0 0 10px 0;
-        color: #90caf9;
+        color: #2563eb;
         font-size: 16px;
-        font-weight: 500;
+        font-weight: 600;
       }
       .clima-kpi-valor {
         font-size: 36px;
         font-weight: 700;
-        color: #ffffff; /* branco puro */
+        color: #0f172a; /* quase preto */
+        line-height: 1.2;
       }
       .clima-kpi-unidade {
         font-size: 16px;
-        color: #cccccc; /* cinza claro visível */
+        color: #64748b;
         margin-left: 5px;
       }
       .clima-kpi-label {
-        color: #dddddd; /* quase branco */
+        color: #334155;
         font-size: 13px;
         margin-top: 8px;
       }
       .form-clima {
-        background: #1e1e24;
+        background: #ffffff;
         border-radius: 12px;
         padding: 20px;
         margin-bottom: 30px;
-        border: 1px solid #3a3a44;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
       }
       .form-clima h3 {
         margin-top: 0;
-        color: #bbdefb;
+        color: #2563eb;
       }
-      /* Inputs e labels com contraste */
       .input, .select, .textarea {
-        background: #2c2c34;
-        color: #ffffff; /* texto branco */
-        border: 1px solid #4a4a55;
+        background: #ffffff;
+        color: #1e293b;
+        border: 1px solid #cbd5e1;
         padding: 8px 12px;
         border-radius: 6px;
         width: 100%;
+        font-size: 14px;
       }
       .input::placeholder, .textarea::placeholder {
-        color: #aaa;
+        color: #94a3b8;
       }
       .input:focus, .select:focus, .textarea:focus {
-        border-color: #2196f3;
+        border-color: #2563eb;
         outline: none;
+        box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
       }
       small {
-        color: #ccc;
+        color: #475569;
         display: block;
         margin-bottom: 4px;
+        font-weight: 500;
       }
-      /* Gráfico */
       .grafico-barras {
         display: flex;
         align-items: flex-end;
@@ -1989,7 +1999,7 @@ function pageClima() {
       }
       .barra {
         flex: 1;
-        background: #42a5f5;
+        background: #2563eb;
         border-radius: 4px 4px 0 0;
         min-height: 20px;
         transition: height 0.3s;
@@ -1998,57 +2008,85 @@ function pageClima() {
         text-align: center;
         font-size: 11px;
         margin-top: 5px;
-        color: #ccc;
+        color: #475569;
       }
-      /* Tabelas */
+      .secao-tabela {
+        margin-top: 30px;
+      }
       .tableWrap {
-        background: #1a1a1f;
+        background: #ffffff;
         border-radius: 12px;
         padding: 15px;
-        border: 1px solid #333;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
       }
       table {
         width: 100%;
         border-collapse: collapse;
-        color: #eee;
+        color: #1e293b;
       }
       th {
         text-align: left;
         padding: 12px;
-        background: #25252b;
-        color: #fff;
-        font-weight: 500;
-        border-bottom: 2px solid #444;
+        background: #f1f5f9;
+        color: #0f172a;
+        font-weight: 600;
+        border-bottom: 2px solid #cbd5e1;
       }
       td {
         padding: 10px 12px;
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid #e2e8f0;
       }
       tr:hover td {
-        background: #2a2a30;
+        background: #f8fafc;
       }
       .valor-com-unidade {
         font-weight: 600;
-        color: #fff;
+        color: #0f172a;
       }
       .unidade-tabela {
-        color: #aaa;
+        color: #64748b;
         font-size: 11px;
         margin-left: 4px;
       }
-      /* Botões já tem contraste, mas vamos reforçar */
       .btn {
-        background: #333;
-        color: #fff;
+        background: #e2e8f0;
+        color: #1e293b;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+      }
+      .btn:hover {
+        background: #cbd5e1;
       }
       .btn.primary {
-        background: #1976d2;
+        background: #2563eb;
+        color: white;
       }
       .btn.primary:hover {
-        background: #1565c0;
+        background: #1d4ed8;
       }
       .btn.danger {
-        background: #c62828;
+        background: #dc2626;
+        color: white;
+      }
+      .btn.danger:hover {
+        background: #b91c1c;
+      }
+      .card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
+      }
+      .card h4 {
+        margin-top: 0;
+        color: #2563eb;
       }
     </style>
 
@@ -2129,7 +2167,7 @@ function pageClima() {
             <div style="flex:1; text-align:center;">
               <div class="barra" style="height: ${altura}px;"></div>
               <div class="barra-label">${mes}</div>
-              <div style="font-size:10px; color:#ccc;">${num(chuvaPorMes[i], 1)} mm</div>
+              <div style="font-size:10px; color:#475569;">${num(chuvaPorMes[i], 1)} mm</div>
             </div>
           `;
         }).join('')}
