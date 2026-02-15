@@ -2005,110 +2005,235 @@ function pageAplicacoes() {
 
   const content = document.getElementById("content");
 
-  function optionList(arr) { return arr.map(o => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join(""); }
+  function optionList(arr) { 
+    return arr.map(o => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join(""); 
+  }
 
   function produtoOptions() {
     return produtos.map(p => `<option value="${p.id}" data-preco="${p.preco || 0}" data-unidade="${p.unidade}">${escapeHtml(p.nome)} — ${escapeHtml(p.tipo)} (R$ ${p.preco || 0}/${p.unidade})</option>`).join("");
   }
 
+  // Template da página
   content.innerHTML = `
     <div class="section">
+      <!-- Formulário de aplicação -->
       <div class="card">
-        <h3>Registrar aplicação</h3>
-        <div class="help">O custo total é calculado automaticamente com base nos produtos e área.</div>
+        <h3>📝 Registrar nova aplicação</h3>
+        <div class="help">Preencha os dados da aplicação. O custo total é calculado automaticamente.</div>
         <div class="hr"></div>
+        
         <form id="frm" class="formGrid">
-          <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
-          <div><small>Fazenda</small><select class="select" name="fazendaId" required>${optionList(fazendas)}</select></div>
-          <div><small>Talhão</small><select class="select" name="talhaoId" required>${optionList(talhoes)}</select></div>
-          <div><small>Área aplicada (ha)</small><input class="input" name="areaHaAplicada" type="number" step="0.1" required /></div>
-          <div><small>Cultura</small><input class="input" name="cultura" placeholder="Soja" /></div>
-          <div><small>Alvo</small><input class="input" name="alvo" placeholder="Praga" /></div>
-          <div><small>Operação</small><input class="input" name="operacao" placeholder="Pulverização" /></div>
-          <div><small>Máquina</small><select class="select" name="maquinaId"><option value="">(opcional)</option>${optionList(maquinas)}</select></div>
-          <div><small>Operador</small><select class="select" name="operadorId"><option value="">(opcional)</option>${optionList(equipe)}</select></div>
-          <div><small>Vento (km/h)</small><input class="input" name="vento" type="number" /></div>
-          <div><small>Temperatura (°C)</small><input class="input" name="temp" type="number" /></div>
-          <div><small>Umidade (%)</small><input class="input" name="umidade" type="number" /></div>
+          <!-- Linha 1: Data e Fazenda -->
+          <div><small>📅 Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
+          <div><small>🏢 Fazenda</small><select class="select" name="fazendaId" required>${optionList(fazendas)}</select></div>
+          
+          <!-- Linha 2: Talhão e Área -->
+          <div><small>🧭 Talhão</small><select class="select" name="talhaoId" required>${optionList(talhoes)}</select></div>
+          <div><small>📏 Área aplicada (ha)</small><input class="input" name="areaHaAplicada" type="number" step="0.1" required /></div>
+          
+          <!-- Linha 3: Cultura e Alvo -->
+          <div><small>🌱 Cultura</small><input class="input" name="cultura" placeholder="Soja" /></div>
+          <div><small>🎯 Alvo</small><input class="input" name="alvo" placeholder="Praga / Doença" /></div>
+          
+          <!-- Linha 4: Operação e Máquina -->
+          <div><small>🚜 Operação</small><input class="input" name="operacao" placeholder="Pulverização" /></div>
+          <div><small>⚙️ Máquina</small><select class="select" name="maquinaId"><option value="">(opcional)</option>${optionList(maquinas)}</select></div>
+          
+          <!-- Linha 5: Operador e Condições -->
+          <div><small>👤 Operador</small><select class="select" name="operadorId"><option value="">(opcional)</option>${optionList(equipe)}</select></div>
+          <div><small>🌬️ Vento (km/h)</small><input class="input" name="vento" type="number" /></div>
+          
+          <!-- Linha 6: Temperatura e Umidade -->
+          <div><small>🌡️ Temperatura (°C)</small><input class="input" name="temp" type="number" /></div>
+          <div><small>💧 Umidade (%)</small><input class="input" name="umidade" type="number" /></div>
 
+          <!-- SEÇÃO DE PRODUTOS -->
           <div class="full">
-            <small>Produtos (até 10 linhas)</small>
-            <div class="help">Selecione o produto, informe a dose por hectare. O custo será somado.</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <h4 style="margin:0;">🧪 Produtos aplicados</h4>
+              <button type="button" class="btn primary" id="btnAdicionarProduto" style="font-size:12px;">+ Adicionar produto</button>
+            </div>
+            <div class="help">Selecione o produto e informe a dose por hectare. O custo será somado automaticamente.</div>
             <div class="hr"></div>
-            <div class="formGrid" id="produtos-lista">
-              ${Array.from({ length: 10 }).map((_, idx) => {
-                const i = idx + 1;
-                return `
-                  <div class="full" style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap:5px; margin-bottom:5px;">
-                    <select class="select" name="p${i}Id" onchange="atualizarPrecoUnit(this, ${i})">
-                      <option value="">(produto ${i})</option>
-                      ${produtoOptions()}
-                    </select>
-                    <input class="input" name="p${i}Dose" type="number" step="0.01" placeholder="Dose/ha" onchange="calcularCustoTotal()" />
-                    <input class="input" name="p${i}Unidade" placeholder="Unid." readonly />
-                    <span class="input" style="background:#2a2a30;" id="p${i}Custo">R$ 0,00</span>
-                  </div>
-                `;
-              }).join('')}
+            
+            <div id="produtos-container">
+              <!-- A primeira linha de produto já vem pré-carregada -->
+              <div class="produto-linha" style="display:grid; grid-template-columns: 3fr 1fr 1fr 1fr; gap:10px; margin-bottom:10px; align-items:center;">
+                <select class="select" name="produtoId[]" onchange="atualizarPrecoUnit(this, 0)">
+                  <option value="">Selecione um produto...</option>
+                  ${produtoOptions()}
+                </select>
+                <input class="input" name="dose[]" type="number" step="0.01" placeholder="Dose/ha" onchange="calcularCustoTotal()" />
+                <span class="badge" id="unidade-0" style="background:#2a2a30; padding:8px; text-align:center;">—</span>
+                <span class="badge" id="custo-0" style="background:#2a2a30; color:#4CAF50; padding:8px; text-align:center; font-weight:bold;">R$ 0,00</span>
+              </div>
             </div>
           </div>
+
+          <!-- Observações -->
           <div class="full">
-            <small>Observações</small><textarea class="textarea" name="obs"></textarea>
+            <small>📝 Observações</small>
+            <textarea class="textarea" name="obs" placeholder="Informações adicionais..."></textarea>
           </div>
-          <div class="full row" style="justify-content:flex-end">
-            <span style="margin-right:20px;"><b>Custo total estimado: </b><span id="custoTotalDisplay">R$ 0,00</span></span>
-            <button class="btn primary" type="submit">Salvar aplicação e dar baixa</button>
+
+          <!-- RESUMO DE CUSTOS -->
+          <div class="full" style="margin-top:20px;">
+            <div style="background: linear-gradient(135deg, #1a2a3a, #0f1a24); padding:20px; border-radius:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <h4 style="margin:0; color:#888;">💵 CUSTO TOTAL ESTIMADO</h4>
+                  <div style="font-size:32px; font-weight:bold; color:#4CAF50;" id="custoTotalDisplay">R$ 0,00</div>
+                </div>
+                <button class="btn primary" type="submit" style="font-size:16px; padding:12px 24px;">✅ Salvar aplicação</button>
+              </div>
+              <div style="margin-top:10px; font-size:12px; color:#888;" id="detalheCusto">
+                Nenhum produto selecionado
+              </div>
+            </div>
           </div>
         </form>
       </div>
 
-      <div class="tableWrap">
+      <!-- Tabela de aplicações recentes -->
+      <div class="tableWrap" style="margin-top:20px;">
+        <h3>📋 Últimas aplicações</h3>
         <table>
-          <thead><tr><th>Data</th><th>Talhão</th><th>Área</th><th>Produtos</th><th>Custo</th><th>Ações</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Talhão</th>
+              <th>Área</th>
+              <th>Produtos</th>
+              <th>Custo</th>
+              <th style="text-align:center;">Ações</th>
+            </tr>
+          </thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
     </div>
   `;
 
-  window.atualizarPrecoUnit = (select, idx) => {
-    const opt = select.options[select.selectedIndex];
-    const preco = opt.dataset.preco || 0;
-    const unidade = opt.dataset.unidade || '';
-    document.querySelector(`input[name="p${idx}Unidade"]`).value = unidade;
+  // Contador de linhas de produto
+  let produtoCount = 1;
+
+  // Função para adicionar nova linha de produto
+  document.getElementById("btnAdicionarProduto").addEventListener("click", () => {
+    const container = document.getElementById("produtos-container");
+    const novaLinha = document.createElement("div");
+    novaLinha.className = "produto-linha";
+    novaLinha.style.display = "grid";
+    novaLinha.style.gridTemplateColumns = "3fr 1fr 1fr 1fr";
+    novaLinha.style.gap = "10px";
+    novaLinha.style.marginBottom = "10px";
+    novaLinha.style.alignItems = "center";
+    
+    novaLinha.innerHTML = `
+      <select class="select" name="produtoId[]" onchange="atualizarPrecoUnit(this, ${produtoCount})">
+        <option value="">Selecione um produto...</option>
+        ${produtoOptions()}
+      </select>
+      <input class="input" name="dose[]" type="number" step="0.01" placeholder="Dose/ha" onchange="calcularCustoTotal()" />
+      <span class="badge" id="unidade-${produtoCount}" style="background:#2a2a30; padding:8px; text-align:center;">—</span>
+      <div style="display:flex; gap:5px;">
+        <span class="badge" id="custo-${produtoCount}" style="background:#2a2a30; color:#4CAF50; padding:8px; text-align:center; font-weight:bold; flex:1;">R$ 0,00</span>
+        <button type="button" class="btn danger" style="padding:8px;" onclick="removerLinhaProduto(this)">✕</button>
+      </div>
+    `;
+    
+    container.appendChild(novaLinha);
+    produtoCount++;
+  });
+
+  // Função para remover linha de produto
+  window.removerLinhaProduto = (botao) => {
+    if (document.querySelectorAll('.produto-linha').length <= 1) {
+      toast("Aviso", "Mantenha pelo menos um produto");
+      return;
+    }
+    botao.closest('.produto-linha').remove();
     calcularCustoTotal();
   };
 
+  // Função para atualizar preço unitário e unidade
+  window.atualizarPrecoUnit = (select, index) => {
+    const opt = select.options[select.selectedIndex];
+    const unidade = opt.dataset.unidade || '';
+    document.getElementById(`unidade-${index}`).innerText = unidade || '—';
+    calcularCustoTotal();
+  };
+
+  // Função principal de cálculo de custo
   window.calcularCustoTotal = () => {
     let total = 0;
     const area = parseFloat(document.querySelector('input[name="areaHaAplicada"]').value) || 0;
-    for (let i = 1; i <= 10; i++) {
-      const select = document.querySelector(`select[name="p${i}Id"]`);
-      const dose = parseFloat(document.querySelector(`input[name="p${i}Dose"]`).value) || 0;
-      if (select && select.value && dose) {
+    const linhas = document.querySelectorAll('.produto-linha');
+    let detalhes = [];
+
+    linhas.forEach((linha, idx) => {
+      const select = linha.querySelector('select[name="produtoId[]"]');
+      const dose = parseFloat(linha.querySelector('input[name="dose[]"]').value) || 0;
+      
+      if (select && select.value && dose > 0) {
         const opt = select.options[select.selectedIndex];
         const precoUnit = parseFloat(opt.dataset.preco) || 0;
+        const produtoNome = opt.text.split(' — ')[0];
         const custoLinha = precoUnit * dose * area;
+        
         total += custoLinha;
-        document.getElementById(`p${i}Custo`).innerText = kbrl(custoLinha);
+        linha.querySelector(`#custo-${idx}`).innerText = kbrl(custoLinha);
+        linha.querySelector(`#custo-${idx}`).style.color = '#4CAF50';
+        
+        detalhes.push(`${produtoNome}: ${num(dose,2)} ${opt.dataset.unidade || ''} × ${num(area,1)} ha = ${kbrl(custoLinha)}`);
       } else {
-        document.getElementById(`p${i}Custo`).innerText = 'R$ 0,00';
+        const custoEl = linha.querySelector(`#custo-${idx}`);
+        if (custoEl) {
+          custoEl.innerText = 'R$ 0,00';
+          custoEl.style.color = '#888';
+        }
       }
-    }
+    });
+
+    // Atualizar display
     document.getElementById('custoTotalDisplay').innerText = kbrl(total);
+    
+    const detalheEl = document.getElementById('detalheCusto');
+    if (detalhes.length > 0) {
+      detalheEl.innerHTML = detalhes.join('<br>');
+    } else {
+      detalheEl.innerHTML = 'Nenhum produto selecionado';
+    }
+
+    return total;
   };
 
+  // Atualizar quando a área mudar
   document.querySelector('input[name="areaHaAplicada"]').addEventListener('input', calcularCustoTotal);
 
+  // Renderizar tabela de aplicações
   function render() {
     const db2 = getDB();
     const rows = onlySafra(db2.aplicacoes || []);
     const tb = document.getElementById("tbody");
+    
     tb.innerHTML = rows.slice().reverse().map(a => {
       const tal = findNameById(talhoes, a.talhaoId);
       const prds = (a.produtos || []).map(p => p.produtoNome).join(' + ');
-      return `<tr><td>${a.data}</td><td>${escapeHtml(tal)}</td><td>${num(a.areaHaAplicada, 1)} ha</td><td>${escapeHtml(prds)}</td><td>${kbrl(a.custoTotal)}</td><td><button class="btn danger" onclick="window.__delA('${a.id}')">Excluir</button></td></tr>`;
-    }).join('') || '<tr><td colspan="6">Sem registros</td></tr>';
+      const corCusto = a.custoTotal > 1000 ? '#4CAF50' : (a.custoTotal > 500 ? '#FF9800' : '#888');
+      
+      return `
+        <tr>
+          <td>${a.data}</td>
+          <td><b>${escapeHtml(tal)}</b></td>
+          <td>${num(a.areaHaAplicada, 1)} ha</td>
+          <td>${escapeHtml(prds || '—')}</td>
+          <td><span style="color:${corCusto}; font-weight:bold;">${kbrl(a.custoTotal)}</span></td>
+          <td style="text-align:center;">
+            <button class="btn danger" style="padding:4px 8px;" onclick="window.__delA('${a.id}')">Excluir</button>
+          </td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="6" style="text-align:center;">Nenhuma aplicação registrada</td></tr>';
   }
 
   window.__delA = (id) => {
@@ -2116,37 +2241,50 @@ function pageAplicacoes() {
     const db2 = getDB();
     db2.aplicacoes = db2.aplicacoes.filter(x => x.id !== id);
     setDB(db2);
-    toast("Excluída", "");
+    toast("Excluída", "Aplicação removida");
     render();
   };
 
+  // Submit do formulário
   document.getElementById("frm").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const area = Number(fd.get("areaHaAplicada") || 0);
-    if (area <= 0) { alert("Área deve ser > 0"); return; }
+    
+    if (area <= 0) { 
+      alert("Área deve ser > 0"); 
+      return; 
+    }
 
+    // Coletar produtos
     const produtosArray = [];
-    let custoTotalCalc = 0;
-    for (let i = 1; i <= 10; i++) {
-      const prodId = fd.get(`p${i}Id`);
-      const dose = Number(fd.get(`p${i}Dose`) || 0);
-      if (prodId && dose) {
-        const produto = produtos.find(p => p.id === prodId);
+    const produtoIds = fd.getAll("produtoId[]").filter(id => id); // Remove vazios
+    const doses = fd.getAll("dose[]").map(d => Number(d) || 0);
+
+    for (let i = 0; i < produtoIds.length; i++) {
+      if (produtoIds[i] && doses[i] > 0) {
+        const produto = produtos.find(p => p.id === produtoIds[i]);
         if (produto) {
-          const precoUnit = produto.preco || 0;
-          const custoLinha = precoUnit * dose * area;
-          custoTotalCalc += custoLinha;
           produtosArray.push({
-            produtoId: prodId,
+            produtoId: produto.id,
             produtoNome: produto.nome,
-            dosePorHa: dose,
+            dosePorHa: doses[i],
             unidade: produto.unidade,
-            precoUnit: precoUnit
+            precoUnit: produto.preco || 0
           });
         }
       }
     }
+
+    if (produtosArray.length === 0) {
+      alert("Selecione pelo menos um produto com dose válida");
+      return;
+    }
+
+    // Calcular custo total
+    const custoTotal = produtosArray.reduce((acc, p) => {
+      return acc + (p.precoUnit * p.dosePorHa * area);
+    }, 0);
 
     const obj = {
       id: uid("apl"),
@@ -2166,7 +2304,7 @@ function pageAplicacoes() {
         umidade: Number(fd.get("umidade") || 0)
       },
       produtos: produtosArray,
-      custoTotal: custoTotalCalc,
+      custoTotal: custoTotal,
       obs: fd.get("obs") || ""
     };
 
@@ -2184,6 +2322,20 @@ function pageAplicacoes() {
 
     setDB(db2);
     e.target.reset();
+    
+    // Reset visual
+    document.querySelectorAll('.produto-linha').forEach((linha, idx) => {
+      if (idx > 0) linha.remove();
+      else {
+        linha.querySelector('select').value = '';
+        linha.querySelector('input[name="dose[]"]').value = '';
+        document.getElementById(`unidade-0`).innerText = '—';
+        document.getElementById(`custo-0`).innerText = 'R$ 0,00';
+      }
+    });
+    produtoCount = 1;
+    calcularCustoTotal();
+    
     toast("Salvo", "Aplicação registrada. Baixa no estoque.");
     if (msgs.length) toast("Baixas", msgs.slice(0, 3).join(" • "));
     render();
