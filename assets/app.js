@@ -850,196 +850,239 @@ function pageOpsCenter() {
   const diesel = onlySafra(db.dieselEstoque || []);
   const aplicacoes = onlySafra(db.aplicacoes || []);
   const combustivel = onlySafra(db.combustivel || []);
-  const parametros = db.parametros || { precoSoja: 120 };
+  const params = db.parametros || { 
+    precoSoja: 120, 
+    produtividadeMinSoja: 65, 
+    produtividadeMaxSoja: 75,
+    precoMilho: 60,
+    produtividadeMinMilho: 100,
+    produtividadeMaxMilho: 130,
+    precoAlgodao: 150,
+    produtividadeMinAlgodao: 250,
+    produtividadeMaxAlgodao: 300
+  };
 
   const negEstoque = estoque.filter(s => Number(s.qtd || 0) < 0);
   const negDiesel = diesel.filter(d => Number(d.litros || 0) < 0);
   const custoTal = calcCustosPorTalhao(db);
 
-  // Calcular receita potencial para talhões de soja
-  const talhoesSoja = talhoes.filter(t => t.cultura?.toLowerCase() === 'soja');
-  const prodMin = parametros.produtividadeMinSoja || 65;
-  const prodMax = parametros.produtividadeMaxSoja || 75;
-  const precoSoja = parametros.precoSoja || 120;
-
-  const receitaPotencial = talhoesSoja.reduce((acc, t) => {
+  // Calcular receita e lucro por talhão considerando a cultura
+  const talhoesComLucro = talhoes.map(t => {
     const area = Number(t.areaHa || 0);
-    const receitaMin = area * prodMin * precoSoja;
-    const receitaMax = area * prodMax * precoSoja;
-    return acc + (receitaMin + receitaMax) / 2;
-  }, 0);
+    const custo = custoTal.find(ct => ct.talhaoId === t.id)?.custoTotal || 0;
+    
+    let receita = 0;
+    let prodMin = 0, prodMax = 0, preco = 0;
+    const cultura = t.cultura?.toLowerCase() || '';
 
-  const custoTotal = custoTal.reduce((acc, t) => acc + t.custoTotal, 0);
-  const lucroPotencial = receitaPotencial - custoTotal;
+    if (cultura === 'soja') {
+      prodMin = params.produtividadeMinSoja;
+      prodMax = params.produtividadeMaxSoja;
+      preco = params.precoSoja;
+    } else if (cultura === 'milho') {
+      prodMin = params.produtividadeMinMilho;
+      prodMax = params.produtividadeMaxMilho;
+      preco = params.precoMilho;
+    } else if (cultura === 'algodao') {
+      prodMin = params.produtividadeMinAlgodao;
+      prodMax = params.produtividadeMaxAlgodao;
+      preco = params.precoAlgodao;
+    }
+
+    if (prodMin && prodMax && preco) {
+      const producaoMedia = (prodMin + prodMax) / 2;
+      receita = area * producaoMedia * preco;
+    }
+
+    return {
+      ...t,
+      custo,
+      receita,
+      lucro: receita - custo,
+      lucroHa: area ? (receita - custo) / area : 0,
+      cultura: t.cultura || 'Não definida'
+    };
+  });
+
+  const receitaTotal = talhoesComLucro.reduce((s, t) => s + t.receita, 0);
+  const custoTotal = talhoesComLucro.reduce((s, t) => s + t.custo, 0);
+  const lucroTotal = receitaTotal - custoTotal;
+
+  // Top 5 talhões com maior lucro
+  const topLucro = [...talhoesComLucro].sort((a, b) => b.lucro - a.lucro).slice(0, 5);
+  // Top 5 com maior prejuízo
+  const topPrejuizo = [...talhoesComLucro].sort((a, b) => a.lucro - b.lucro).slice(0, 5);
 
   const content = document.getElementById("content");
   content.innerHTML = `
-    <div class="kpi">
-      <div class="card"><h3>Alertas estoque</h3><div class="big">${negEstoque.length}</div></div>
-      <div class="card"><h3>Alertas diesel</h3><div class="big">${negDiesel.length}</div></div>
-      <div class="card"><h3>Aplicações</h3><div class="big">${aplicacoes.length}</div></div>
-      <div class="card"><h3>Lucro Potencial</h3><div class="big">${kbrl(lucroPotencial)}</div></div>
+    <style>
+      .ops-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .ops-kpi-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        border-left: 4px solid #2563eb;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      }
+      .ops-kpi-card h3 {
+        margin: 0 0 10px 0;
+        color: #2563eb;
+        font-size: 16px;
+      }
+      .ops-kpi-valor {
+        font-size: 32px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .ops-kpi-label {
+        color: #475569;
+        font-size: 12px;
+        margin-top: 5px;
+      }
+      .alert-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .alert-badge.negativo {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+      .alert-badge.ok {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .dual-table {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-top: 20px;
+      }
+    </style>
+
+    <!-- KPIs -->
+    <div class="ops-kpi-grid">
+      <div class="ops-kpi-card">
+        <h3>📦 Alertas Estoque</h3>
+        <div class="ops-kpi-valor">${negEstoque.length}</div>
+        <div class="ops-kpi-label">itens com saldo negativo</div>
+      </div>
+      <div class="ops-kpi-card">
+        <h3>⛽ Alertas Diesel</h3>
+        <div class="ops-kpi-valor">${negDiesel.length}</div>
+        <div class="ops-kpi-label">tanques negativos</div>
+      </div>
+      <div class="ops-kpi-card">
+        <h3>💰 Lucro Potencial</h3>
+        <div class="ops-kpi-valor">${kbrl(lucroTotal)}</div>
+        <div class="ops-kpi-label">Receita - Custo</div>
+      </div>
+      <div class="ops-kpi-card">
+        <h3>📊 Margem Média</h3>
+        <div class="ops-kpi-valor">${custoTotal ? ((lucroTotal / custoTotal) * 100).toFixed(1) : 0}%</div>
+        <div class="ops-kpi-label">sobre o custo</div>
+      </div>
     </div>
-    
+
+    <!-- Resumo Financeiro -->
     <div class="card" style="margin-bottom:20px;">
-      <h3>📊 Resumo Financeiro</h3>
+      <h3>📈 Resumo Financeiro</h3>
       <table style="width:100%;">
-        <tr><td>Custo total (todos talhões):</td><td>${kbrl(custoTotal)}</td></tr>
-        <tr><td>Receita potencial (soja):</td><td>${kbrl(receitaPotencial)}</td></tr>
-        <tr><td><b>Lucro potencial:</b></td><td><b>${kbrl(lucroPotencial)}</b></td></tr>
+        <tr>
+          <td><b>Custo total (todos talhões):</b></td>
+          <td style="text-align:right">${kbrl(custoTotal)}</td>
+        </tr>
+        <tr>
+          <td><b>Receita potencial total:</b></td>
+          <td style="text-align:right">${kbrl(receitaTotal)}</td>
+        </tr>
+        <tr>
+          <td><b>Lucro potencial total:</b></td>
+          <td style="text-align:right"><b style="color:${lucroTotal >= 0 ? '#059669' : '#b91c1c'}">${kbrl(lucroTotal)}</b></td>
+        </tr>
       </table>
     </div>
 
+    <!-- Tabela de custos por talhão -->
     <div class="tableWrap">
-      <h3>Custos por talhão</h3>
-      <table>
-        <thead><tr><th>Talhão</th><th>Custo total</th><th>Custo/ha</th><th>Receita est.</th><th>Lucro est.</th></tr></thead>
-        <tbody>${custoTal.map(r => {
-          const area = r.areaHa;
-          let receita = 0;
-          if (r.cultura?.toLowerCase() === 'soja') {
-            receita = area * ((prodMin + prodMax) / 2) * precoSoja;
-          }
-          const lucro = receita - r.custoTotal;
-          return `<tr>
-            <td>${escapeHtml(r.talhao)}</td>
-            <td>${kbrl(r.custoTotal)}</td>
-            <td>${kbrl(r.custoHa)}</td>
-            <td>${kbrl(receita)}</td>
-            <td>${kbrl(lucro)}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table>
-    </div>
-  `;
-}
-
-function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
-  const db = getDB();
-  const sid = getSafraId();
-
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
-
-  const content = document.getElementById("content");
-
-  const formHtml = `
-    <div class="card">
-      <h3>Novo registro</h3>
-      <div class="help">${escapeHtml(subtitle || "")}</div>
-      <div class="hr"></div>
-      <form id="frm" class="formGrid">
-        ${fields.map(f => {
-          const full = f.full ? "full" : "";
-          if (f.type === "select") {
-            const opts = (typeof f.options === "function" ? f.options(getDB()) : (f.options || []))
-              .map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
-            return `
-              <div class="${full}">
-                <small>${escapeHtml(f.label)}</small>
-                <select class="select" name="${escapeHtml(f.key)}">${opts}</select>
-              </div>
-            `;
-          }
-          if (f.type === "textarea") {
-            return `
-              <div class="${full}">
-                <small>${escapeHtml(f.label)}</small>
-                <textarea class="textarea" name="${escapeHtml(f.key)}" placeholder="${escapeHtml(f.placeholder || "")}"></textarea>
-              </div>
-            `;
-          }
-          return `
-            <div class="${full}">
-              <small>${escapeHtml(f.label)}</small>
-              <input class="input" name="${escapeHtml(f.key)}" type="${escapeHtml(f.type || "text")}" placeholder="${escapeHtml(f.placeholder || "")}" />
-            </div>
-          `;
-        }).join("")}
-        <div class="full row" style="justify-content:flex-end; margin-top:6px;">
-          <button class="btn primary" type="submit">Salvar</button>
-        </div>
-      </form>
-    </div>
-  `;
-
-  const tableHtml = `
-    <div class="tableWrap">
+      <h3>📋 Custos e Lucro por Talhão</h3>
       <table>
         <thead>
           <tr>
-            ${columns.map(c => `<th>${escapeHtml(c.label)}</th>`).join("")}
-            <th class="noPrint">Ações</th>
+            <th>Talhão</th>
+            <th>Fazenda</th>
+            <th>Cultura</th>
+            <th>Área (ha)</th>
+            <th>Custo total</th>
+            <th>Receita est.</th>
+            <th>Lucro est.</th>
+            <th>Lucro/ha</th>
           </tr>
         </thead>
-        <tbody id="tbody"></tbody>
+        <tbody>
+          ${talhoesComLucro.map(t => {
+            const lucroClass = t.lucro >= 0 ? '' : 'style="color:#b91c1c;"';
+            return `<tr>
+              <td><b>${escapeHtml(t.nome)}</b></td>
+              <td>${escapeHtml(findNameById(fazendas, t.fazendaId))}</td>
+              <td>${escapeHtml(t.cultura || '-')}</td>
+              <td>${num(t.areaHa, 1)}</td>
+              <td>${kbrl(t.custo)}</td>
+              <td>${kbrl(t.receita)}</td>
+              <td ${lucroClass}>${kbrl(t.lucro)}</td>
+              <td ${lucroClass}>${kbrl(t.lucroHa)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
       </table>
     </div>
+
+    <!-- Top 5 maiores lucros e maiores prejuízos -->
+    <div class="dual-table">
+      <div class="tableWrap">
+        <h4 style="color:#059669;">🏆 Maiores Lucros</h4>
+        <table>
+          <thead>
+            <tr><th>Talhão</th><th>Cultura</th><th>Lucro</th></tr>
+          </thead>
+          <tbody>
+            ${topLucro.map(t => `<tr><td><b>${escapeHtml(t.nome)}</b></td><td>${escapeHtml(t.cultura)}</td><td style="color:#059669;">${kbrl(t.lucro)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="tableWrap">
+        <h4 style="color:#b91c1c;">📉 Maiores Prejuízos</h4>
+        <table>
+          <thead>
+            <tr><th>Talhão</th><th>Cultura</th><th>Prejuízo</th></tr>
+          </thead>
+          <tbody>
+            ${topPrejuizo.map(t => `<tr><td><b>${escapeHtml(t.nome)}</b></td><td>${escapeHtml(t.cultura)}</td><td style="color:#b91c1c;">${kbrl(t.lucro)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Alertas de estoque (se houver) -->
+    ${negEstoque.length > 0 ? `
+    <div class="card" style="margin-top:20px; background:#fff1f0;">
+      <h4 style="color:#b91c1c;">⚠️ Itens com estoque negativo</h4>
+      <ul>
+        ${negEstoque.map(s => {
+          const p = onlySafra(db.produtos).find(p => p.id === s.produtoId);
+          return `<li>${escapeHtml(p?.nome || 'Produto')} - ${num(s.qtd, 2)} ${s.unidade}</li>`;
+        }).join('')}
+      </ul>
+    </div>
+    ` : ''}
   `;
-
-  content.innerHTML = `<div class="section">${formHtml}${tableHtml}</div>`;
-
-  function renderTable() {
-    const db2 = getDB();
-    const rows0 = onlySafra(db2[entityKey] || []);
-    const rows = helpers?.filter ? helpers.filter(rows0, db2) : rows0;
-
-    const tb = document.getElementById("tbody");
-    tb.innerHTML = rows.slice().reverse().map(r => {
-      const tds = columns.map(c => {
-        const v = c.render ? c.render(r, db2) : r[c.key];
-        return `<td>${escapeHtml(v ?? "")}</td>`;
-      }).join("");
-      return `
-        <tr>
-          ${tds}
-          <td class="noPrint">
-            <button class="btn danger" onclick="window.__del('${r.id}')">Excluir</button>
-          </td>
-        </tr>
-      `;
-    }).join("") || `<tr><td colspan="${columns.length + 1}">Sem registros.</td></tr>`;
-  }
-
-  window.__del = (id) => {
-    if (!confirm("Excluir este registro?")) return;
-    const db2 = getDB();
-    db2[entityKey] = (db2[entityKey] || []).filter(x => x.id !== id);
-    if (helpers?.onDelete) helpers.onDelete(id, db2);
-    setDB(db2);
-    toast("Excluído", "Registro removido.");
-    renderTable();
-  };
-
-  document.getElementById("frm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const obj = { id: uid(entityKey.slice(0, 3)), safraId: sid };
-
-    fields.forEach(f => {
-      let v = fd.get(f.key);
-      if (f.type === "number") v = Number(v || 0);
-      obj[f.key] = v;
-    });
-
-    const db2 = getDB();
-    if (helpers?.beforeSave) helpers.beforeSave(obj, db2);
-    db2[entityKey] = db2[entityKey] || [];
-    db2[entityKey].push(obj);
-    setDB(db2);
-
-    e.target.reset();
-    toast("Salvo", "Registro adicionado com sucesso.");
-    renderTable();
-  });
-
-  document.getElementById("btnExportCSV").addEventListener("click", () => {
-    const db2 = getDB();
-    const rows = onlySafra(db2[entityKey] || []);
-    downloadText(`${entityKey}-${nowISO()}.csv`, toCSV(rows));
-    toast("Exportado", "CSV baixado.");
-  });
-
-  renderTable();
 }
 
 // Páginas específicas adaptadas para safra
