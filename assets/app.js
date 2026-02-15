@@ -846,255 +846,139 @@ function pageOpsCenter() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
   const talhoes = onlySafra(db.talhoes);
-  const estoque = onlySafra(db.estoque || []);
-  const diesel = onlySafra(db.dieselEstoque || []);
-  const aplicacoes = onlySafra(db.aplicacoes || []);
-  const combustivel = onlySafra(db.combustivel || []);
-  const parametros = db.parametros || { 
-    precoSoja: 120, 
-    produtividadeMinSoja: 65, 
-    produtividadeMaxSoja: 75,
-    precoMilho: 60,
-    produtividadeMinMilho: 100,
-    produtividadeMaxMilho: 130,
-    precoAlgodao: 180,
-    produtividadeMinAlgodao: 250,
-    produtividadeMaxAlgodao: 300
-  };
 
-  // Alertas de estoque
-  const negEstoque = estoque.filter(s => Number(s.qtd || 0) < 0);
-  const negDiesel = diesel.filter(d => Number(d.litros || 0) < 0);
+  const estoque = onlySafra(db.estoque||[]);
+  const diesel = onlySafra(db.dieselEstoque||[]);
+  const aplicacoes = onlySafra(db.aplicacoes||[]);
+  const combustivel = onlySafra(db.combustivel||[]);
+  const clima = onlySafra(db.clima||[]);
 
-  // Calcular custos por talhão (função já existente)
-  const custosPorTalhao = calcCustosPorTalhao(db);
+  const negEstoque = estoque.filter(s => Number(s.qtd||0) < 0);
+  const negDiesel = diesel.filter(d => Number(d.litros||0) < 0);
+  const custoTal = calcCustosPorTalhao(db);
 
-  // ==================== CÁLCULO DE RECEITA E LUCRO POR TALHÃO ====================
-  
-  let receitaTotal = 0;
-  let lucroTotal = 0;
-  
-  const talhoesComLucro = talhoes.map(talhao => {
-    const area = Number(talhao.areaHa || 0);
-    const cultura = talhao.cultura?.toLowerCase() || '';
-    
-    // Encontrar o custo deste talhão
-    const custoTalhao = custosPorTalhao.find(c => c.talhaoId === talhao.id)?.custoTotal || 0;
-    
-    // Determinar produtividade e preço baseado na cultura
-    let produtividadeEsperada = 0;
-    let precoSaca = 0;
-    let receita = 0;
-    let lucro = 0;
-    
-    switch(cultura) {
-      case 'soja':
-        produtividadeEsperada = (parametros.produtividadeMinSoja + parametros.produtividadeMaxSoja) / 2;
-        precoSaca = parametros.precoSoja || 120;
-        break;
-      case 'milho':
-        produtividadeEsperada = (parametros.produtividadeMinMilho + parametros.produtividadeMaxMilho) / 2;
-        precoSaca = parametros.precoMilho || 60;
-        break;
-      case 'algodao':
-      case 'algodão':
-        produtividadeEsperada = (parametros.produtividadeMinAlgodao + parametros.produtividadeMaxAlgodao) / 2;
-        precoSaca = parametros.precoAlgodao || 180;
-        break;
-      default:
-        // Culturas não configuradas não geram receita
-        produtividadeEsperada = 0;
-        precoSaca = 0;
-    }
-    
-    // Calcular receita e lucro
-    if (area > 0 && produtividadeEsperada > 0 && precoSaca > 0) {
-      receita = area * produtividadeEsperada * precoSaca;
-      lucro = receita - custoTalhao;
-      receitaTotal += receita;
-      lucroTotal += lucro;
-    }
-    
-    return {
-      ...talhao,
-      area,
-      cultura: talhao.cultura || 'Não definida',
-      custo: custoTalhao,
-      produtividade: produtividadeEsperada,
-      precoSaca,
-      receita,
-      lucro
-    };
-  }).filter(t => t.area > 0); // Apenas talhões com área
-
-  // Ordenar por lucro (maior para menor)
-  const talhoesOrdenados = [...talhoesComLucro].sort((a, b) => b.lucro - a.lucro);
+  // chuva 7d por talhão (simples)
+  const chuvaTal = new Map();
+  const hoje = new Date();
+  const start = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0,0,0,0);
+  const min = new Date(start.getTime() - 6*24*60*60*1000);
+  function parseISO(d){
+    const [y,m,day] = String(d||"").split("-").map(Number);
+    if(!y||!m||!day) return null;
+    return new Date(y, m-1, day, 0,0,0,0);
+  }
+  for(const r of clima){
+    if(!r.talhaoId) continue;
+    const dt = parseISO(r.data);
+    if(!dt) continue;
+    if(dt < min || dt > start) continue;
+    chuvaTal.set(r.talhaoId, (chuvaTal.get(r.talhaoId)||0) + Number(r.chuvaMm||0));
+  }
 
   const content = document.getElementById("content");
   content.innerHTML = `
-    <style>
-      .lucro-positivo {
-        color: #4CAF50;
-        font-weight: bold;
-      }
-      .lucro-negativo {
-        color: #f44336;
-        font-weight: bold;
-      }
-      .card-destaque {
-        background: linear-gradient(135deg, #1a2a3a, #0f1a24);
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 20px;
-      }
-    </style>
-
-    <!-- Alertas -->
     <div class="kpi">
       <div class="card">
-        <h3>🚨 Alertas estoque</h3>
+        <h3>Alertas de estoque</h3>
         <div class="big">${negEstoque.length}</div>
-        <div class="sub">Produtos com saldo negativo</div>
+        <div class="sub">${negEstoque.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
       </div>
       <div class="card">
-        <h3>⛽ Alertas diesel</h3>
+        <h3>Alertas de diesel</h3>
         <div class="big">${negDiesel.length}</div>
-        <div class="sub">Tanques com saldo negativo</div>
+        <div class="sub">${negDiesel.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
       </div>
       <div class="card">
-        <h3>🌱 Total Talhões</h3>
-        <div class="big">${talhoes.length}</div>
-        <div class="sub">Área total: ${num(talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0), 1)} ha</div>
-      </div>
-      <div class="card">
-        <h3>🚜 Aplicações</h3>
+        <h3>Aplicações</h3>
         <div class="big">${aplicacoes.length}</div>
-        <div class="sub">Operações realizadas</div>
+        <div class="sub"><span class="pill info">Rastreabilidade</span></div>
+      </div>
+      <div class="card">
+        <h3>Abastecimentos</h3>
+        <div class="big">${combustivel.length}</div>
+        <div class="sub"><span class="pill info">Controle diesel</span></div>
       </div>
     </div>
 
-    <!-- Card de resultado financeiro -->
-    <div class="card-destaque">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px;">
-        <div>
-          <h3 style="margin:0; color:#fff;">📊 RESULTADO FINANCEIRO DA SAFRA</h3>
-          <p style="color:#888; margin-top:5px;">Baseado nos parâmetros configurados e dados reais dos talhões</p>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:14px; color:#888;">CUSTO TOTAL</div>
-          <div style="font-size:28px; font-weight:bold; color:#FF9800;">${kbrl(talhoesOrdenados.reduce((s, t) => s + t.custo, 0))}</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:14px; color:#888;">RECEITA TOTAL</div>
-          <div style="font-size:28px; font-weight:bold; color:#4CAF50;">${kbrl(receitaTotal)}</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:14px; color:#888;">LUCRO POTENCIAL</div>
-          <div style="font-size:32px; font-weight:bold; ${lucroTotal >= 0 ? 'color:#4CAF50;' : 'color:#f44336;'}">${kbrl(lucroTotal)}</div>
-        </div>
+    <div class="section">
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr><th colspan="6">Estoque com saldo negativo</th></tr>
+            <tr>
+              <th>Produto</th><th>Depósito</th><th>Qtd</th><th>Unid.</th><th>Obs</th><th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              negEstoque.map(s=>{
+                const p = onlySafra(db.produtos).find(p=>p.id===s.produtoId);
+                const nome = p ? p.nome : "(sem produto)";
+                return `
+                  <tr>
+                    <td><b>${escapeHtml(nome)}</b></td>
+                    <td>${escapeHtml(s.deposito||"")}</td>
+                    <td><b>${escapeHtml(num(s.qtd||0,2))}</b></td>
+                    <td>${escapeHtml(s.unidade||"")}</td>
+                    <td>${escapeHtml(clampStr(s.obs||"",50))}</td>
+                    <td><a class="btn" href="estoque.html">Ajustar</a></td>
+                  </tr>
+                `;
+              }).join("") || `<tr><td colspan="6">Nenhum.</td></tr>`
+            }
+          </tbody>
+        </table>
       </div>
-      
-      <!-- Barra de progresso do lucro -->
-      <div style="margin-top:20px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-          <span style="color:#888;">Margem de lucro</span>
-          <span style="color:#fff; font-weight:bold;">${receitaTotal > 0 ? ((lucroTotal / receitaTotal) * 100).toFixed(1) : 0}%</span>
-        </div>
-        <div style="width:100%; height:10px; background:#2a2a30; border-radius:5px; overflow:hidden;">
-          <div style="height:100%; width:${receitaTotal > 0 ? Math.max(0, (lucroTotal / receitaTotal) * 100) : 0}%; background:${lucroTotal >= 0 ? '#4CAF50' : '#f44336'}; border-radius:5px;"></div>
-        </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr><th colspan="5">Diesel (tanques)</th></tr>
+            <tr>
+              <th>Depósito</th><th>Litros</th><th>Status</th><th>Obs</th><th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              diesel.map(d=>`
+                <tr>
+                  <td><b>${escapeHtml(d.deposito||"")}</b></td>
+                  <td><b>${escapeHtml(num(d.litros||0,1))}</b></td>
+                  <td>${Number(d.litros||0)<0?'<span class="pill bad">Negativo</span>':'<span class="pill ok">OK</span>'}</td>
+                  <td>${escapeHtml(clampStr(d.obs||"",50))}</td>
+                  <td><a class="btn" href="combustivel.html">Ver</a></td>
+                </tr>
+              `).join("") || `<tr><td colspan="5">Sem tanques.</td></tr>`
+            }
+          </tbody>
+        </table>
       </div>
     </div>
 
-    <!-- Tabela detalhada por talhão -->
-    <div class="tableWrap">
-      <h3>📋 Análise detalhada por talhão</h3>
+    <div class="tableWrap" style="margin-top:12px">
       <table>
         <thead>
+          <tr><th colspan="7">Custo por talhão (acumulado)</th></tr>
           <tr>
-            <th>Talhão</th>
-            <th>Fazenda</th>
-            <th>Cultura</th>
-            <th>Área (ha)</th>
-            <th>Custo Total</th>
-            <th>Produtividade</th>
-            <th>Preço/Saca</th>
-            <th>Receita</th>
-            <th>Lucro</th>
+            <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Custo total</th><th>Custo/ha</th><th>Chuva 7d</th><th>Último</th>
           </tr>
         </thead>
         <tbody>
-          ${talhoesOrdenados.map(t => {
-            const lucroClass = t.lucro >= 0 ? 'lucro-positivo' : 'lucro-negativo';
-            return `
+          ${
+            custoTal.map(r=>`
               <tr>
-                <td><b>${escapeHtml(t.nome)}</b></td>
-                <td>${escapeHtml(findNameById(fazendas, t.fazendaId))}</td>
-                <td>${escapeHtml(t.cultura)}</td>
-                <td>${num(t.area, 1)}</td>
-                <td>${kbrl(t.custo)}</td>
-                <td>${t.produtividade > 0 ? num(t.produtividade, 1) + ' sc/ha' : '-'}</td>
-                <td>${t.precoSaca > 0 ? kbrl(t.precoSaca) : '-'}</td>
-                <td style="color:#4CAF50;">${kbrl(t.receita)}</td>
-                <td class="${lucroClass}">${kbrl(t.lucro)}</td>
+                <td><b>${escapeHtml(r.talhao)}</b></td>
+                <td>${escapeHtml(r.fazenda)}</td>
+                <td>${escapeHtml(num(r.areaHa||0,1))}</td>
+                <td><b>${escapeHtml(kbrl(r.custoTotal||0))}</b></td>
+                <td>${escapeHtml(kbrl(r.custoHa||0))}</td>
+                <td>${escapeHtml(num(chuvaTal.get(r.talhaoId)||0,1))} mm</td>
+                <td>${escapeHtml(r.last||"-")}</td>
               </tr>
-            `;
-          }).join('')}
+            `).join("") || `<tr><td colspan="7">Sem talhões.</td></tr>`
+          }
         </tbody>
-        <tfoot style="border-top:2px solid #2a2a30;">
-          <tr>
-            <td colspan="4"><b>TOTAIS</b></td>
-            <td><b>${kbrl(talhoesOrdenados.reduce((s, t) => s + t.custo, 0))}</b></td>
-            <td></td>
-            <td></td>
-            <td><b style="color:#4CAF50;">${kbrl(receitaTotal)}</b></td>
-            <td><b class="${lucroTotal >= 0 ? 'lucro-positivo' : 'lucro-negativo'}">${kbrl(lucroTotal)}</b></td>
-          </tr>
-        </tfoot>
       </table>
-    </div>
-
-    <!-- Cards de resumo por cultura -->
-    <div class="section" style="margin-top:20px;">
-      ${['soja', 'milho', 'algodao'].map(cultura => {
-        const talhoesCultura = talhoesOrdenados.filter(t => t.cultura?.toLowerCase() === cultura);
-        if (talhoesCultura.length === 0) return '';
-        
-        const areaTotal = talhoesCultura.reduce((s, t) => s + t.area, 0);
-        const custoTotal = talhoesCultura.reduce((s, t) => s + t.custo, 0);
-        const receitaTotal = talhoesCultura.reduce((s, t) => s + t.receita, 0);
-        const lucroTotal = talhoesCultura.reduce((s, t) => s + t.lucro, 0);
-        
-        const nomesCultura = {
-          'soja': '🌱 Soja',
-          'milho': '🌽 Milho',
-          'algodao': '🌾 Algodão'
-        };
-        
-        return `
-          <div class="card">
-            <h4>${nomesCultura[cultura] || cultura}</h4>
-            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:15px; margin-top:15px;">
-              <div>
-                <small>Área total</small>
-                <div class="big">${num(areaTotal, 1)} ha</div>
-              </div>
-              <div>
-                <small>Custo total</small>
-                <div class="big" style="color:#FF9800;">${kbrl(custoTotal)}</div>
-              </div>
-              <div>
-                <small>Receita total</small>
-                <div class="big" style="color:#4CAF50;">${kbrl(receitaTotal)}</div>
-              </div>
-              <div>
-                <small>Lucro total</small>
-                <div class="big" style="color:${lucroTotal >= 0 ? '#4CAF50' : '#f44336'};">${kbrl(lucroTotal)}</div>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('')}
     </div>
   `;
 }
