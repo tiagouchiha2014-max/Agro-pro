@@ -1856,19 +1856,17 @@ function pageClima() {
     <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
   `);
 
-  // ========== CÁLCULOS GERAIS ==========
+  // ========== CÁLCULOS ==========
   const totalChuva = clima.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
   const diasComChuva = clima.filter(c => c.chuvaMm > 0).length;
   const mediaChuva = clima.length ? totalChuva / clima.length : 0;
-
   const tempMaxMedia = clima.reduce((s, c) => s + Number(c.tempMax || 0), 0) / (clima.length || 1);
   const tempMinMedia = clima.reduce((s, c) => s + Number(c.tempMin || 0), 0) / (clima.length || 1);
   const tempMedia = (tempMaxMedia + tempMinMedia) / 2;
-
   const umidadeMedia = clima.reduce((s, c) => s + Number(c.umidade || 0), 0) / (clima.length || 1);
   const ventoMedio = clima.reduce((s, c) => s + Number(c.vento || 0), 0) / (clima.length || 1);
 
-  // ========== ACUMULADO POR TALHÃO ==========
+  // ========== ACUMULADOS ==========
   const climaPorTalhao = talhoes.map(t => {
     const registros = clima.filter(c => c.talhaoId === t.id);
     const total = registros.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
@@ -1884,11 +1882,9 @@ function pageClima() {
     };
   }).sort((a, b) => b.totalChuva - a.totalChuva);
 
-  // ========== ACUMULADO POR FAZENDA ==========
   const climaPorFazenda = fazendas.map(f => {
     const talhoesDaFazenda = talhoes.filter(t => t.fazendaId === f.id);
-    let totalChuva = 0;
-    let totalRegistros = 0;
+    let totalChuva = 0, totalRegistros = 0;
     talhoesDaFazenda.forEach(t => {
       const registros = clima.filter(c => c.talhaoId === t.id);
       totalChuva += registros.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
@@ -1897,7 +1893,6 @@ function pageClima() {
     const registrosGeral = clima.filter(c => c.fazendaId === f.id && !c.talhaoId);
     totalChuva += registrosGeral.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
     totalRegistros += registrosGeral.length;
-
     return {
       fazenda: f.nome,
       totalChuva,
@@ -1906,7 +1901,7 @@ function pageClima() {
     };
   }).sort((a, b) => b.totalChuva - a.totalChuva);
 
-  // ========== DADOS MENSAIS PARA GRÁFICO ==========
+  // ========== DADOS MENSAIS ==========
   const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   const chuvaPorMes = new Array(12).fill(0);
   clima.forEach(c => {
@@ -1920,6 +1915,7 @@ function pageClima() {
   const content = document.getElementById("content");
   content.innerHTML = `
     <style>
+      /* Garantir bom contraste em toda a página */
       .clima-kpi-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1927,42 +1923,45 @@ function pageClima() {
         margin-bottom: 20px;
       }
       .clima-kpi-card {
-        background: #1a1a1f;
+        background: #2a2a30; /* mais claro que o fundo padrão */
         border-radius: 12px;
         padding: 20px;
         border-left: 4px solid #2196f3;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        color: #fff;
       }
       .clima-kpi-card h3 {
         margin: 0 0 10px 0;
-        color: #2196f3;
+        color: #90caf9; /* azul claro */
         font-size: 16px;
+        font-weight: 500;
       }
       .clima-kpi-valor {
-        font-size: 32px;
-        font-weight: bold;
-        color: #fff;
+        font-size: 36px;
+        font-weight: 700;
+        color: #ffffff;
+        line-height: 1.2;
       }
       .clima-kpi-unidade {
-        font-size: 14px;
-        color: #aaa;
+        font-size: 16px;
+        color: #bbb;
         margin-left: 5px;
       }
       .clima-kpi-label {
-        color: #888;
-        font-size: 12px;
-        margin-top: 5px;
+        color: #ccc;
+        font-size: 13px;
+        margin-top: 8px;
       }
       .form-clima {
-        background: #1a1a1f;
+        background: #1e1e24; /* um pouco mais escuro para destacar o formulário */
         border-radius: 12px;
         padding: 20px;
         margin-bottom: 30px;
-        border: 1px solid #2a2a30;
+        border: 1px solid #3a3a44;
       }
       .form-clima h3 {
         margin-top: 0;
-        color: #2196f3;
+        color: #bbdefb;
       }
       .grafico-barras {
         display: flex;
@@ -1973,7 +1972,7 @@ function pageClima() {
       }
       .barra {
         flex: 1;
-        background: #2196f3;
+        background: #42a5f5; /* azul mais vibrante */
         border-radius: 4px 4px 0 0;
         min-height: 20px;
         transition: height 0.3s;
@@ -1982,22 +1981,69 @@ function pageClima() {
         text-align: center;
         font-size: 11px;
         margin-top: 5px;
-        color: #888;
+        color: #ccc;
       }
       .secao-tabela {
         margin-top: 30px;
       }
-      table td .valor-com-unidade {
-        font-weight: bold;
+      /* Melhorias nas tabelas */
+      .tableWrap {
+        background: #1a1a1f;
+        border-radius: 12px;
+        padding: 15px;
+        border: 1px solid #333;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        color: #eee;
+      }
+      th {
+        text-align: left;
+        padding: 12px;
+        background: #25252b;
+        color: #fff;
+        font-weight: 500;
+        border-bottom: 2px solid #444;
+      }
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #333;
+      }
+      tr:hover td {
+        background: #2a2a30;
+      }
+      .valor-com-unidade {
+        font-weight: 600;
+        color: #fff;
       }
       .unidade-tabela {
         color: #aaa;
         font-size: 11px;
-        margin-left: 2px;
+        margin-left: 4px;
+      }
+      /* Inputs e botões já possuem bom contraste no CSS global, mas vamos garantir */
+      .input, .select, .textarea {
+        background: #25252b;
+        color: #fff;
+        border: 1px solid #444;
+      }
+      .btn {
+        background: #333;
+        color: #fff;
+      }
+      .btn.primary {
+        background: #1976d2;
+      }
+      .btn.primary:hover {
+        background: #1565c0;
+      }
+      .btn.danger {
+        background: #c62828;
       }
     </style>
 
-    <!-- CARDS DE KPI (FIXOS) -->
+    <!-- CARDS DE KPI -->
     <div class="clima-kpi-grid">
       <div class="clima-kpi-card">
         <h3>🌧️ Total de Chuvas</h3>
@@ -2033,7 +2079,7 @@ function pageClima() {
       </div>
     </div>
 
-    <!-- FORMULÁRIO FIXO PARA NOVO REGISTRO -->
+    <!-- FORMULÁRIO -->
     <div class="form-clima">
       <h3>📝 Novo Registro Climático</h3>
       <form id="frmClima" class="formGrid">
@@ -2074,14 +2120,14 @@ function pageClima() {
             <div style="flex:1; text-align:center;">
               <div class="barra" style="height: ${altura}px;"></div>
               <div class="barra-label">${mes}</div>
-              <div style="font-size:10px; color:#aaa;">${num(chuvaPorMes[i], 1)} mm</div>
+              <div style="font-size:10px; color:#ccc;">${num(chuvaPorMes[i], 1)} mm</div>
             </div>
           `;
         }).join('')}
       </div>
     </div>
 
-    <!-- TABELA: ÚLTIMOS REGISTROS -->
+    <!-- TABELAS -->
     <div class="secao-tabela">
       <div class="card">
         <h4>📋 Últimos 10 Registros</h4>
@@ -2116,7 +2162,7 @@ function pageClima() {
       </div>
     </div>
 
-    <!-- ACUMULADO POR TALHÃO -->
+    <!-- Acumulado por talhão -->
     <div class="secao-tabela">
       <div class="card">
         <h4>🌱 Acumulado por Talhão</h4>
@@ -2144,7 +2190,7 @@ function pageClima() {
       </div>
     </div>
 
-    <!-- ACUMULADO POR FAZENDA -->
+    <!-- Acumulado por fazenda -->
     <div class="secao-tabela">
       <div class="card">
         <h4>🏢 Acumulado por Fazenda</h4>
@@ -2178,7 +2224,6 @@ function pageClima() {
     const data = fd.get("data");
     const fazendaId = fd.get("fazendaId");
     if (!fazendaId) { alert("Selecione uma fazenda"); return; }
-
     const obj = {
       id: uid("cli"),
       safraId: getSafraId(),
@@ -2192,7 +2237,6 @@ function pageClima() {
       vento: fd.get("vento") ? Number(fd.get("vento")) : null,
       obs: fd.get("obs") || ""
     };
-
     const db2 = getDB();
     db2.clima = db2.clima || [];
     db2.clima.push(obj);
