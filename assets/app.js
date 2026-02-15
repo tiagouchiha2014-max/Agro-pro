@@ -1894,7 +1894,6 @@ function pageClima() {
       totalChuva += registros.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
       totalRegistros += registros.length;
     });
-    // também considerar registros sem talhão (geral) associados à fazenda
     const registrosGeral = clima.filter(c => c.fazendaId === f.id && !c.talhaoId);
     totalChuva += registrosGeral.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
     totalRegistros += registrosGeral.length;
@@ -1944,9 +1943,15 @@ function pageClima() {
         font-weight: bold;
         color: #fff;
       }
+      .clima-kpi-unidade {
+        font-size: 14px;
+        color: #aaa;
+        margin-left: 5px;
+      }
       .clima-kpi-label {
         color: #888;
         font-size: 12px;
+        margin-top: 5px;
       }
       .form-clima {
         background: #1a1a1f;
@@ -1982,33 +1987,53 @@ function pageClima() {
       .secao-tabela {
         margin-top: 30px;
       }
+      table td .valor-com-unidade {
+        font-weight: bold;
+      }
+      .unidade-tabela {
+        color: #aaa;
+        font-size: 11px;
+        margin-left: 2px;
+      }
     </style>
 
     <!-- CARDS DE KPI (FIXOS) -->
     <div class="clima-kpi-grid">
       <div class="clima-kpi-card">
         <h3>🌧️ Total de Chuvas</h3>
-        <div class="clima-kpi-valor">${num(totalChuva, 1)} mm</div>
-        <div class="clima-kpi-label">${diasComChuva} dias com chuva</div>
+        <div>
+          <span class="clima-kpi-valor">${num(totalChuva, 1)}</span>
+          <span class="clima-kpi-unidade">mm</span>
+        </div>
+        <div class="clima-kpi-label">${diasComChuva} dia(s) com chuva</div>
       </div>
       <div class="clima-kpi-card">
         <h3>📊 Média por Registro</h3>
-        <div class="clima-kpi-valor">${num(mediaChuva, 1)} mm</div>
-        <div class="clima-kpi-label">${clima.length} registros</div>
+        <div>
+          <span class="clima-kpi-valor">${num(mediaChuva, 1)}</span>
+          <span class="clima-kpi-unidade">mm</span>
+        </div>
+        <div class="clima-kpi-label">${clima.length} registro(s)</div>
       </div>
       <div class="clima-kpi-card">
         <h3>🌡️ Temperatura Média</h3>
-        <div class="clima-kpi-valor">${num(tempMedia, 1)}°C</div>
+        <div>
+          <span class="clima-kpi-valor">${num(tempMedia, 1)}</span>
+          <span class="clima-kpi-unidade">°C</span>
+        </div>
         <div class="clima-kpi-label">Mín ${num(tempMinMedia,1)}°C / Máx ${num(tempMaxMedia,1)}°C</div>
       </div>
       <div class="clima-kpi-card">
         <h3>💧 Umidade Média</h3>
-        <div class="clima-kpi-valor">${umidadeMedia ? num(umidadeMedia,0)+'%' : '-'}</div>
+        <div>
+          <span class="clima-kpi-valor">${umidadeMedia ? num(umidadeMedia,0) : '-'}</span>
+          <span class="clima-kpi-unidade">%</span>
+        </div>
         <div class="clima-kpi-label">Vento médio: ${ventoMedio ? num(ventoMedio,1)+' km/h' : '-'}</div>
       </div>
     </div>
 
-    <!-- FORMULÁRIO FIXO PARA NOVO REGISTRO (IGUAL AO COMBUSTÍVEL) -->
+    <!-- FORMULÁRIO FIXO PARA NOVO REGISTRO -->
     <div class="form-clima">
       <h3>📝 Novo Registro Climático</h3>
       <form id="frmClima" class="formGrid">
@@ -2064,7 +2089,7 @@ function pageClima() {
           <table>
             <thead>
               <tr>
-                <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Chuva</th><th>Temp</th><th>Umidade</th><th>Ações</th>
+                <th>Data</th><th>Fazenda</th><th>Talhão</th><th>Chuva (mm)</th><th>Temp (°C)</th><th>Umidade (%)</th><th>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -2076,9 +2101,9 @@ function pageClima() {
                     <td>${c.data}</td>
                     <td>${escapeHtml(fazenda)}</td>
                     <td>${escapeHtml(talhao)}</td>
-                    <td><b>${num(c.chuvaMm||0,1)} mm</b></td>
-                    <td>${c.tempMax ? c.tempMax+'°C' : '-'}</td>
-                    <td>${c.umidade ? c.umidade+'%' : '-'}</td>
+                    <td><span class="valor-com-unidade">${num(c.chuvaMm||0,1)}</span> <span class="unidade-tabela">mm</span></td>
+                    <td>${c.tempMax ? num(c.tempMax,1)+'°C' : '-'}</td>
+                    <td>${c.umidade ? num(c.umidade,0)+'%' : '-'}</td>
                     <td class="noPrint">
                       <button class="btn danger" style="padding:4px 8px;" onclick="window.__delClima('${c.id}')">Excluir</button>
                     </td>
@@ -2099,7 +2124,7 @@ function pageClima() {
           <table>
             <thead>
               <tr>
-                <th>Talhão</th><th>Fazenda</th><th>Total Chuva</th><th>Média</th><th>Última Chuva</th><th>Registros</th>
+                <th>Talhão</th><th>Fazenda</th><th>Total Chuva (mm)</th><th>Média (mm)</th><th>Última Chuva (mm)</th><th>Registros</th>
               </tr>
             </thead>
             <tbody>
@@ -2107,7 +2132,7 @@ function pageClima() {
                 <tr>
                   <td><b>${escapeHtml(t.talhao)}</b></td>
                   <td>${escapeHtml(t.fazenda)}</td>
-                  <td><b>${num(t.totalChuva,1)} mm</b></td>
+                  <td><span class="valor-com-unidade">${num(t.totalChuva,1)}</span> <span class="unidade-tabela">mm</span></td>
                   <td>${num(t.media,1)} mm</td>
                   <td>${t.ultimaChuva > 0 ? num(t.ultimaChuva,1)+' mm' : '-'}</td>
                   <td>${t.registros}</td>
@@ -2127,14 +2152,14 @@ function pageClima() {
           <table>
             <thead>
               <tr>
-                <th>Fazenda</th><th>Total Chuva</th><th>Média</th><th>Registros</th>
+                <th>Fazenda</th><th>Total Chuva (mm)</th><th>Média (mm)</th><th>Registros</th>
               </tr>
             </thead>
             <tbody>
               ${climaPorFazenda.map(f => `
                 <tr>
                   <td><b>${escapeHtml(f.fazenda)}</b></td>
-                  <td><b>${num(f.totalChuva,1)} mm</b></td>
+                  <td><span class="valor-com-unidade">${num(f.totalChuva,1)}</span> <span class="unidade-tabela">mm</span></td>
                   <td>${num(f.media,1)} mm</td>
                   <td>${f.registros}</td>
                 </tr>
@@ -2173,7 +2198,7 @@ function pageClima() {
     db2.clima.push(obj);
     setDB(db2);
     toast("Registro salvo", "Dados climáticos adicionados");
-    pageClima(); // recarrega a página
+    pageClima();
   });
 
   window.__delClima = (id) => {
