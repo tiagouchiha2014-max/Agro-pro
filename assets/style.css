@@ -4,9 +4,9 @@
    ===================================================== */
 
 :root{
-  --sidebar: #1e3a8a;      /* azul escuro */
-  --sidebar2: #2563eb;     /* azul médio */
-  --brand: #3b82f6;        /* azul claro (item ativo) */
+  --sidebar: #9a3412;      /* laranja escuro */
+  --sidebar2: #c2410c;     /* laranja médio */
+  --brand: #f97316;        /* laranja claro (item ativo) */
 }
 
 *{box-sizing:border-box}
