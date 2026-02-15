@@ -4,20 +4,9 @@
    ===================================================== */
 
 :root{
-  --bg:#f5f7f6;
-  --sidebar:#0f2e1b;
-  --sidebar2:#163f26;
-
-  --brand:#22c55e;
-  --brand2:#16a34a;
-  --brandSoft:#dcfce7;
-
-  --text:#0f172a;
-  --muted:#64748b;
-  --line:rgba(0,0,0,.08);
-
-  --radius:16px;
-  --shadow:0 12px 30px rgba(0,0,0,.08);
+  --sidebar: #1e3a8a;      /* azul escuro */
+  --sidebar2: #2563eb;     /* azul médio */
+  --brand: #3b82f6;        /* azul claro (item ativo) */
 }
 
 *{box-sizing:border-box}
