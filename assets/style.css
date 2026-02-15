@@ -1,12 +1,23 @@
 /* =====================================================
-   Agro Pro — Layout Oficial para seu app.js
+   Agro Pro — Layout Oficial com Tema Azul
    Compatível com classes reais: sidebar, main, kpi...
    ===================================================== */
 
 :root{
-  --sidebar: #9a3412;      /* laranja escuro */
-  --sidebar2: #c2410c;     /* laranja médio */
-  --brand: #f97316;        /* laranja claro (item ativo) */
+  --bg:#f5f7f6;
+  --sidebar:#1e3a8a;        /* azul escuro */
+  --sidebar2:#2563eb;       /* azul médio */
+
+  --brand:#3b82f6;          /* azul claro (itens ativos, botões) */
+  --brand2:#2563eb;         /* azul médio para hover */
+  --brandSoft:#dbeafe;      /* azul muito claro para fundos suaves */
+
+  --text:#0f172a;
+  --muted:#64748b;
+  --line:rgba(0,0,0,0.15);  /* bordas mais escuras para melhor contraste */
+
+  --radius:16px;
+  --shadow:0 12px 30px rgba(0,0,0,.08);
 }
 
 *{box-sizing:border-box}
@@ -224,11 +235,12 @@ th{
   background:var(--brandSoft);
   font-weight:600;
   font-size:14px;
+  border-bottom:2px solid #cbd5e1; /* linha mais forte */
 }
 
 td{
   padding:12px;
-  border-top:1px solid var(--line);
+  border-bottom:1px solid #e2e8f0; /* cinza sólido, mais visível */
   font-size:14px;
 }
 
@@ -247,9 +259,9 @@ tr:hover{
   display:inline-block;
 }
 
-.pill.ok{ background:#dcfce7 }
-.pill.warn{ background:#fef9c3 }
-.pill.info{ background:#e0f2fe }
+.pill.ok{ background:#dcfce7; color:#065f46; }
+.pill.warn{ background:#fef9c3; color:#854d0e; }
+.pill.info{ background:#e0f2fe; color:#0369a1; }
 
 /* ===== Misc ===== */
 
@@ -277,11 +289,6 @@ tr:hover{
   align-items:center;
 }
 
-@media(max-width:900px){
-  .sidebar{
-    display:none;
-  }
-}
 /* ===== Classes específicas para KPIs ===== */
 .clima-kpi-grid, .combustivel-grid, .ops-kpi-grid {
   display: grid;
@@ -377,4 +384,11 @@ tr:hover{
   color: var(--muted);
   font-size: 11px;
   margin-left: 4px;
+}
+
+/* ===== Responsividade ===== */
+@media(max-width:900px){
+  .sidebar{
+    display:none;
+  }
 }
