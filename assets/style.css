@@ -282,3 +282,99 @@ tr:hover{
     display:none;
   }
 }
+/* ===== Classes específicas para KPIs ===== */
+.clima-kpi-grid, .combustivel-grid, .ops-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.clima-kpi-card, .combustivel-card, .ops-kpi-card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand);
+}
+
+.clima-kpi-card h3, .combustivel-card h3, .ops-kpi-card h3 {
+  margin: 0 0 10px 0;
+  color: var(--brand);
+  font-size: 16px;
+}
+
+.clima-kpi-valor, .combustivel-valor, .ops-kpi-valor {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.clima-kpi-unidade {
+  font-size: 16px;
+  color: var(--muted);
+  margin-left: 5px;
+}
+
+.clima-kpi-label, .combustivel-label, .ops-kpi-label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* ===== Formulário de clima ===== */
+.form-clima {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 30px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.form-clima h3 {
+  margin-top: 0;
+  color: var(--brand);
+}
+
+/* ===== Gráficos ===== */
+.grafico-barras {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 200px;
+  margin: 20px 0;
+}
+
+.barra {
+  flex: 1;
+  background: var(--brand);
+  border-radius: 4px 4px 0 0;
+  min-height: 20px;
+  transition: height 0.3s;
+}
+
+.barra-label {
+  text-align: center;
+  font-size: 11px;
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+/* ===== Seções de tabela ===== */
+.secao-tabela {
+  margin-top: 30px;
+}
+
+/* ===== Valores com unidade ===== */
+.valor-com-unidade {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.unidade-tabela {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: 4px;
+}
