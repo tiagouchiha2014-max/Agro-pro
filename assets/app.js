@@ -1,5 +1,11 @@
 /* ============================================================
-   AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL CORRIGIDA
+   AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL
+   Atualizações:
+   + Sistema de SAFRAS (substitui empresas como filtro principal)
+   + Dados isolados por safra
+   + Acumulação de estoque corrigida
+   + Preços de mercado configuráveis
+   + Controle de diesel com UEPS
    ============================================================ */
 
 const Storage = {
@@ -624,7 +630,7 @@ function gerarAlertasPragas(db) {
 
 /* ------------------ Páginas ------------------ */
 
-// Página de Safras
+// Página de Safras (substitui a antiga página de Empresas)
 function pageSafras() {
   const db = getDB();
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
@@ -840,141 +846,200 @@ function pageOpsCenter() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
   const talhoes = onlySafra(db.talhoes);
+  const estoque = onlySafra(db.estoque || []);
+  const diesel = onlySafra(db.dieselEstoque || []);
+  const aplicacoes = onlySafra(db.aplicacoes || []);
+  const combustivel = onlySafra(db.combustivel || []);
+  const parametros = db.parametros || { precoSoja: 120 };
 
-  const estoque = onlySafra(db.estoque||[]);
-  const diesel = onlySafra(db.dieselEstoque||[]);
-  const aplicacoes = onlySafra(db.aplicacoes||[]);
-  const combustivel = onlySafra(db.combustivel||[]);
-  const clima = onlySafra(db.clima||[]);
-
-  const negEstoque = estoque.filter(s => Number(s.qtd||0) < 0);
-  const negDiesel = diesel.filter(d => Number(d.litros||0) < 0);
+  const negEstoque = estoque.filter(s => Number(s.qtd || 0) < 0);
+  const negDiesel = diesel.filter(d => Number(d.litros || 0) < 0);
   const custoTal = calcCustosPorTalhao(db);
 
-  // chuva 7d por talhão (simples)
-  const chuvaTal = new Map();
-  const hoje = new Date();
-  const start = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0,0,0,0);
-  const min = new Date(start.getTime() - 6*24*60*60*1000);
-  function parseISO(d){
-    const [y,m,day] = String(d||"").split("-").map(Number);
-    if(!y||!m||!day) return null;
-    return new Date(y, m-1, day, 0,0,0,0);
-  }
-  for(const r of clima){
-    if(!r.talhaoId) continue;
-    const dt = parseISO(r.data);
-    if(!dt) continue;
-    if(dt < min || dt > start) continue;
-    chuvaTal.set(r.talhaoId, (chuvaTal.get(r.talhaoId)||0) + Number(r.chuvaMm||0));
-  }
+  // Calcular receita potencial para talhões de soja
+  const talhoesSoja = talhoes.filter(t => t.cultura?.toLowerCase() === 'soja');
+  const prodMin = parametros.produtividadeMinSoja || 65;
+  const prodMax = parametros.produtividadeMaxSoja || 75;
+  const precoSoja = parametros.precoSoja || 120;
+
+  const receitaPotencial = talhoesSoja.reduce((acc, t) => {
+    const area = Number(t.areaHa || 0);
+    const receitaMin = area * prodMin * precoSoja;
+    const receitaMax = area * prodMax * precoSoja;
+    return acc + (receitaMin + receitaMax) / 2;
+  }, 0);
+
+  const custoTotal = custoTal.reduce((acc, t) => acc + t.custoTotal, 0);
+  const lucroPotencial = receitaPotencial - custoTotal;
 
   const content = document.getElementById("content");
   content.innerHTML = `
     <div class="kpi">
-      <div class="card">
-        <h3>Alertas de estoque</h3>
-        <div class="big">${negEstoque.length}</div>
-        <div class="sub">${negEstoque.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
-      </div>
-      <div class="card">
-        <h3>Alertas de diesel</h3>
-        <div class="big">${negDiesel.length}</div>
-        <div class="sub">${negDiesel.length?'<span class="pill bad">Saldo negativo</span>':'<span class="pill ok">OK</span>'}</div>
-      </div>
-      <div class="card">
-        <h3>Aplicações</h3>
-        <div class="big">${aplicacoes.length}</div>
-        <div class="sub"><span class="pill info">Rastreabilidade</span></div>
-      </div>
-      <div class="card">
-        <h3>Abastecimentos</h3>
-        <div class="big">${combustivel.length}</div>
-        <div class="sub"><span class="pill info">Controle diesel</span></div>
-      </div>
+      <div class="card"><h3>Alertas estoque</h3><div class="big">${negEstoque.length}</div></div>
+      <div class="card"><h3>Alertas diesel</h3><div class="big">${negDiesel.length}</div></div>
+      <div class="card"><h3>Aplicações</h3><div class="big">${aplicacoes.length}</div></div>
+      <div class="card"><h3>Lucro Potencial</h3><div class="big">${kbrl(lucroPotencial)}</div></div>
+    </div>
+    
+    <div class="card" style="margin-bottom:20px;">
+      <h3>📊 Resumo Financeiro</h3>
+      <table style="width:100%;">
+        <tr><td>Custo total (todos talhões):</td><td>${kbrl(custoTotal)}</td></tr>
+        <tr><td>Receita potencial (soja):</td><td>${kbrl(receitaPotencial)}</td></tr>
+        <tr><td><b>Lucro potencial:</b></td><td><b>${kbrl(lucroPotencial)}</b></td></tr>
+      </table>
     </div>
 
-    <div class="section">
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr><th colspan="6">Estoque com saldo negativo</th></tr>
-            <tr>
-              <th>Produto</th><th>Depósito</th><th>Qtd</th><th>Unid.</th><th>Obs</th><th>Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              negEstoque.map(s=>{
-                const p = onlySafra(db.produtos).find(p=>p.id===s.produtoId);
-                const nome = p ? p.nome : "(sem produto)";
-                return `
-                  <tr>
-                    <td><b>${escapeHtml(nome)}</b></td>
-                    <td>${escapeHtml(s.deposito||"")}</td>
-                    <td><b>${escapeHtml(num(s.qtd||0,2))}</b></td>
-                    <td>${escapeHtml(s.unidade||"")}</td>
-                    <td>${escapeHtml(clampStr(s.obs||"",50))}</td>
-                    <td><a class="btn" href="estoque.html">Ajustar</a></td>
-                  </tr>
-                `;
-              }).join("") || `<tr><td colspan="6">Nenhum.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr><th colspan="5">Diesel (tanques)</th></tr>
-            <tr>
-              <th>Depósito</th><th>Litros</th><th>Status</th><th>Obs</th><th>Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              diesel.map(d=>`
-                <tr>
-                  <td><b>${escapeHtml(d.deposito||"")}</b></td>
-                  <td><b>${escapeHtml(num(d.litros||0,1))}</b></td>
-                  <td>${Number(d.litros||0)<0?'<span class="pill bad">Negativo</span>':'<span class="pill ok">OK</span>'}</td>
-                  <td>${escapeHtml(clampStr(d.obs||"",50))}</td>
-                  <td><a class="btn" href="combustivel.html">Ver</a></td>
-                </tr>
-              `).join("") || `<tr><td colspan="5">Sem tanques.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="tableWrap" style="margin-top:12px">
+    <div class="tableWrap">
+      <h3>Custos por talhão</h3>
       <table>
-        <thead>
-          <tr><th colspan="7">Custo por talhão (acumulado)</th></tr>
-          <tr>
-            <th>Talhão</th><th>Fazenda</th><th>Área (ha)</th><th>Custo total</th><th>Custo/ha</th><th>Chuva 7d</th><th>Último</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${
-            custoTal.map(r=>`
-              <tr>
-                <td><b>${escapeHtml(r.talhao)}</b></td>
-                <td>${escapeHtml(r.fazenda)}</td>
-                <td>${escapeHtml(num(r.areaHa||0,1))}</td>
-                <td><b>${escapeHtml(kbrl(r.custoTotal||0))}</b></td>
-                <td>${escapeHtml(kbrl(r.custoHa||0))}</td>
-                <td>${escapeHtml(num(chuvaTal.get(r.talhaoId)||0,1))} mm</td>
-                <td>${escapeHtml(r.last||"-")}</td>
-              </tr>
-            `).join("") || `<tr><td colspan="7">Sem talhões.</td></tr>`
+        <thead><tr><th>Talhão</th><th>Custo total</th><th>Custo/ha</th><th>Receita est.</th><th>Lucro est.</th></tr></thead>
+        <tbody>${custoTal.map(r => {
+          const area = r.areaHa;
+          let receita = 0;
+          if (r.cultura?.toLowerCase() === 'soja') {
+            receita = area * ((prodMin + prodMax) / 2) * precoSoja;
           }
-        </tbody>
+          const lucro = receita - r.custoTotal;
+          return `<tr>
+            <td>${escapeHtml(r.talhao)}</td>
+            <td>${kbrl(r.custoTotal)}</td>
+            <td>${kbrl(r.custoHa)}</td>
+            <td>${kbrl(receita)}</td>
+            <td>${kbrl(lucro)}</td>
+          </tr>`;
+        }).join('')}</tbody>
       </table>
     </div>
   `;
+}
+
+function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
+  const db = getDB();
+  const sid = getSafraId();
+
+  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+
+  const content = document.getElementById("content");
+
+  const formHtml = `
+    <div class="card">
+      <h3>Novo registro</h3>
+      <div class="help">${escapeHtml(subtitle || "")}</div>
+      <div class="hr"></div>
+      <form id="frm" class="formGrid">
+        ${fields.map(f => {
+          const full = f.full ? "full" : "";
+          if (f.type === "select") {
+            const opts = (typeof f.options === "function" ? f.options(getDB()) : (f.options || []))
+              .map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
+            return `
+              <div class="${full}">
+                <small>${escapeHtml(f.label)}</small>
+                <select class="select" name="${escapeHtml(f.key)}">${opts}</select>
+              </div>
+            `;
+          }
+          if (f.type === "textarea") {
+            return `
+              <div class="${full}">
+                <small>${escapeHtml(f.label)}</small>
+                <textarea class="textarea" name="${escapeHtml(f.key)}" placeholder="${escapeHtml(f.placeholder || "")}"></textarea>
+              </div>
+            `;
+          }
+          return `
+            <div class="${full}">
+              <small>${escapeHtml(f.label)}</small>
+              <input class="input" name="${escapeHtml(f.key)}" type="${escapeHtml(f.type || "text")}" placeholder="${escapeHtml(f.placeholder || "")}" />
+            </div>
+          `;
+        }).join("")}
+        <div class="full row" style="justify-content:flex-end; margin-top:6px;">
+          <button class="btn primary" type="submit">Salvar</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  const tableHtml = `
+    <div class="tableWrap">
+      <table>
+        <thead>
+          <tr>
+            ${columns.map(c => `<th>${escapeHtml(c.label)}</th>`).join("")}
+            <th class="noPrint">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  `;
+
+  content.innerHTML = `<div class="section">${formHtml}${tableHtml}</div>`;
+
+  function renderTable() {
+    const db2 = getDB();
+    const rows0 = onlySafra(db2[entityKey] || []);
+    const rows = helpers?.filter ? helpers.filter(rows0, db2) : rows0;
+
+    const tb = document.getElementById("tbody");
+    tb.innerHTML = rows.slice().reverse().map(r => {
+      const tds = columns.map(c => {
+        const v = c.render ? c.render(r, db2) : r[c.key];
+        return `<td>${escapeHtml(v ?? "")}</td>`;
+      }).join("");
+      return `
+        <tr>
+          ${tds}
+          <td class="noPrint">
+            <button class="btn danger" onclick="window.__del('${r.id}')">Excluir</button>
+          </td>
+        </tr>
+      `;
+    }).join("") || `<tr><td colspan="${columns.length + 1}">Sem registros.</td></tr>`;
+  }
+
+  window.__del = (id) => {
+    if (!confirm("Excluir este registro?")) return;
+    const db2 = getDB();
+    db2[entityKey] = (db2[entityKey] || []).filter(x => x.id !== id);
+    if (helpers?.onDelete) helpers.onDelete(id, db2);
+    setDB(db2);
+    toast("Excluído", "Registro removido.");
+    renderTable();
+  };
+
+  document.getElementById("frm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const obj = { id: uid(entityKey.slice(0, 3)), safraId: sid };
+
+    fields.forEach(f => {
+      let v = fd.get(f.key);
+      if (f.type === "number") v = Number(v || 0);
+      obj[f.key] = v;
+    });
+
+    const db2 = getDB();
+    if (helpers?.beforeSave) helpers.beforeSave(obj, db2);
+    db2[entityKey] = db2[entityKey] || [];
+    db2[entityKey].push(obj);
+    setDB(db2);
+
+    e.target.reset();
+    toast("Salvo", "Registro adicionado com sucesso.");
+    renderTable();
+  });
+
+  document.getElementById("btnExportCSV").addEventListener("click", () => {
+    const db2 = getDB();
+    const rows = onlySafra(db2[entityKey] || []);
+    downloadText(`${entityKey}-${nowISO()}.csv`, toCSV(rows));
+    toast("Exportado", "CSV baixado.");
+  });
+
+  renderTable();
 }
 
 // Páginas específicas adaptadas para safra
@@ -1456,141 +1521,465 @@ function pageTalhoes() {
   render();
 }
 
+function pageCombustivel() {
+  const db = getDB();
+  const fazendas = onlySafra(db.fazendas);
+  const talhoes = onlySafra(db.talhoes);
+  const equipe = onlySafra(db.equipe);
+  const maquinas = onlySafra(db.maquinas);
+  const tanques = onlySafra(db.dieselEstoque);
+  const entradas = onlySafra(db.dieselEntradas || []).sort((a, b) => b.data.localeCompare(a.data));
+
+  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+
+  const content = document.getElementById("content");
+
+  function optionList(arr, labelKey = "nome") {
+    return arr.map(o => `<option value="${o.id}">${escapeHtml(o[labelKey] || "")}</option>`).join("");
+  }
+
+  const depositoOptions = tanques.map(t => `<option value="${escapeHtml(t.deposito || "Tanque Principal")}">${escapeHtml(t.deposito || "Tanque Principal")}</option>`).join("");
+
+  content.innerHTML = `
+    <div class="kpi">
+      <div class="card">
+        <h3>Diesel (tanque total)</h3>
+        <div class="big">${num(tanques.reduce((s, t) => s + Number(t.litros || 0), 0), 1)} L</div>
+        <div class="sub">${tanques.some(t => Number(t.litros || 0) < 0) ? '<span class="pill bad">Negativo</span>' : '<span class="pill ok">OK</span>'}</div>
+      </div>
+      <div class="card">
+        <h3>Preço vigente</h3>
+        <div class="big">${kbrl(tanques[0]?.precoVigente || 0)}/L</div>
+        <div class="sub">Última entrada</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="card">
+        <h3>⛽ Registrar entrada de diesel</h3>
+        <div class="help">Registre a compra de diesel para abastecer o tanque.</div>
+        <div class="hr"></div>
+        <form id="frmEntrada" class="formGrid">
+          <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
+          <div class="full">
+            <small>Depósito / Tanque</small>
+            <select class="select" name="deposito">${depositoOptions || `<option value="Tanque Principal">Tanque Principal</option>`}</select>
+          </div>
+          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.1" placeholder="0" required /></div>
+          <div><small>Preço por litro (R$)</small><input class="input" name="precoLitro" type="number" step="0.01" placeholder="0" required /></div>
+          <div class="full"><small>Observações</small><textarea class="textarea" name="obs"></textarea></div>
+          <div class="full row" style="justify-content:flex-end">
+            <button class="btn primary" type="submit">Registrar entrada</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>🚜 Registrar abastecimento (saída)</h3>
+        <div class="help">Registre o abastecimento de máquinas. O custo usará o preço da última entrada.</div>
+        <div class="hr"></div>
+        <form id="frmSaida" class="formGrid">
+          <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
+          <div class="full">
+            <small>Depósito / Tanque</small>
+            <select class="select" name="deposito">${depositoOptions || `<option value="Tanque Principal">Tanque Principal</option>`}</select>
+          </div>
+          <div><small>Fazenda</small><select class="select" name="fazendaId" required>${optionList(fazendas)}</select></div>
+          <div><small>Talhão (opcional)</small><select class="select" name="talhaoId"><option value="">(sem talhão)</option>${optionList(talhoes)}</select></div>
+          <div><small>Máquina</small><select class="select" name="maquinaId"><option value="">(opcional)</option>${optionList(maquinas)}</select></div>
+          <div><small>Operador</small><select class="select" name="operadorId"><option value="">(opcional)</option>${optionList(equipe)}</select></div>
+          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.1" placeholder="0" required /></div>
+          <div><small>KM ou Horímetro</small><input class="input" name="kmOuHora" type="number" step="0.1" placeholder="0" /></div>
+          <div><small>Posto</small><input class="input" name="posto" placeholder="Posto / NF / origem" /></div>
+          <div class="full"><small>Observações</small><textarea class="textarea" name="obs"></textarea></div>
+          <div class="full row" style="justify-content:flex-end">
+            <button class="btn primary" type="submit">Registrar saída</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="tableWrap" style="margin-top:20px;">
+      <h3>📋 Entradas de diesel</h3>
+      <table>
+        <thead>
+          <tr><th>Data</th><th>Depósito</th><th>Litros</th><th>Preço/L</th><th>Total</th><th>Obs</th></tr>
+        </thead>
+        <tbody>
+          ${entradas.map(e => `
+            <tr>
+              <td>${e.data}</td>
+              <td>${escapeHtml(e.deposito)}</td>
+              <td>${num(e.litros, 1)}</td>
+              <td>${kbrl(e.precoLitro)}</td>
+              <td>${kbrl(e.litros * e.precoLitro)}</td>
+              <td>${escapeHtml(e.obs || '')}</td>
+            </tr>
+          `).join('') || '<tr><td colspan="6">Sem entradas</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tableWrap" style="margin-top:20px;">
+      <h3>📋 Abastecimentos</h3>
+      <table>
+        <thead>
+          <tr><th>Data</th><th>Fazenda</th><th>Talhão</th><th>Litros</th><th>Preço/L</th><th>Custo</th></tr>
+        </thead>
+        <tbody id="tbodySaidas"></tbody>
+      </table>
+    </div>
+  `;
+
+  function renderSaidas() {
+    const db2 = getDB();
+    const rows = onlySafra(db2.combustivel || []).sort((a, b) => b.data.localeCompare(a.data));
+    const tb = document.getElementById("tbodySaidas");
+    tb.innerHTML = rows.map(c => {
+      const faz = findNameById(onlySafra(db2.fazendas), c.fazendaId);
+      const tal = c.talhaoId ? findNameById(onlySafra(db2.talhoes), c.talhaoId) : "—";
+      return `
+        <tr>
+          <td>${c.data}</td>
+          <td>${escapeHtml(faz)}</td>
+          <td>${escapeHtml(tal)}</td>
+          <td>${num(c.litros, 1)}</td>
+          <td>${kbrl(c.precoLitro)}</td>
+          <td>${kbrl(c.litros * c.precoLitro)}</td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="6">Sem abastecimentos</td></tr>';
+  }
+
+  document.getElementById("frmEntrada").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const litros = Number(fd.get("litros") || 0);
+    if (litros <= 0) { alert("Litros deve ser > 0"); return; }
+    const precoLitro = Number(fd.get("precoLitro") || 0);
+    if (precoLitro <= 0) { alert("Preço deve ser > 0"); return; }
+
+    const db2 = getDB();
+    registrarEntradaDiesel(
+      db2,
+      fd.get("deposito") || "Tanque Principal",
+      litros,
+      precoLitro,
+      fd.get("data") || nowISO(),
+      fd.get("obs") || ""
+    );
+    setDB(db2);
+    e.target.reset();
+    toast("Entrada registrada", "Diesel adicionado ao estoque.");
+    pageCombustivel();
+  });
+
+  document.getElementById("frmSaida").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const litros = Number(fd.get("litros") || 0);
+    if (litros <= 0) { alert("Litros deve ser > 0"); return; }
+
+    const db2 = getDB();
+    const deposito = fd.get("deposito") || "Tanque Principal";
+    const tank = db2.dieselEstoque.find(t => t.safraId === getSafraId() && t.deposito === deposito);
+    if (!tank) { alert("Tanque não encontrado"); return; }
+
+    const res = baixaDiesel(db2, deposito, litros);
+    if (!res.ok) { alert(res.msg); return; }
+
+    const obj = {
+      id: uid("cmb"),
+      safraId: getSafraId(),
+      data: fd.get("data") || nowISO(),
+      tipo: "Diesel S10",
+      deposito,
+      posto: fd.get("posto") || "",
+      maquinaId: fd.get("maquinaId") || "",
+      operadorId: fd.get("operadorId") || "",
+      fazendaId: fd.get("fazendaId"),
+      talhaoId: fd.get("talhaoId") || "",
+      litros,
+      precoLitro: res.precoLitro,
+      kmOuHora: Number(fd.get("kmOuHora") || 0),
+      obs: fd.get("obs") || ""
+    };
+
+    db2.combustivel = db2.combustivel || [];
+    db2.combustivel.push(obj);
+    setDB(db2);
+    e.target.reset();
+    toast("Saída registrada", "Abastecimento concluído.");
+    renderSaidas();
+  });
+
+  document.getElementById("btnExportCSV").addEventListener("click", () => {
+    const db2 = getDB();
+    downloadText(`combustivel-${nowISO()}.csv`, toCSV(onlySafra(db2.combustivel || [])));
+    toast("Exportado", "CSV baixado.");
+  });
+
+  renderSaidas();
+}
+
 function pageClima() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
   const talhoes = onlySafra(db.talhoes);
   const clima = onlySafra(db.clima || []).sort((a, b) => b.data.localeCompare(a.data));
 
-  setTopActions(`<button class="btn" id="btnExportCSV">📥 Exportar CSV</button>`);
+  setTopActions(`
+    <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
+    <button class="btn primary" id="btnNovoRegistro">+ Novo Registro</button>
+  `);
 
-  // ==================== CÁLCULOS PARA OS CARDS ====================
+  // ==================== CÁLCULOS CLIMÁTICOS ====================
 
-  const hoje = nowISO();
-  const chuvaHoje = clima.filter(c => c.data === hoje).reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
+  // Totais e médias gerais
+  const totalChuva = clima.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
+  const diasComChuva = clima.filter(c => c.chuvaMm > 0).length;
+  const mediaChuva = clima.length ? totalChuva / clima.length : 0;
 
-  const seteDiasAtras = new Date();
-  seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
-  const dataLimite7d = seteDiasAtras.toISOString().split('T')[0];
+  const tempMaxMedia = clima.reduce((s, c) => s + Number(c.tempMax || 0), 0) / (clima.length || 1);
+  const tempMinMedia = clima.reduce((s, c) => s + Number(c.tempMin || 0), 0) / (clima.length || 1);
+  const tempMedia = (tempMaxMedia + tempMinMedia) / 2;
 
-  const chuva7d = clima
-    .filter(c => c.data >= dataLimite7d)
-    .reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
+  const umidadeMedia = clima.reduce((s, c) => s + Number(c.umidade || 0), 0) / (clima.length || 1);
+  const ventoMedio = clima.reduce((s, c) => s + Number(c.vento || 0), 0) / (clima.length || 1);
 
-  const trintaDiasAtras = new Date();
-  trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30);
-  const dataLimite30d = trintaDiasAtras.toISOString().split('T')[0];
+  // Dados por talhão
+  const climaPorTalhao = talhoes.map(t => {
+    const registrosTalhao = clima.filter(c => c.talhaoId === t.id);
+    const chuvaTalhao = registrosTalhao.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
+    const ultimoRegistro = registrosTalhao.sort((a, b) => b.data.localeCompare(a.data))[0];
 
-  const chuva30d = clima
-    .filter(c => c.data >= dataLimite30d)
-    .reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
+    return {
+      talhao: t.nome,
+      fazenda: findNameById(fazendas, t.fazendaId),
+      totalChuva: chuvaTalhao,
+      mediaChuva: registrosTalhao.length ? chuvaTalhao / registrosTalhao.length : 0,
+      ultimoRegistro: ultimoRegistro?.data || '-',
+      ultimaChuva: ultimoRegistro?.chuvaMm || 0,
+      registros: registrosTalhao.length
+    };
+  }).sort((a, b) => b.totalChuva - a.totalChuva);
 
-  // Médias por talhão para o resumo
-  const chuvaPorTalhao = new Map();
+  // Dados por mês
+  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const chuvaPorMes = new Array(12).fill(0);
+  const tempPorMes = new Array(12).fill(0);
+  const contagemPorMes = new Array(12).fill(0);
+
   clima.forEach(c => {
-    if (c.talhaoId) {
-      const atual = chuvaPorTalhao.get(c.talhaoId) || 0;
-      chuvaPorTalhao.set(c.talhaoId, atual + Number(c.chuvaMm || 0));
+    if (c.data) {
+      const mes = parseInt(c.data.substring(5, 7)) - 1;
+      chuvaPorMes[mes] += Number(c.chuvaMm || 0);
+      if (c.tempMax) {
+        tempPorMes[mes] += Number(c.tempMax);
+        contagemPorMes[mes]++;
+      }
     }
   });
 
+  const maxChuvaMensal = Math.max(...chuvaPorMes, 1);
+
+  // Alertas climáticos
+  const alertas = [];
+  const hoje = new Date();
+  const ultimos7Dias = new Date(hoje.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const chuvasRecentes = clima.filter(c => c.data >= ultimos7Dias && c.chuvaMm > 0);
+  if (chuvasRecentes.length > 0) {
+    const totalChuvaRecente = chuvasRecentes.reduce((s, c) => s + c.chuvaMm, 0);
+    alertas.push({
+      tipo: 'info',
+      titulo: '🌧️ Chuvas Recentes',
+      descricao: `${totalChuvaRecente.toFixed(1)} mm de chuva nos últimos 7 dias.`,
+      acao: 'Verifique condições para aplicações.'
+    });
+  }
+
+  const diasSecos = clima.filter(c => c.data >= ultimos7Dias && c.chuvaMm === 0).length;
+  if (diasSecos > 5) {
+    alertas.push({
+      tipo: 'atencao',
+      titulo: '☀️ Período Seco',
+      descricao: `${diasSecos} dias sem chuva na última semana.`,
+      acao: 'Atenção à umidade do solo.'
+    });
+  }
+
+  const ventosFortes = clima.filter(c => c.data >= ultimos7Dias && c.vento > 15);
+  if (ventosFortes.length > 0) {
+    alertas.push({
+      tipo: 'atencao',
+      titulo: '💨 Ventos Fortes',
+      descricao: `${ventosFortes.length} registro(s) de vento > 15 km/h.`,
+      acao: 'Evite pulverizações em dias ventosos.'
+    });
+  }
+
   const content = document.getElementById("content");
   content.innerHTML = `
-    <!-- Cards de resumo -->
-    <div class="kpi">
-      <div class="card">
-        <h3>🌧️ Chuva (hoje)</h3>
-        <div class="big" id="kpiHoje">${num(chuvaHoje, 1)} mm</div>
-        <div class="sub">Somatório do dia</div>
-      </div>
-      <div class="card">
-        <h3>📊 Últimos 7 dias</h3>
-        <div class="big" id="kpi7d">${num(chuva7d, 1)} mm</div>
-        <div class="sub">Acumulado</div>
-      </div>
-      <div class="card">
-        <h3>📈 Últimos 30 dias</h3>
-        <div class="big" id="kpi30d">${num(chuva30d, 1)} mm</div>
-        <div class="sub">Acumulado</div>
-      </div>
-      <div class="card">
-        <h3>📝 Registros</h3>
-        <div class="big" id="kpiCount">${clima.length}</div>
-        <div class="sub">Total de lançamentos</div>
-      </div>
+    <style>
+      .clima-tab-bar {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #2a2a30;
+        padding-bottom: 10px;
+        flex-wrap: wrap;
+      }
+      .clima-tab {
+        padding: 10px 20px;
+        background: #1a1a1f;
+        border: 1px solid #2a2a30;
+        border-radius: 8px 8px 0 0;
+        cursor: pointer;
+        color: #888;
+        transition: all 0.2s;
+      }
+      .clima-tab:hover {
+        background: #25252b;
+        color: #fff;
+      }
+      .clima-tab.active {
+        background: #2196f3;
+        color: #fff;
+        border-color: #2196f3;
+      }
+      .clima-tab-content {
+        display: none;
+      }
+      .clima-tab-content.active {
+        display: block;
+      }
+      .clima-card {
+        background: #1a1a1f;
+        border-radius: 8px;
+        padding: 15px;
+        border-left: 4px solid #2196f3;
+      }
+      .clima-stat {
+        font-size: 28px;
+        font-weight: bold;
+        color: #2196f3;
+      }
+      .clima-label {
+        font-size: 12px;
+        color: #888;
+      }
+      .clima-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .clima-grafico-barras {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        height: 200px;
+        margin-top: 20px;
+      }
+      .clima-barra {
+        flex: 1;
+        background: #2196f3;
+        border-radius: 4px 4px 0 0;
+        min-height: 20px;
+        transition: height 0.3s;
+      }
+      .clima-barra-label {
+        text-align: center;
+        font-size: 11px;
+        margin-top: 5px;
+        color: #888;
+      }
+      .clima-alerta {
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 8px;
+        border-left: 4px solid;
+      }
+    </style>
+
+    <div class="clima-tab-bar">
+      <div class="clima-tab active" onclick="mudarAbaClima('resumo')">📊 Resumo Climático</div>
+      <div class="clima-tab" onclick="mudarAbaClima('talhoes')">🌱 Por Talhão</div>
+      <div class="clima-tab" onclick="mudarAbaClima('historico')">📅 Histórico</div>
+      <div class="clima-tab" onclick="mudarAbaClima('alertas')">⚠️ Alertas</div>
     </div>
 
-    <!-- Formulário de registro (sempre visível) -->
-    <div class="section">
-      <div class="card">
-        <h3>📋 Registrar novo clima</h3>
-        <div class="help">Preencha os dados e clique em Salvar. O registro aparecerá na tabela abaixo.</div>
-        <div class="hr"></div>
-
-        <form id="frm" class="formGrid">
-          <div><small>Data</small><input class="input" name="data" type="date" value="${nowISO()}" required></div>
-
-          <div>
-            <small>Fazenda</small>
-            <select class="select" name="fazendaId" required>
-              <option value="">Selecione...</option>
-              ${fazendas.map(f => `<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("")}
-            </select>
-          </div>
-
-          <div>
-            <small>Talhão</small>
-            <select class="select" name="talhaoId">
-              <option value="">(Geral / sem talhão)</option>
-              ${talhoes.map(t => `<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join("")}
-            </select>
-          </div>
-
-          <div><small>Chuva (mm)</small><input class="input" name="chuvaMm" type="number" step="0.1" placeholder="0"></div>
-          <div><small>Temp min (°C)</small><input class="input" name="tempMin" type="number" step="0.1" placeholder="0"></div>
-          <div><small>Temp max (°C)</small><input class="input" name="tempMax" type="number" step="0.1" placeholder="0"></div>
-          <div><small>Umidade (%)</small><input class="input" name="umidade" type="number" step="1" placeholder="0"></div>
-          <div><small>Vento (km/h)</small><input class="input" name="vento" type="number" step="0.1" placeholder="0"></div>
-
-          <div class="full">
-            <small>Observações</small>
-            <textarea class="textarea" name="obs" placeholder="Ex.: chuva isolada, temporal, observações..."></textarea>
-          </div>
-
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">💾 Salvar registro</button>
-          </div>
-        </form>
+    <!-- Aba Resumo Climático -->
+    <div id="clima-aba-resumo" class="clima-tab-content active">
+      <!-- KPIs -->
+      <div class="clima-kpi-grid">
+        <div class="clima-card">
+          <div class="clima-label">🌧️ Total de Chuvas</div>
+          <div class="clima-stat">${num(totalChuva, 1)} mm</div>
+          <div class="clima-label">${diasComChuva} dias com chuva</div>
+        </div>
+        <div class="clima-card">
+          <div class="clima-label">📊 Média de Chuvas</div>
+          <div class="clima-stat">${num(mediaChuva, 1)} mm</div>
+          <div class="clima-label">por registro</div>
+        </div>
+        <div class="clima-card">
+          <div class="clima-label">🌡️ Temperatura Média</div>
+          <div class="clima-stat">${num(tempMedia, 1)}°C</div>
+          <div class="clima-label">Mín ${num(tempMinMedia, 1)}°C / Máx ${num(tempMaxMedia, 1)}°C</div>
+        </div>
+        <div class="clima-card">
+          <div class="clima-label">💧 Umidade Média</div>
+          <div class="clima-stat">${num(umidadeMedia, 0)}%</div>
+          <div class="clima-label">Vento médio: ${num(ventoMedio, 1)} km/h</div>
+        </div>
       </div>
-    </div>
 
-    <!-- Tabela de resumo por talhão -->
-    <div class="section" style="margin-top:20px;">
-      <div class="tableWrap">
-        <h4>📊 Acumulado por Talhão</h4>
+      <!-- Gráfico de chuvas mensais -->
+      <div class="card">
+        <h4>📈 Distribuição Mensal de Chuvas</h4>
+        <div class="clima-grafico-barras">
+          ${meses.map((mes, i) => `
+            <div style="flex:1; text-align:center;">
+              <div class="clima-barra" style="height: ${(chuvaPorMes[i] / maxChuvaMensal) * 180}px;"></div>
+              <div class="clima-barra-label">${mes}</div>
+              <div style="font-size:10px; color:#888;">${num(chuvaPorMes[i], 1)} mm</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Últimos registros -->
+      <div class="tableWrap" style="margin-top:20px;">
+        <h4>📋 Últimos 10 Registros</h4>
         <table>
           <thead>
             <tr>
-              <th>Talhão</th>
+              <th>Data</th>
               <th>Fazenda</th>
-              <th>Área (ha)</th>
-              <th>Total Chuva (mm)</th>
-              <th>Média (mm)</th>
+              <th>Talhão</th>
+              <th>Chuva (mm)</th>
+              <th>Temp Máx</th>
+              <th>Temp Mín</th>
+              <th>Umidade</th>
+              <th>Vento</th>
             </tr>
           </thead>
-          <tbody id="tbodyAcum">
-            ${talhoes.map(t => {
-              const total = chuvaPorTalhao.get(t.id) || 0;
-              const registrosTalhao = clima.filter(c => c.talhaoId === t.id).length;
-              const media = registrosTalhao > 0 ? total / registrosTalhao : 0;
-              const fazenda = findNameById(fazendas, t.fazendaId);
+          <tbody>
+            ${clima.slice(0, 10).map(c => {
+              const fazenda = findNameById(fazendas, c.fazendaId);
+              const talhao = c.talhaoId ? findNameById(talhoes, c.talhaoId) : 'Geral';
               return `
                 <tr>
-                  <td><b>${escapeHtml(t.nome)}</b></td>
+                  <td>${c.data}</td>
                   <td>${escapeHtml(fazenda)}</td>
-                  <td>${num(t.areaHa || 0, 1)}</td>
-                  <td><b>${num(total, 1)} mm</b></td>
-                  <td>${num(media, 1)} mm</td>
+                  <td>${escapeHtml(talhao)}</td>
+                  <td><b>${num(c.chuvaMm || 0, 1)}</b></td>
+                  <td>${c.tempMax ? c.tempMax + '°C' : '-'}</td>
+                  <td>${c.tempMin ? c.tempMin + '°C' : '-'}</td>
+                  <td>${c.umidade ? c.umidade + '%' : '-'}</td>
+                  <td>${c.vento ? c.vento + ' km/h' : '-'}</td>
                 </tr>
               `;
             }).join('')}
@@ -1599,51 +1988,153 @@ function pageClima() {
       </div>
     </div>
 
-    <!-- Tabela de histórico (todos os registros) -->
-    <div class="tableWrap" style="margin-top:20px;">
-      <h4>📋 Histórico de registros</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th>Fazenda</th>
-            <th>Talhão</th>
-            <th>Chuva (mm)</th>
-            <th>Temp máx</th>
-            <th>Temp mín</th>
-            <th>Umidade</th>
-            <th>Vento</th>
-            <th>Obs</th>
-            <th class="noPrint">Ações</th>
-          </tr>
-        </thead>
-        <tbody id="tbody">
-          ${clima.map(c => {
-            const fazenda = findNameById(fazendas, c.fazendaId);
-            const talhao = c.talhaoId ? findNameById(talhoes, c.talhaoId) : "Geral";
-            return `
+    <!-- Aba Por Talhão -->
+    <div id="clima-aba-talhoes" class="clima-tab-content">
+      <div class="card">
+        <h4>🌱 Acumulado de Chuvas por Talhão</h4>
+        <table style="width:100%; margin-top:15px;">
+          <thead>
+            <tr>
+              <th>Talhão</th>
+              <th>Fazenda</th>
+              <th>Total Chuva (mm)</th>
+              <th>Média por Registro</th>
+              <th>Última Chuva</th>
+              <th>Registros</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${climaPorTalhao.map(t => `
               <tr>
-                <td>${escapeHtml(c.data || "")}</td>
-                <td>${escapeHtml(fazenda)}</td>
-                <td>${escapeHtml(talhao)}</td>
-                <td><b>${escapeHtml(num(c.chuvaMm || 0, 1))}</b></td>
-                <td>${c.tempMax ? c.tempMax + '°C' : '-'}</td>
-                <td>${c.tempMin ? c.tempMin + '°C' : '-'}</td>
-                <td>${c.umidade ? c.umidade + '%' : '-'}</td>
-                <td>${c.vento ? c.vento + ' km/h' : '-'}</td>
-                <td>${escapeHtml(c.obs || "")}</td>
-                <td class="noPrint">
-                  <button class="btn danger" style="padding:4px 8px;" onclick="window.__delClima('${c.id}')">Excluir</button>
-                </td>
+                <td><b>${escapeHtml(t.talhao)}</b></td>
+                <td>${escapeHtml(t.fazenda)}</td>
+                <td><b>${num(t.totalChuva, 1)} mm</b></td>
+                <td>${num(t.mediaChuva, 1)} mm</td>
+                <td>${t.ultimaChuva > 0 ? num(t.ultimaChuva, 1) + ' mm' : '-'}</td>
+                <td>${t.registros}</td>
               </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Gráfico comparativo -->
+      <div class="card" style="margin-top:20px;">
+        <h4>📊 Comparativo de Chuvas por Talhão</h4>
+        <div class="clima-grafico-barras" style="height:150px;">
+          ${climaPorTalhao.slice(0, 8).map(t => {
+            const altura = (t.totalChuva / (climaPorTalhao[0]?.totalChuva || 1)) * 130;
+            return `
+              <div style="flex:1; text-align:center;">
+                <div class="clima-barra" style="height: ${altura}px; background: #FF9800;"></div>
+                <div class="clima-barra-label" style="font-size:10px;">${escapeHtml(t.talhao)}</div>
+                <div style="font-size:9px;">${num(t.totalChuva, 0)} mm</div>
+              </div>
             `;
-          }).join("") || '<tr><td colspan="10" style="text-align:center;">Nenhum registro climático.</td></tr>'}
-        </tbody>
-      </table>
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Aba Histórico -->
+    <div id="clima-aba-historico" class="clima-tab-content">
+      <div class="card">
+        <h4>📅 Todos os Registros Climáticos</h4>
+        <div style="margin-bottom:15px;">
+          <input type="text" class="input" id="filtroData" placeholder="Filtrar por data (YYYY-MM-DD)" style="width:200px;" onkeyup="filtrarClima()">
+        </div>
+        <div class="tableWrap">
+          <table id="tabelaClima">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Fazenda</th>
+                <th>Talhão</th>
+                <th>Chuva (mm)</th>
+                <th>Temp Máx</th>
+                <th>Temp Mín</th>
+                <th>Umidade</th>
+                <th>Vento</th>
+                <th>Obs</th>
+                <th class="noPrint">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyClima">
+              ${clima.map(c => {
+                const fazenda = findNameById(fazendas, c.fazendaId);
+                const talhao = c.talhaoId ? findNameById(talhoes, c.talhaoId) : 'Geral';
+                return `
+                  <tr>
+                    <td>${c.data}</td>
+                    <td>${escapeHtml(fazenda)}</td>
+                    <td>${escapeHtml(talhao)}</td>
+                    <td><b>${num(c.chuvaMm || 0, 1)}</b></td>
+                    <td>${c.tempMax ? c.tempMax + '°C' : '-'}</td>
+                    <td>${c.tempMin ? c.tempMin + '°C' : '-'}</td>
+                    <td>${c.umidade ? c.umidade + '%' : '-'}</td>
+                    <td>${c.vento ? c.vento + ' km/h' : '-'}</td>
+                    <td>${escapeHtml(c.obs || '')}</td>
+                    <td class="noPrint">
+                      <button class="btn danger" style="padding:4px 8px;" onclick="window.__delClima('${c.id}')">Excluir</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aba Alertas -->
+    <div id="clima-aba-alertas" class="clima-tab-content">
+      <div class="card">
+        <h3 style="color:#ff9800;">⚠️ Alertas Climáticos</h3>
+        <div class="hr"></div>
+        ${alertas.length > 0 ? alertas.map(a => `
+          <div style="padding:15px; margin:10px 0; background: ${a.tipo === 'critico' ? 'rgba(244,67,54,0.1)' : a.tipo === 'atencao' ? 'rgba(255,152,0,0.1)' : 'rgba(33,150,243,0.1)'}; border-left:4px solid ${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'}; border-radius:4px;">
+            <h4 style="margin:0 0 5px 0; color:${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'};">${a.titulo}</h4>
+            <p style="margin:5px 0;">${a.descricao}</p>
+            <p style="margin:5px 0 0 0; color:#888; font-size:13px;">💡 ${a.acao}</p>
+          </div>
+        `).join('') : '<p style="color:#888;">Nenhum alerta climático no momento.</p>'}
+      </div>
+
+      <!-- Recomendações -->
+      <div class="card" style="margin-top:20px;">
+        <h4>🌱 Recomendações Agronômicas</h4>
+        <ul style="margin-top:15px; padding-left:20px;">
+          ${umidadeMedia < 50 ? '<li style="margin-bottom:8px;">⚠️ Umidade baixa - Risco de deriva em pulverizações</li>' : ''}
+          ${ventoMedio > 15 ? '<li style="margin-bottom:8px;">💨 Ventos fortes - Evite aplicações</li>' : ''}
+          ${totalChuva > 200 ? '<li style="margin-bottom:8px;">🌧️ Excesso de chuvas - Monitore doenças fúngicas</li>' : ''}
+          ${diasComChuva === 0 ? '<li style="margin-bottom:8px;">☀️ Período seco - Verifique necessidade de irrigação</li>' : ''}
+          <li style="margin-bottom:8px;">✅ Mantenha registros diários para melhor rastreabilidade</li>
+        </ul>
+      </div>
     </div>
   `;
 
   // ==================== FUNÇÕES ====================
+
+  // Mudar de aba
+  window.mudarAbaClima = (aba) => {
+    document.querySelectorAll('.clima-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.clima-tab-content').forEach(c => c.classList.remove('active'));
+
+    document.querySelector(`.clima-tab[onclick*="${aba}"]`).classList.add('active');
+    document.getElementById(`clima-aba-${aba}`).classList.add('active');
+  };
+
+  // Filtrar tabela de histórico
+  window.filtrarClima = () => {
+    const filtro = document.getElementById('filtroData').value.toLowerCase();
+    const linhas = document.querySelectorAll('#tbodyClima tr');
+
+    linhas.forEach(linha => {
+      const texto = linha.cells[0].textContent.toLowerCase();
+      linha.style.display = texto.includes(filtro) ? '' : 'none';
+    });
+  };
 
   // Excluir registro
   window.__delClima = (id) => {
@@ -1655,41 +2146,42 @@ function pageClima() {
     pageClima(); // Recarrega a página
   };
 
-  // Salvar novo registro
-  document.getElementById("frm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
+  // Novo registro (modal simples)
+  document.getElementById("btnNovoRegistro").addEventListener("click", () => {
+    const data = prompt("Data (YYYY-MM-DD):", nowISO());
+    if (!data) return;
 
-    const obj = {
-      id: uid("cli"),
-      safraId: getSafraId(),
-      data: fd.get("data") || nowISO(),
-      fazendaId: fd.get("fazendaId"),
-      talhaoId: fd.get("talhaoId") || "",
-      chuvaMm: Number(fd.get("chuvaMm") || 0),
-      tempMin: Number(fd.get("tempMin") || 0) || null,
-      tempMax: Number(fd.get("tempMax") || 0) || null,
-      umidade: Number(fd.get("umidade") || 0) || null,
-      vento: Number(fd.get("vento") || 0) || null,
-      obs: fd.get("obs") || ""
-    };
+    const fazendaOpcoes = fazendas.map(f => `${f.id}:${f.nome}`).join(',');
+    const fazendaId = prompt(`ID da fazenda (opções: ${fazendaOpcoes}):`, fazendas[0]?.id || '');
+    if (!fazendaId) return;
 
-    if (!obj.fazendaId) {
-      alert("Selecione uma fazenda");
-      return;
-    }
+    const talhaoOpcoes = talhoes.map(t => `${t.id}:${t.nome}`).join(',');
+    const talhaoId = prompt(`ID do talhão (opcional - deixe vazio para geral):`, '') || '';
+
+    const chuva = parseFloat(prompt("Chuva (mm):", "0")) || 0;
+    const tempMax = parseFloat(prompt("Temperatura máxima (°C):", "")) || null;
+    const tempMin = parseFloat(prompt("Temperatura mínima (°C):", "")) || null;
+    const umidade = parseInt(prompt("Umidade (%):", "")) || null;
+    const vento = parseFloat(prompt("Vento (km/h):", "")) || null;
+    const obs = prompt("Observações:", "") || "";
 
     const db2 = getDB();
-    db2.clima = db2.clima || [];
-    db2.clima.push(obj);
+    db2.clima.push({
+      id: uid("cli"),
+      safraId: getSafraId(),
+      data,
+      fazendaId,
+      talhaoId,
+      chuvaMm: chuva,
+      tempMax,
+      tempMin,
+      umidade,
+      vento,
+      obs
+    });
     setDB(db2);
-
-    // Limpar formulário (mantém a data atual)
-    e.target.reset();
-    document.querySelector('input[name="data"]').value = nowISO();
-
-    toast("Salvo", "Registro climático adicionado.");
-    pageClima(); // Recarrega para mostrar o novo registro
+    toast("Salvo", "Registro climático adicionado");
+    pageClima();
   });
 
   // Exportar CSV
@@ -1697,7 +2189,7 @@ function pageClima() {
     const dados = clima.map(c => ({
       Data: c.data,
       Fazenda: findNameById(fazendas, c.fazendaId),
-      Talhao: c.talhaoId ? findNameById(talhoes, c.talhaoId) : 'Geral',
+      Talhão: c.talhaoId ? findNameById(talhoes, c.talhaoId) : 'Geral',
       Chuva_mm: c.chuvaMm || 0,
       Temp_Max: c.tempMax || '',
       Temp_Min: c.tempMin || '',
@@ -2107,463 +2599,6 @@ function pageAplicacoes() {
   });
 
   render();
-}
-
-function pageCombustivel() {
-  const db = getDB();
-  const fazendas = onlySafra(db.fazendas);
-  const talhoes = onlySafra(db.talhoes);
-  const equipe = onlySafra(db.equipe);
-  const maquinas = onlySafra(db.maquinas);
-  const tanques = onlySafra(db.dieselEstoque);
-  const entradas = onlySafra(db.dieselEntradas || []).sort((a, b) => b.data.localeCompare(a.data));
-  const abastecimentos = onlySafra(db.combustivel || []).sort((a, b) => b.data.localeCompare(a.data));
-
-  setTopActions(`<button class="btn" id="btnExportCSV">📥 Exportar CSV</button>`);
-
-  // ==================== CÁLCULOS ====================
-
-  // Totais gerais
-  const totalLitros = tanques.reduce((s, t) => s + Number(t.litros || 0), 0);
-  const totalEntradas = entradas.reduce((s, e) => s + Number(e.litros || 0), 0);
-  const totalAbastecimentos = abastecimentos.reduce((s, a) => s + Number(a.litros || 0), 0);
-
-  // Custo total
-  const custoTotalEntradas = entradas.reduce((s, e) => s + (Number(e.litros || 0) * Number(e.precoLitro || 0)), 0);
-  const custoTotalAbastecimentos = abastecimentos.reduce((s, a) => s + (Number(a.litros || 0) * Number(a.precoLitro || 0)), 0);
-
-  // Preços
-  const precoVigente = tanques[0]?.precoVigente || 0;
-  const precoMedioEntradas = totalEntradas > 0 ? custoTotalEntradas / totalEntradas : 0;
-
-  // Dados para gráficos
-  const ultimos7Abastecimentos = abastecimentos.slice(0, 7).reverse();
-  const maxLitros7 = Math.max(...ultimos7Abastecimentos.map(a => a.litros), 1);
-
-  // Consumo por máquina (para gráfico de pizza simplificado)
-  const consumoPorMaquina = {};
-  abastecimentos.forEach(a => {
-    if (a.maquinaId) {
-      const maquina = maquinas.find(m => m.id === a.maquinaId);
-      const nome = maquina ? maquina.nome : 'Desconhecida';
-      consumoPorMaquina[nome] = (consumoPorMaquina[nome] || 0) + Number(a.litros || 0);
-    }
-  });
-
-  const topMaquinas = Object.entries(consumoPorMaquina)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const maxConsumoMaquina = Math.max(...topMaquinas.map(([_, v]) => v), 1);
-
-  const content = document.getElementById("content");
-  content.innerHTML = `
-    <style>
-      .combustivel-card {
-        background: linear-gradient(135deg, #1a2a3a, #0f1a24);
-        border-radius: 12px;
-        padding: 20px;
-        border-left: 4px solid #FF9800;
-      }
-      .combustivel-stat {
-        font-size: 28px;
-        font-weight: bold;
-        color: #FF9800;
-      }
-      .combustivel-label {
-        font-size: 12px;
-        color: #888;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-      .status-badge {
-        display: inline-block;
-        padding: 4px 8px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 500;
-      }
-      .status-ok {
-        background: rgba(76, 175, 80, 0.15);
-        color: #4CAF50;
-        border: 1px solid rgba(76, 175, 80, 0.3);
-      }
-      .status-atencao {
-        background: rgba(255, 152, 0, 0.15);
-        color: #ff9800;
-        border: 1px solid rgba(255, 152, 0, 0.3);
-      }
-      .status-critico {
-        background: rgba(244, 67, 54, 0.15);
-        color: #f44336;
-        border: 1px solid rgba(244, 67, 54, 0.3);
-      }
-      .mini-grafico {
-        display: flex;
-        align-items: flex-end;
-        gap: 8px;
-        height: 60px;
-        margin-top: 15px;
-      }
-      .mini-barra {
-        flex: 1;
-        background: #FF9800;
-        border-radius: 4px 4px 0 0;
-        min-width: 20px;
-        transition: height 0.3s;
-      }
-      .pizza-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 8px;
-      }
-      .pizza-cor {
-        width: 12px;
-        height: 12px;
-        border-radius: 4px;
-      }
-      .pizza-barra-container {
-        flex: 1;
-        height: 8px;
-        background: #2a2a30;
-        border-radius: 4px;
-        overflow: hidden;
-      }
-      .pizza-barra {
-        height: 100%;
-        background: #FF9800;
-        border-radius: 4px;
-      }
-    </style>
-
-    <!-- Cards de resumo -->
-    <div class="kpi">
-      <div class="card">
-        <h3>⛽ Estoque Atual</h3>
-        <div class="big">${num(totalLitros, 0)} L</div>
-        <div class="sub">${tanques.length} tanque(s)</div>
-      </div>
-      <div class="card">
-        <h3>💰 Preço Vigente</h3>
-        <div class="big">${kbrl(precoVigente)}</div>
-        <div class="sub">Última entrada</div>
-      </div>
-      <div class="card">
-        <h3>📥 Total Entradas</h3>
-        <div class="big">${num(totalEntradas, 0)} L</div>
-        <div class="sub">${kbrl(custoTotalEntradas)}</div>
-      </div>
-      <div class="card">
-        <h3>🚜 Total Abastec.</h3>
-        <div class="big">${num(totalAbastecimentos, 0)} L</div>
-        <div class="sub">${kbrl(custoTotalAbastecimentos)}</div>
-      </div>
-    </div>
-
-    <!-- Status dos tanques -->
-    <div class="section" style="margin-top:10px;">
-      ${tanques.map(t => {
-        const status = t.litros < 0 ? 'critico' : t.litros < 500 ? 'atencao' : 'ok';
-        const statusText = t.litros < 0 ? '🚨 NEGATIVO' : t.litros < 500 ? '⚠️ BAIXO' : '✅ NORMAL';
-        return `
-          <div class="card" style="margin-bottom:10px; padding:15px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <h4 style="margin:0;">⛽ ${escapeHtml(t.deposito)}</h4>
-                <div style="margin-top:5px;">
-                  <span class="status-badge status-${status}">${statusText}</span>
-                </div>
-              </div>
-              <div style="text-align:right;">
-                <div style="font-size:24px; font-weight:bold; color:${t.litros < 0 ? '#f44336' : t.litros < 500 ? '#ff9800' : '#4CAF50'};">${num(t.litros, 0)} L</div>
-                <div style="font-size:12px; color:#888;">Preço: ${kbrl(t.precoVigente || 0)}/L</div>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('')}
-    </div>
-
-    <!-- Formulários lado a lado -->
-    <div class="section" style="grid-template-columns: 1fr 1fr;">
-      <!-- Formulário de entrada -->
-      <div class="card">
-        <h3>📥 Registrar entrada de diesel</h3>
-        <div class="help">Registre a compra de diesel para abastecer o tanque.</div>
-        <div class="hr"></div>
-        <form id="frmEntrada" class="formGrid">
-          <div class="full"><small>Data</small><input class="input" name="data" type="date" value="${nowISO()}" required></div>
-          <div class="full">
-            <small>Depósito / Tanque</small>
-            <select class="select" name="deposito" required>
-              ${tanques.map(t => `<option value="${escapeHtml(t.deposito)}">${escapeHtml(t.deposito)}</option>`).join('')}
-            </select>
-          </div>
-          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.1" placeholder="0" required></div>
-          <div><small>Preço por litro (R$)</small><input class="input" name="precoLitro" type="number" step="0.01" placeholder="0" required></div>
-          <div class="full"><small>Observações</small><textarea class="textarea" name="obs" placeholder="Nota fiscal, fornecedor..."></textarea></div>
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">💾 Registrar entrada</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- Formulário de abastecimento -->
-      <div class="card">
-        <h3>🚜 Registrar abastecimento</h3>
-        <div class="help">Registre o abastecimento de máquinas. O custo usará o preço da última entrada.</div>
-        <div class="hr"></div>
-        <form id="frmSaida" class="formGrid">
-          <div class="full"><small>Data</small><input class="input" name="data" type="date" value="${nowISO()}" required></div>
-          <div class="full">
-            <small>Depósito / Tanque</small>
-            <select class="select" name="deposito" required>
-              ${tanques.map(t => `<option value="${escapeHtml(t.deposito)}">${escapeHtml(t.deposito)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="full">
-            <small>Fazenda</small>
-            <select class="select" name="fazendaId" required>
-              <option value="">Selecione...</option>
-              ${fazendas.map(f => `<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <small>Talhão (opcional)</small>
-            <select class="select" name="talhaoId">
-              <option value="">(sem talhão)</option>
-              ${talhoes.map(t => `<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <small>Máquina</small>
-            <select class="select" name="maquinaId">
-              <option value="">(opcional)</option>
-              ${maquinas.map(m => `<option value="${m.id}">${escapeHtml(m.nome)}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <small>Operador</small>
-            <select class="select" name="operadorId">
-              <option value="">(opcional)</option>
-              ${equipe.map(e => `<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join('')}
-            </select>
-          </div>
-          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.1" placeholder="0" required></div>
-          <div><small>KM/Horímetro</small><input class="input" name="kmOuHora" type="number" step="0.1" placeholder="0"></div>
-          <div><small>Posto</small><input class="input" name="posto" placeholder="Posto / origem"></div>
-          <div class="full"><small>Observações</small><textarea class="textarea" name="obs"></textarea></div>
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">💾 Registrar saída</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- Mini gráficos -->
-    <div class="section" style="margin-top:20px; grid-template-columns: 1fr 1fr;">
-      <!-- Gráfico de últimos abastecimentos -->
-      <div class="card">
-        <h4>📊 Últimos 7 abastecimentos</h4>
-        <div class="mini-grafico">
-          ${ultimos7Abastecimentos.map(a => {
-            const altura = (a.litros / maxLitros7) * 50;
-            return `
-              <div style="flex:1; text-align:center;">
-                <div class="mini-barra" style="height: ${altura}px;"></div>
-                <div style="font-size:9px; margin-top:5px; color:#888;">${a.data.substring(5)}</div>
-                <div style="font-size:8px;">${num(a.litros,0)}L</div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-
-      <!-- Gráfico de consumo por máquina -->
-      <div class="card">
-        <h4>🚜 Consumo por máquina</h4>
-        <div style="margin-top:15px;">
-          ${topMaquinas.map(([nome, litros], index) => {
-            const percentual = (litros / maxConsumoMaquina) * 100;
-            const cores = ['#FF9800', '#4CAF50', '#2196F3', '#9C27B0', '#F44336'];
-            return `
-              <div class="pizza-item">
-                <div class="pizza-cor" style="background:${cores[index % cores.length]};"></div>
-                <div style="width:80px; font-size:12px;">${escapeHtml(nome)}</div>
-                <div class="pizza-barra-container">
-                  <div class="pizza-barra" style="width:${percentual}%; background:${cores[index % cores.length]};"></div>
-                </div>
-                <div style="font-size:11px; color:#FF9800;">${num(litros,0)}L</div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    </div>
-
-    <!-- Tabela de entradas -->
-    <div class="tableWrap" style="margin-top:20px;">
-      <h4>📥 Últimas entradas</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th>Depósito</th>
-            <th>Litros</th>
-            <th>Preço/L</th>
-            <th>Total</th>
-            <th>Obs</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${entradas.slice(0, 10).map(e => `
-            <tr>
-              <td>${e.data}</td>
-              <td>${escapeHtml(e.deposito)}</td>
-              <td><b>${num(e.litros, 0)} L</b></td>
-              <td>${kbrl(e.precoLitro)}</td>
-              <td>${kbrl(e.litros * e.precoLitro)}</td>
-              <td>${escapeHtml(e.obs || '')}</td>
-            </tr>
-          `).join('') || '<tr><td colspan="6">Nenhuma entrada registrada.</td></tr>'}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Tabela de abastecimentos -->
-    <div class="tableWrap" style="margin-top:20px;">
-      <h4>🚜 Últimos abastecimentos</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th>Fazenda</th>
-            <th>Talhão</th>
-            <th>Máquina</th>
-            <th>Litros</th>
-            <th>Preço/L</th>
-            <th>Custo</th>
-            <th>Obs</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${abastecimentos.slice(0, 20).map(a => {
-            const fazenda = findNameById(fazendas, a.fazendaId);
-            const talhao = a.talhaoId ? findNameById(talhoes, a.talhaoId) : '-';
-            const maquina = maquinas.find(m => m.id === a.maquinaId);
-            return `
-              <tr>
-                <td>${a.data}</td>
-                <td>${escapeHtml(fazenda)}</td>
-                <td>${escapeHtml(talhao)}</td>
-                <td>${maquina ? escapeHtml(maquina.nome) : '-'}</td>
-                <td><b>${num(a.litros, 0)} L</b></td>
-                <td>${kbrl(a.precoLitro)}</td>
-                <td>${kbrl(a.litros * a.precoLitro)}</td>
-                <td>${escapeHtml(a.obs || '')}</td>
-              </tr>
-            `;
-          }).join('') || '<tr><td colspan="8">Nenhum abastecimento registrado.</td></tr>'}
-        </tbody>
-      </table>
-    </div>
-  `;
-
-  // ==================== FUNÇÕES ====================
-
-  // Registrar entrada
-  document.getElementById("frmEntrada").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-
-    const litros = Number(fd.get("litros") || 0);
-    if (litros <= 0) { alert("Litros deve ser > 0"); return; }
-
-    const precoLitro = Number(fd.get("precoLitro") || 0);
-    if (precoLitro <= 0) { alert("Preço deve ser > 0"); return; }
-
-    const db2 = getDB();
-    registrarEntradaDiesel(
-      db2,
-      fd.get("deposito") || "Tanque Principal",
-      litros,
-      precoLitro,
-      fd.get("data") || nowISO(),
-      fd.get("obs") || ""
-    );
-    setDB(db2);
-
-    e.target.reset();
-    document.querySelector('input[name="data"]').value = nowISO();
-    toast("Entrada registrada", `+${litros}L a ${kbrl(precoLitro)}/L`);
-    pageCombustivel();
-  });
-
-  // Registrar abastecimento
-  document.getElementById("frmSaida").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-
-    const litros = Number(fd.get("litros") || 0);
-    if (litros <= 0) { alert("Litros deve ser > 0"); return; }
-
-    const db2 = getDB();
-    const deposito = fd.get("deposito") || "Tanque Principal";
-    const tank = db2.dieselEstoque.find(t => t.safraId === getSafraId() && t.deposito === deposito);
-    if (!tank) { alert("Tanque não encontrado"); return; }
-
-    const res = baixaDiesel(db2, deposito, litros);
-    if (!res.ok) { alert(res.msg); return; }
-
-    const obj = {
-      id: uid("cmb"),
-      safraId: getSafraId(),
-      data: fd.get("data") || nowISO(),
-      tipo: "Diesel S10",
-      deposito,
-      posto: fd.get("posto") || "",
-      maquinaId: fd.get("maquinaId") || "",
-      operadorId: fd.get("operadorId") || "",
-      fazendaId: fd.get("fazendaId"),
-      talhaoId: fd.get("talhaoId") || "",
-      litros,
-      precoLitro: res.precoLitro,
-      kmOuHora: Number(fd.get("kmOuHora") || 0),
-      obs: fd.get("obs") || ""
-    };
-
-    if (!obj.fazendaId) {
-      alert("Selecione uma fazenda");
-      return;
-    }
-
-    db2.combustivel = db2.combustivel || [];
-    db2.combustivel.push(obj);
-    setDB(db2);
-
-    e.target.reset();
-    document.querySelector('input[name="data"]').value = nowISO();
-    toast("Abastecimento registrado", `-${litros}L`);
-    pageCombustivel();
-  });
-
-  // Exportar CSV
-  document.getElementById("btnExportCSV").addEventListener("click", () => {
-    const dados = abastecimentos.map(a => ({
-      Data: a.data,
-      Deposito: a.deposito,
-      Fazenda: findNameById(fazendas, a.fazendaId),
-      Talhao: a.talhaoId ? findNameById(talhoes, a.talhaoId) : '-',
-      Maquina: maquinas.find(m => m.id === a.maquinaId)?.nome || '-',
-      Operador: equipe.find(e => e.id === a.operadorId)?.nome || '-',
-      Litros: a.litros,
-      PrecoLitro: a.precoLitro,
-      Custo: a.litros * a.precoLitro,
-      Obs: a.obs || ''
-    }));
-    downloadText(`combustivel-${nowISO()}.csv`, toCSV(dados));
-    toast("Exportado", "CSV baixado");
-  });
 }
 
 function pageRelatorios() {
@@ -3353,6 +3388,9 @@ function pageRelatorios() {
 }
 
 function pageConfiguracoes() {
+  const db = getDB();
+  const params = db.parametros || { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75 };
+
   setTopActions(`
     <button class="btn" id="btnImport">Importar Backup</button>
     <button class="btn primary" id="btnExport">Exportar Backup</button>
@@ -3362,64 +3400,111 @@ function pageConfiguracoes() {
   content.innerHTML = `
     <div class="section">
       <div class="card">
-        <h3>Configurações</h3>
+        <h3>⚙️ Parâmetros de Mercado</h3>
+        <div class="help">Configure os valores usados nos cálculos de receita e lucro.</div>
+        <div class="hr"></div>
+        <form id="frmParams" class="formGrid">
+          <div><small>Preço da saca de soja (R$)</small><input class="input" name="precoSoja" type="number" step="0.01" value="${params.precoSoja}" /></div>
+          <div><small>Produtividade mínima soja (sc/ha)</small><input class="input" name="prodMinSoja" type="number" step="0.1" value="${params.produtividadeMinSoja}" /></div>
+          <div><small>Produtividade máxima soja (sc/ha)</small><input class="input" name="prodMaxSoja" type="number" step="0.1" value="${params.produtividadeMaxSoja}" /></div>
+          <div class="full row" style="justify-content:flex-end">
+            <button class="btn primary" type="submit">Salvar parâmetros</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>💾 Backup e Restauração</h3>
         <div class="help">
-          • Este sistema salva tudo no navegador (localStorage).<br/>
           • Use backup para trocar de aparelho sem perder dados.<br/>
           • Importar substitui o banco local atual.
         </div>
         <div class="hr"></div>
-        <div class="help">
-          <b>Boas práticas (Agro):</b><br/>
-          • Registrar clima no dia de aplicação (vento/umidade/temperatura).<br/>
-          • Registrar máquina/operador quando possível.<br/>
-          • Guardar relatórios em PDF por safra e por talhão.
+        <div class="row" style="justify-content:space-around;">
+          <button class="btn primary" id="btnExport2">Exportar Backup</button>
+          <button class="btn" id="btnImport2">Importar Backup</button>
         </div>
       </div>
 
       <div class="card">
-        <h3>Como evoluir para Supabase</h3>
-        <div class="help">
-          Próximo upgrade:<br/>
-          • Login por e-mail • Multiusuário • Permissões • Postgres<br/>
-          • Logs de auditoria • Upload de documentos • API
-        </div>
+        <h3>⚠️ Reset de Dados</h3>
+        <div class="help">Restaura o banco de dados para os valores iniciais de demonstração.</div>
         <div class="hr"></div>
-        <span class="pill info">Pronto para backend</span>
-        <span class="pill ok">Offline-first</span>
+        <button class="btn danger" id="btnResetDemo" style="width:100%;">Resetar para dados de demonstração</button>
+      </div>
+
+      <div class="card">
+        <h3>📈 Sobre o sistema</h3>
+        <div class="help">
+          <b>Agro Pro v6.0</b><br/>
+          • Sistema baseado em SAFRAS (dados isolados por safra)<br/>
+          • Base de dados com +100 produtos e +20 pragas pré-cadastradas<br/>
+          • Alertas automáticos de pragas baseados no clima<br/>
+          • Cálculo de custos com preços reais de produtos e diesel (UEPS)<br/>
+          • Estimativa de receita e lucro por talhão<br/>
+          • Controle completo de entrada e saída de diesel
+        </div>
       </div>
     </div>
   `;
 
-  document.getElementById("btnExport").addEventListener("click", ()=>{
-    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(getDB(), null, 2));
-    toast("Backup exportado","Arquivo .json baixado.");
+  document.getElementById("frmParams").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const db2 = getDB();
+    db2.parametros = {
+      precoSoja: Number(fd.get("precoSoja") || 120),
+      produtividadeMinSoja: Number(fd.get("prodMinSoja") || 65),
+      produtividadeMaxSoja: Number(fd.get("prodMaxSoja") || 75)
+    };
+    setDB(db2);
+    toast("Parâmetros salvos", "Valores atualizados.");
   });
 
-  document.getElementById("btnImport").addEventListener("click", ()=>{
+  document.getElementById("btnExport").addEventListener("click", () => {
+    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(getDB(), null, 2));
+    toast("Backup exportado", "Arquivo .json baixado.");
+  });
+  document.getElementById("btnExport2").addEventListener("click", () => {
+    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(getDB(), null, 2));
+    toast("Backup exportado", "Arquivo .json baixado.");
+  });
+
+  document.getElementById("btnImport").addEventListener("click", importarBackup);
+  document.getElementById("btnImport2").addEventListener("click", importarBackup);
+
+  document.getElementById("btnResetDemo").addEventListener("click", () => {
+    if (!confirm("⚠️ ATENÇÃO! Isso vai apagar TODOS os dados atuais e restaurar a versão de demonstração. Continuar?")) return;
+    localStorage.removeItem(Storage.key);
+    seedDB();
+    toast("Reset concluído", "Banco restaurado para dados de demonstração.");
+    setTimeout(() => location.reload(), 200);
+  });
+
+  function importarBackup() {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "application/json";
     input.onchange = async () => {
       const file = input.files?.[0];
-      if(!file) return;
+      if (!file) return;
       const text = await file.text();
-      try{
+      try {
         const data = JSON.parse(text);
-        if(!data.empresas && !data.safras){
+        if (!data.safras) {
           alert("Arquivo inválido.");
           return;
         }
-        if(!confirm("Importar vai SUBSTITUIR seus dados locais. Continuar?")) return;
+        if (!confirm("Importar vai SUBSTITUIR seus dados locais. Continuar?")) return;
         Storage.save(data);
-        toast("Importado","Recarregando…");
-        setTimeout(()=>location.reload(), 200);
-      }catch(e){
+        toast("Importado", "Recarregando…");
+        setTimeout(() => location.reload(), 200);
+      } catch (e) {
         alert("Não foi possível ler o arquivo JSON.");
       }
     };
     input.click();
-  });
+  }
 }
 
 /* ------------------ Boot ------------------ */
