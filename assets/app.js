@@ -1529,197 +1529,631 @@ function pageCombustivel() {
   const maquinas = onlySafra(db.maquinas);
   const tanques = onlySafra(db.dieselEstoque);
   const entradas = onlySafra(db.dieselEntradas || []).sort((a, b) => b.data.localeCompare(a.data));
+  const abastecimentos = onlySafra(db.combustivel || []).sort((a, b) => b.data.localeCompare(a.data));
 
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
+  setTopActions(`
+    <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
+    <button class="btn primary" id="btnNovaEntrada">+ Nova Entrada</button>
+    <button class="btn" id="btnNovoAbastecimento">⛽ Abastecer</button>
+  `);
 
-  const content = document.getElementById("content");
+  // ==================== CÁLCULOS ====================
+  
+  // Totais gerais
+  const totalLitros = tanques.reduce((s, t) => s + Number(t.litros || 0), 0);
+  const totalEntradas = entradas.reduce((s, e) => s + Number(e.litros || 0), 0);
+  const totalAbastecimentos = abastecimentos.reduce((s, a) => s + Number(a.litros || 0), 0);
+  
+  // Custo total
+  const custoTotalEntradas = entradas.reduce((s, e) => s + (Number(e.litros || 0) * Number(e.precoLitro || 0)), 0);
+  const custoTotalAbastecimentos = abastecimentos.reduce((s, a) => s + (Number(a.litros || 0) * Number(a.precoLitro || 0)), 0);
+  
+  // Médias
+  const precoMedioEntradas = totalEntradas > 0 ? custoTotalEntradas / totalEntradas : 0;
+  const precoMedioAbastecimentos = totalAbastecimentos > 0 ? custoTotalAbastecimentos / totalAbastecimentos : 0;
 
-  function optionList(arr, labelKey = "nome") {
-    return arr.map(o => `<option value="${o.id}">${escapeHtml(o[labelKey] || "")}</option>`).join("");
+  // Consumo por fazenda
+  const consumoPorFazenda = fazendas.map(f => {
+    const litros = abastecimentos
+      .filter(a => a.fazendaId === f.id)
+      .reduce((s, a) => s + Number(a.litros || 0), 0);
+    const custo = abastecimentos
+      .filter(a => a.fazendaId === f.id)
+      .reduce((s, a) => s + (Number(a.litros || 0) * Number(a.precoLitro || 0)), 0);
+    return {
+      fazenda: f.nome,
+      litros,
+      custo,
+      media: litros > 0 ? custo / litros : 0
+    };
+  }).filter(f => f.litros > 0).sort((a, b) => b.litros - a.litros);
+
+  // Consumo por máquina
+  const consumoPorMaquina = maquinas.map(m => {
+    const litros = abastecimentos
+      .filter(a => a.maquinaId === m.id)
+      .reduce((s, a) => s + Number(a.litros || 0), 0);
+    const abastecimentosCount = abastecimentos.filter(a => a.maquinaId === m.id).length;
+    return {
+      maquina: m.nome,
+      litros,
+      abastecimentos: abastecimentosCount,
+      media: abastecimentosCount > 0 ? litros / abastecimentosCount : 0
+    };
+  }).filter(m => m.litros > 0).sort((a, b) => b.litros - a.litros);
+
+  // Dados para gráfico mensal
+  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const consumoMensal = new Array(12).fill(0);
+  const custoMensal = new Array(12).fill(0);
+  
+  abastecimentos.forEach(a => {
+    if (a.data) {
+      const mes = parseInt(a.data.substring(5, 7)) - 1;
+      consumoMensal[mes] += Number(a.litros || 0);
+      custoMensal[mes] += Number(a.litros || 0) * Number(a.precoLitro || 0);
+    }
+  });
+
+  const maxConsumoMensal = Math.max(...consumoMensal, 1);
+
+  // Alertas
+  const alertas = [];
+  
+  // Estoque baixo (menos de 500L)
+  tanques.forEach(t => {
+    if (t.litros < 500) {
+      alertas.push({
+        tipo: 'atencao',
+        titulo: '⚠️ Estoque Baixo',
+        descricao: `${t.deposito}: ${t.litros}L restantes`,
+        acao: 'Programe uma nova compra de diesel.'
+      });
+    }
+  });
+
+  // Estoque negativo
+  tanques.forEach(t => {
+    if (t.litros < 0) {
+      alertas.push({
+        tipo: 'critico',
+        titulo: '🚨 Estoque Negativo',
+        descricao: `${t.deposito}: ${t.litros}L`,
+        acao: 'Registre uma entrada imediatamente.'
+      });
+    }
+  });
+
+  // Consumo acima da média
+  const consumoMedioMensal = consumoMensal.reduce((s, c) => s + c, 0) / (consumoMensal.filter(c => c > 0).length || 1);
+  const ultimoMes = consumoMensal[new Date().getMonth()];
+  if (ultimoMes > consumoMedioMensal * 1.3) {
+    alertas.push({
+      tipo: 'info',
+      titulo: '📈 Consumo Elevado',
+      descricao: `Consumo ${((ultimoMes / consumoMedioMensal - 1) * 100).toFixed(0)}% acima da média.`,
+      acao: 'Verifique eficiência das máquinas.'
+    });
   }
 
-  const depositoOptions = tanques.map(t => `<option value="${escapeHtml(t.deposito || "Tanque Principal")}">${escapeHtml(t.deposito || "Tanque Principal")}</option>`).join("");
-
+  const content = document.getElementById("content");
   content.innerHTML = `
-    <div class="kpi">
-      <div class="card">
-        <h3>Diesel (tanque total)</h3>
-        <div class="big">${num(tanques.reduce((s, t) => s + Number(t.litros || 0), 0), 1)} L</div>
-        <div class="sub">${tanques.some(t => Number(t.litros || 0) < 0) ? '<span class="pill bad">Negativo</span>' : '<span class="pill ok">OK</span>'}</div>
+    <style>
+      .combustivel-tab-bar {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #2a2a30;
+        padding-bottom: 10px;
+        flex-wrap: wrap;
+      }
+      .combustivel-tab {
+        padding: 10px 20px;
+        background: #1a1a1f;
+        border: 1px solid #2a2a30;
+        border-radius: 8px 8px 0 0;
+        cursor: pointer;
+        color: #888;
+        transition: all 0.2s;
+      }
+      .combustivel-tab:hover {
+        background: #25252b;
+        color: #fff;
+      }
+      .combustivel-tab.active {
+        background: #FF9800;
+        color: #fff;
+        border-color: #FF9800;
+      }
+      .combustivel-tab-content {
+        display: none;
+      }
+      .combustivel-tab-content.active {
+        display: block;
+      }
+      .combustivel-card {
+        background: #1a1a1f;
+        border-radius: 8px;
+        padding: 15px;
+        border-left: 4px solid #FF9800;
+      }
+      .combustivel-stat {
+        font-size: 28px;
+        font-weight: bold;
+        color: #FF9800;
+      }
+      .combustivel-label {
+        font-size: 12px;
+        color: #888;
+      }
+      .combustivel-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .combustivel-grafico-barras {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        height: 200px;
+        margin-top: 20px;
+      }
+      .combustivel-barra {
+        flex: 1;
+        background: #FF9800;
+        border-radius: 4px 4px 0 0;
+        min-height: 20px;
+        transition: height 0.3s;
+      }
+      .combustivel-barra-label {
+        text-align: center;
+        font-size: 11px;
+        margin-top: 5px;
+        color: #888;
+      }
+      .status-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .status-ok {
+        background: rgba(76, 175, 80, 0.2);
+        color: #4CAF50;
+      }
+      .status-atencao {
+        background: rgba(255, 152, 0, 0.2);
+        color: #ff9800;
+      }
+      .status-critico {
+        background: rgba(244, 67, 54, 0.2);
+        color: #f44336;
+      }
+    </style>
+
+    <div class="combustivel-tab-bar">
+      <div class="combustivel-tab active" onclick="mudarAbaCombustivel('resumo')">📊 Resumo</div>
+      <div class="combustivel-tab" onclick="mudarAbaCombustivel('estoque')">⛽ Estoque</div>
+      <div class="combustivel-tab" onclick="mudarAbaCombustivel('entradas')">📥 Entradas</div>
+      <div class="combustivel-tab" onclick="mudarAbaCombustivel('abastecimentos')">🚜 Abastecimentos</div>
+      <div class="combustivel-tab" onclick="mudarAbaCombustivel('analise')">📈 Análise</div>
+      <div class="combustivel-tab" onclick="mudarAbaCombustivel('alertas')">⚠️ Alertas</div>
+    </div>
+
+    <!-- Aba Resumo -->
+    <div id="combustivel-aba-resumo" class="combustivel-tab-content active">
+      <!-- KPIs -->
+      <div class="combustivel-kpi-grid">
+        <div class="combustivel-card">
+          <div class="combustivel-label">⛽ Estoque Atual</div>
+          <div class="combustivel-stat">${num(totalLitros, 0)} L</div>
+          <div class="combustivel-label">${tanques.length} tanque(s)</div>
+        </div>
+        <div class="combustivel-card">
+          <div class="combustivel-label">💰 Custo Total Entradas</div>
+          <div class="combustivel-stat">${kbrl(custoTotalEntradas)}</div>
+          <div class="combustivel-label">Preço médio: ${kbrl(precoMedioEntradas)}/L</div>
+        </div>
+        <div class="combustivel-card">
+          <div class="combustivel-label">📊 Custo Total Abastec.</div>
+          <div class="combustivel-stat">${kbrl(custoTotalAbastecimentos)}</div>
+          <div class="combustivel-label">${totalAbastecimentos} L consumidos</div>
+        </div>
+        <div class="combustivel-card">
+          <div class="combustivel-label">🔄 Diferença</div>
+          <div class="combustivel-stat">${kbrl(custoTotalEntradas - custoTotalAbastecimentos)}</div>
+          <div class="combustivel-label">Entradas - Abastecimentos</div>
+        </div>
       </div>
+
+      <!-- Gráfico de consumo mensal -->
       <div class="card">
-        <h3>Preço vigente</h3>
-        <div class="big">${kbrl(tanques[0]?.precoVigente || 0)}/L</div>
-        <div class="sub">Última entrada</div>
+        <h4>📈 Consumo Mensal de Diesel</h4>
+        <div class="combustivel-grafico-barras">
+          ${meses.map((mes, i) => `
+            <div style="flex:1; text-align:center;">
+              <div class="combustivel-barra" style="height: ${(consumoMensal[i] / maxConsumoMensal) * 180}px;"></div>
+              <div class="combustivel-barra-label">${mes}</div>
+              <div style="font-size:10px; color:#888;">${num(consumoMensal[i], 0)} L</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Últimos movimentos -->
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
+        <div class="card">
+          <h4>📥 Últimas Entradas</h4>
+          <table style="width:100%; margin-top:10px;">
+            <thead>
+              <tr><th>Data</th><th>Litros</th><th>Preço/L</th><th>Total</th></tr>
+            </thead>
+            <tbody>
+              ${entradas.slice(0, 5).map(e => `
+                <tr>
+                  <td>${e.data}</td>
+                  <td>${num(e.litros, 0)} L</td>
+                  <td>${kbrl(e.precoLitro)}</td>
+                  <td>${kbrl(e.litros * e.precoLitro)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h4>🚜 Últimos Abastecimentos</h4>
+          <table style="width:100%; margin-top:10px;">
+            <thead>
+              <tr><th>Data</th><th>Litros</th><th>Valor</th><th>Máquina</th></tr>
+            </thead>
+            <tbody>
+              ${abastecimentos.slice(0, 5).map(a => {
+                const maquina = maquinas.find(m => m.id === a.maquinaId);
+                return `
+                  <tr>
+                    <td>${a.data}</td>
+                    <td>${num(a.litros, 0)} L</td>
+                    <td>${kbrl(a.litros * a.precoLitro)}</td>
+                    <td>${maquina ? escapeHtml(maquina.nome) : '-'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="card">
-        <h3>⛽ Registrar entrada de diesel</h3>
-        <div class="help">Registre a compra de diesel para abastecer o tanque.</div>
-        <div class="hr"></div>
-        <form id="frmEntrada" class="formGrid">
-          <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
-          <div class="full">
-            <small>Depósito / Tanque</small>
-            <select class="select" name="deposito">${depositoOptions || `<option value="Tanque Principal">Tanque Principal</option>`}</select>
-          </div>
-          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.1" placeholder="0" required /></div>
-          <div><small>Preço por litro (R$)</small><input class="input" name="precoLitro" type="number" step="0.01" placeholder="0" required /></div>
-          <div class="full"><small>Observações</small><textarea class="textarea" name="obs"></textarea></div>
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Registrar entrada</button>
-          </div>
-        </form>
+    <!-- Aba Estoque -->
+    <div id="combustivel-aba-estoque" class="combustivel-tab-content">
+      <div class="combustivel-kpi-grid">
+        ${tanques.map(t => {
+          const status = t.litros < 0 ? 'critico' : t.litros < 500 ? 'atencao' : 'ok';
+          return `
+            <div class="combustivel-card">
+              <div class="combustivel-label">⛽ ${escapeHtml(t.deposito)}</div>
+              <div class="combustivel-stat">${num(t.litros, 0)} L</div>
+              <div class="combustivel-label">
+                <span class="status-badge status-${status}">
+                  ${status === 'critico' ? '🚨 NEGATIVO' : status === 'atencao' ? '⚠️ BAIXO' : '✅ NORMAL'}
+                </span>
+              </div>
+              <div class="combustivel-label">Preço vigente: ${kbrl(t.precoVigente || 0)}/L</div>
+            </div>
+          `;
+        }).join('')}
       </div>
 
       <div class="card">
-        <h3>🚜 Registrar abastecimento (saída)</h3>
-        <div class="help">Registre o abastecimento de máquinas. O custo usará o preço da última entrada.</div>
-        <div class="hr"></div>
-        <form id="frmSaida" class="formGrid">
-          <div><small>Data</small><input class="input" name="data" placeholder="${nowISO()}" /></div>
-          <div class="full">
-            <small>Depósito / Tanque</small>
-            <select class="select" name="deposito">${depositoOptions || `<option value="Tanque Principal">Tanque Principal</option>`}</select>
-          </div>
-          <div><small>Fazenda</small><select class="select" name="fazendaId" required>${optionList(fazendas)}</select></div>
-          <div><small>Talhão (opcional)</small><select class="select" name="talhaoId"><option value="">(sem talhão)</option>${optionList(talhoes)}</select></div>
-          <div><small>Máquina</small><select class="select" name="maquinaId"><option value="">(opcional)</option>${optionList(maquinas)}</select></div>
-          <div><small>Operador</small><select class="select" name="operadorId"><option value="">(opcional)</option>${optionList(equipe)}</select></div>
-          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.1" placeholder="0" required /></div>
-          <div><small>KM ou Horímetro</small><input class="input" name="kmOuHora" type="number" step="0.1" placeholder="0" /></div>
-          <div><small>Posto</small><input class="input" name="posto" placeholder="Posto / NF / origem" /></div>
-          <div class="full"><small>Observações</small><textarea class="textarea" name="obs"></textarea></div>
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Registrar saída</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div class="tableWrap" style="margin-top:20px;">
-      <h3>📋 Entradas de diesel</h3>
-      <table>
-        <thead>
-          <tr><th>Data</th><th>Depósito</th><th>Litros</th><th>Preço/L</th><th>Total</th><th>Obs</th></tr>
-        </thead>
-        <tbody>
-          ${entradas.map(e => `
+        <h4>📊 Histórico de Preços</h4>
+        <table style="width:100%; margin-top:15px;">
+          <thead>
             <tr>
-              <td>${e.data}</td>
-              <td>${escapeHtml(e.deposito)}</td>
-              <td>${num(e.litros, 1)}</td>
-              <td>${kbrl(e.precoLitro)}</td>
-              <td>${kbrl(e.litros * e.precoLitro)}</td>
-              <td>${escapeHtml(e.obs || '')}</td>
+              <th>Data</th>
+              <th>Depósito</th>
+              <th>Litros</th>
+              <th>Preço/L</th>
+              <th>Total</th>
+              <th>Obs</th>
             </tr>
-          `).join('') || '<tr><td colspan="6">Sem entradas</td></tr>'}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            ${entradas.map(e => `
+              <tr>
+                <td>${e.data}</td>
+                <td>${escapeHtml(e.deposito)}</td>
+                <td>${num(e.litros, 0)} L</td>
+                <td>${kbrl(e.precoLitro)}</td>
+                <td>${kbrl(e.litros * e.precoLitro)}</td>
+                <td>${escapeHtml(e.obs || '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
     </div>
 
-    <div class="tableWrap" style="margin-top:20px;">
-      <h3>📋 Abastecimentos</h3>
-      <table>
-        <thead>
-          <tr><th>Data</th><th>Fazenda</th><th>Talhão</th><th>Litros</th><th>Preço/L</th><th>Custo</th></tr>
-        </thead>
-        <tbody id="tbodySaidas"></tbody>
-      </table>
+    <!-- Aba Entradas -->
+    <div id="combustivel-aba-entradas" class="combustivel-tab-content">
+      <div class="card">
+        <h4>📋 Todas as Entradas</h4>
+        <table style="width:100%; margin-top:15px;">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Depósito</th>
+              <th>Litros</th>
+              <th>Preço/L</th>
+              <th>Total</th>
+              <th>Obs</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${entradas.map(e => `
+              <tr>
+                <td>${e.data}</td>
+                <td>${escapeHtml(e.deposito)}</td>
+                <td><b>${num(e.litros, 0)} L</b></td>
+                <td>${kbrl(e.precoLitro)}</td>
+                <td>${kbrl(e.litros * e.precoLitro)}</td>
+                <td>${escapeHtml(e.obs || '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Aba Abastecimentos -->
+    <div id="combustivel-aba-abastecimentos" class="combustivel-tab-content">
+      <div class="card">
+        <h4>📋 Todos os Abastecimentos</h4>
+        <div style="margin-bottom:15px;">
+          <input type="text" class="input" id="filtroAbastecimento" placeholder="Filtrar por máquina/fazenda..." style="width:300px;" onkeyup="filtrarAbastecimentos()">
+        </div>
+        <div class="tableWrap">
+          <table id="tabelaAbastecimentos">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Fazenda</th>
+                <th>Talhão</th>
+                <th>Máquina</th>
+                <th>Operador</th>
+                <th>Litros</th>
+                <th>Preço/L</th>
+                <th>Custo</th>
+                <th>Obs</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyAbastecimentos">
+              ${abastecimentos.map(a => {
+                const fazenda = findNameById(fazendas, a.fazendaId);
+                const talhao = a.talhaoId ? findNameById(talhoes, a.talhaoId) : '-';
+                const maquina = maquinas.find(m => m.id === a.maquinaId);
+                const operador = equipe.find(e => e.id === a.operadorId);
+                return `
+                  <tr>
+                    <td>${a.data}</td>
+                    <td>${escapeHtml(fazenda)}</td>
+                    <td>${escapeHtml(talhao)}</td>
+                    <td>${maquina ? escapeHtml(maquina.nome) : '-'}</td>
+                    <td>${operador ? escapeHtml(operador.nome) : '-'}</td>
+                    <td><b>${num(a.litros, 0)} L</b></td>
+                    <td>${kbrl(a.precoLitro)}</td>
+                    <td>${kbrl(a.litros * a.precoLitro)}</td>
+                    <td>${escapeHtml(a.obs || '')}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aba Análise -->
+    <div id="combustivel-aba-analise" class="combustivel-tab-content">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+        <!-- Consumo por fazenda -->
+        <div class="card">
+          <h4>🏢 Consumo por Fazenda</h4>
+          <table style="width:100%; margin-top:15px;">
+            <thead>
+              <tr>
+                <th>Fazenda</th>
+                <th>Litros</th>
+                <th>Custo</th>
+                <th>Média R$/L</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${consumoPorFazenda.map(f => `
+                <tr>
+                  <td><b>${escapeHtml(f.fazenda)}</b></td>
+                  <td>${num(f.litros, 0)} L</td>
+                  <td>${kbrl(f.custo)}</td>
+                  <td>${kbrl(f.media)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Consumo por máquina -->
+        <div class="card">
+          <h4>🚜 Consumo por Máquina</h4>
+          <table style="width:100%; margin-top:15px;">
+            <thead>
+              <tr>
+                <th>Máquina</th>
+                <th>Litros</th>
+                <th>Abastec.</th>
+                <th>Média/Abast.</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${consumoPorMaquina.map(m => `
+                <tr>
+                  <td><b>${escapeHtml(m.maquina)}</b></td>
+                  <td>${num(m.litros, 0)} L</td>
+                  <td>${m.abastecimentos}</td>
+                  <td>${num(m.media, 0)} L</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Gráfico de custo mensal -->
+      <div class="card" style="margin-top:20px;">
+        <h4>💰 Custo Mensal de Diesel</h4>
+        <div class="combustivel-grafico-barras" style="height:150px;">
+          ${meses.map((mes, i) => {
+            const altura = (custoMensal[i] / (Math.max(...custoMensal, 1))) * 130;
+            return `
+              <div style="flex:1; text-align:center;">
+                <div class="combustivel-barra" style="height: ${altura}px; background: #4CAF50;"></div>
+                <div class="combustivel-barra-label">${mes}</div>
+                <div style="font-size:9px;">${kbrl(custoMensal[i])}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Aba Alertas -->
+    <div id="combustivel-aba-alertas" class="combustivel-tab-content">
+      <div class="card">
+        <h3 style="color:#ff9800;">⚠️ Alertas de Combustível</h3>
+        <div class="hr"></div>
+        ${alertas.length > 0 ? alertas.map(a => `
+          <div style="padding:15px; margin:10px 0; background: ${a.tipo === 'critico' ? 'rgba(244,67,54,0.1)' : a.tipo === 'atencao' ? 'rgba(255,152,0,0.1)' : 'rgba(33,150,243,0.1)'}; border-left:4px solid ${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'}; border-radius:4px;">
+            <h4 style="margin:0 0 5px 0; color:${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'};">${a.titulo}</h4>
+            <p style="margin:5px 0;">${a.descricao}</p>
+            <p style="margin:5px 0 0 0; color:#888; font-size:13px;">💡 ${a.acao}</p>
+          </div>
+        `).join('') : '<p style="color:#888;">Nenhum alerta de combustível no momento.</p>'}
+      </div>
     </div>
   `;
 
-  function renderSaidas() {
-    const db2 = getDB();
-    const rows = onlySafra(db2.combustivel || []).sort((a, b) => b.data.localeCompare(a.data));
-    const tb = document.getElementById("tbodySaidas");
-    tb.innerHTML = rows.map(c => {
-      const faz = findNameById(onlySafra(db2.fazendas), c.fazendaId);
-      const tal = c.talhaoId ? findNameById(onlySafra(db2.talhoes), c.talhaoId) : "—";
-      return `
-        <tr>
-          <td>${c.data}</td>
-          <td>${escapeHtml(faz)}</td>
-          <td>${escapeHtml(tal)}</td>
-          <td>${num(c.litros, 1)}</td>
-          <td>${kbrl(c.precoLitro)}</td>
-          <td>${kbrl(c.litros * c.precoLitro)}</td>
-        </tr>
-      `;
-    }).join('') || '<tr><td colspan="6">Sem abastecimentos</td></tr>';
-  }
+  // ==================== FUNÇÕES ====================
 
-  document.getElementById("frmEntrada").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const litros = Number(fd.get("litros") || 0);
-    if (litros <= 0) { alert("Litros deve ser > 0"); return; }
-    const precoLitro = Number(fd.get("precoLitro") || 0);
-    if (precoLitro <= 0) { alert("Preço deve ser > 0"); return; }
+  // Mudar de aba
+  window.mudarAbaCombustivel = (aba) => {
+    document.querySelectorAll('.combustivel-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.combustivel-tab-content').forEach(c => c.classList.remove('active'));
+    
+    document.querySelector(`.combustivel-tab[onclick*="${aba}"]`).classList.add('active');
+    document.getElementById(`combustivel-aba-${aba}`).classList.add('active');
+  };
+
+  // Filtrar abastecimentos
+  window.filtrarAbastecimentos = () => {
+    const filtro = document.getElementById('filtroAbastecimento').value.toLowerCase();
+    const linhas = document.querySelectorAll('#tbodyAbastecimentos tr');
+    
+    linhas.forEach(linha => {
+      const texto = linha.textContent.toLowerCase();
+      linha.style.display = texto.includes(filtro) ? '' : 'none';
+    });
+  };
+
+  // Nova entrada
+  document.getElementById("btnNovaEntrada").addEventListener("click", () => {
+    const data = prompt("Data (YYYY-MM-DD):", nowISO());
+    if (!data) return;
+    
+    const deposito = prompt("Depósito/Tanque:", "Tanque Principal");
+    if (!deposito) return;
+    
+    const litros = parseFloat(prompt("Litros:", "0"));
+    if (!litros || litros <= 0) return alert("Litros inválido");
+    
+    const precoLitro = parseFloat(prompt("Preço por litro (R$):", "0"));
+    if (!precoLitro || precoLitro <= 0) return alert("Preço inválido");
+    
+    const obs = prompt("Observações:", "") || "";
 
     const db2 = getDB();
-    registrarEntradaDiesel(
-      db2,
-      fd.get("deposito") || "Tanque Principal",
-      litros,
-      precoLitro,
-      fd.get("data") || nowISO(),
-      fd.get("obs") || ""
-    );
+    registrarEntradaDiesel(db2, deposito, litros, precoLitro, data, obs);
     setDB(db2);
-    e.target.reset();
-    toast("Entrada registrada", "Diesel adicionado ao estoque.");
+    toast("Entrada registrada", `+${litros}L a ${kbrl(precoLitro)}/L`);
     pageCombustivel();
   });
 
-  document.getElementById("frmSaida").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const litros = Number(fd.get("litros") || 0);
-    if (litros <= 0) { alert("Litros deve ser > 0"); return; }
+  // Novo abastecimento
+  document.getElementById("btnNovoAbastecimento").addEventListener("click", () => {
+    const data = prompt("Data (YYYY-MM-DD):", nowISO());
+    if (!data) return;
+    
+    const deposito = prompt("Depósito:", "Tanque Principal");
+    if (!deposito) return;
+    
+    const tank = tanques.find(t => t.deposito === deposito);
+    if (!tank) return alert("Tanque não encontrado");
+    
+    const fazendaId = prompt(`ID da fazenda (${fazendas.map(f => `${f.id}:${f.nome}`).join(', ')}):`, fazendas[0]?.id || '');
+    if (!fazendaId) return;
+    
+    const talhaoId = prompt("ID do talhão (opcional):", "") || "";
+    const maquinaId = prompt("ID da máquina (opcional):", "") || "";
+    const operadorId = prompt("ID do operador (opcional):", "") || "";
+    
+    const litros = parseFloat(prompt("Litros:", "0"));
+    if (!litros || litros <= 0) return alert("Litros inválido");
+    
+    const kmOuHora = parseFloat(prompt("KM ou Horímetro:", "0")) || 0;
+    const posto = prompt("Posto/Origem:", "") || "";
+    const obs = prompt("Observações:", "") || "";
 
     const db2 = getDB();
-    const deposito = fd.get("deposito") || "Tanque Principal";
-    const tank = db2.dieselEstoque.find(t => t.safraId === getSafraId() && t.deposito === deposito);
-    if (!tank) { alert("Tanque não encontrado"); return; }
-
     const res = baixaDiesel(db2, deposito, litros);
-    if (!res.ok) { alert(res.msg); return; }
+    if (!res.ok) return alert(res.msg);
 
-    const obj = {
+    db2.combustivel.push({
       id: uid("cmb"),
       safraId: getSafraId(),
-      data: fd.get("data") || nowISO(),
+      data,
       tipo: "Diesel S10",
       deposito,
-      posto: fd.get("posto") || "",
-      maquinaId: fd.get("maquinaId") || "",
-      operadorId: fd.get("operadorId") || "",
-      fazendaId: fd.get("fazendaId"),
-      talhaoId: fd.get("talhaoId") || "",
+      posto,
+      maquinaId,
+      operadorId,
+      fazendaId,
+      talhaoId,
       litros,
       precoLitro: res.precoLitro,
-      kmOuHora: Number(fd.get("kmOuHora") || 0),
-      obs: fd.get("obs") || ""
-    };
-
-    db2.combustivel = db2.combustivel || [];
-    db2.combustivel.push(obj);
+      kmOuHora,
+      obs
+    });
     setDB(db2);
-    e.target.reset();
-    toast("Saída registrada", "Abastecimento concluído.");
-    renderSaidas();
+    toast("Abastecimento registrado", `-${litros}L`);
+    pageCombustivel();
   });
 
+  // Exportar CSV
   document.getElementById("btnExportCSV").addEventListener("click", () => {
-    const db2 = getDB();
-    downloadText(`combustivel-${nowISO()}.csv`, toCSV(onlySafra(db2.combustivel || [])));
-    toast("Exportado", "CSV baixado.");
+    const dados = abastecimentos.map(a => ({
+      Data: a.data,
+      Deposito: a.deposito,
+      Fazenda: findNameById(fazendas, a.fazendaId),
+      Talhao: a.talhaoId ? findNameById(talhoes, a.talhaoId) : '-',
+      Maquina: maquinas.find(m => m.id === a.maquinaId)?.nome || '-',
+      Operador: equipe.find(e => e.id === a.operadorId)?.nome || '-',
+      Litros: a.litros,
+      PrecoLitro: a.precoLitro,
+      Custo: a.litros * a.precoLitro,
+      Obs: a.obs || ''
+    }));
+    downloadText(`combustivel-${nowISO()}.csv`, toCSV(dados));
+    toast("Exportado", "CSV baixado");
   });
-
-  renderSaidas();
 }
 
 function pageClima() {
