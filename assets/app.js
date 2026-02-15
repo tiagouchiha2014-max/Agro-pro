@@ -1521,640 +1521,7 @@ function pageTalhoes() {
   render();
 }
 
-function pageCombustivel() {
-  const db = getDB();
-  const fazendas = onlySafra(db.fazendas);
-  const talhoes = onlySafra(db.talhoes);
-  const equipe = onlySafra(db.equipe);
-  const maquinas = onlySafra(db.maquinas);
-  const tanques = onlySafra(db.dieselEstoque);
-  const entradas = onlySafra(db.dieselEntradas || []).sort((a, b) => b.data.localeCompare(a.data));
-  const abastecimentos = onlySafra(db.combustivel || []).sort((a, b) => b.data.localeCompare(a.data));
 
-  setTopActions(`
-    <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
-    <button class="btn primary" id="btnNovaEntrada">+ Nova Entrada</button>
-    <button class="btn" id="btnNovoAbastecimento">⛽ Abastecer</button>
-  `);
-
-  // ==================== CÁLCULOS ====================
-  
-  // Totais gerais
-  const totalLitros = tanques.reduce((s, t) => s + Number(t.litros || 0), 0);
-  const totalEntradas = entradas.reduce((s, e) => s + Number(e.litros || 0), 0);
-  const totalAbastecimentos = abastecimentos.reduce((s, a) => s + Number(a.litros || 0), 0);
-  
-  // Custo total
-  const custoTotalEntradas = entradas.reduce((s, e) => s + (Number(e.litros || 0) * Number(e.precoLitro || 0)), 0);
-  const custoTotalAbastecimentos = abastecimentos.reduce((s, a) => s + (Number(a.litros || 0) * Number(a.precoLitro || 0)), 0);
-  
-  // Médias
-  const precoMedioEntradas = totalEntradas > 0 ? custoTotalEntradas / totalEntradas : 0;
-  const precoMedioAbastecimentos = totalAbastecimentos > 0 ? custoTotalAbastecimentos / totalAbastecimentos : 0;
-
-  // Consumo por fazenda
-  const consumoPorFazenda = fazendas.map(f => {
-    const litros = abastecimentos
-      .filter(a => a.fazendaId === f.id)
-      .reduce((s, a) => s + Number(a.litros || 0), 0);
-    const custo = abastecimentos
-      .filter(a => a.fazendaId === f.id)
-      .reduce((s, a) => s + (Number(a.litros || 0) * Number(a.precoLitro || 0)), 0);
-    return {
-      fazenda: f.nome,
-      litros,
-      custo,
-      media: litros > 0 ? custo / litros : 0
-    };
-  }).filter(f => f.litros > 0).sort((a, b) => b.litros - a.litros);
-
-  // Consumo por máquina
-  const consumoPorMaquina = maquinas.map(m => {
-    const litros = abastecimentos
-      .filter(a => a.maquinaId === m.id)
-      .reduce((s, a) => s + Number(a.litros || 0), 0);
-    const abastecimentosCount = abastecimentos.filter(a => a.maquinaId === m.id).length;
-    return {
-      maquina: m.nome,
-      litros,
-      abastecimentos: abastecimentosCount,
-      media: abastecimentosCount > 0 ? litros / abastecimentosCount : 0
-    };
-  }).filter(m => m.litros > 0).sort((a, b) => b.litros - a.litros);
-
-  // Dados para gráfico mensal
-  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-  const consumoMensal = new Array(12).fill(0);
-  const custoMensal = new Array(12).fill(0);
-  
-  abastecimentos.forEach(a => {
-    if (a.data) {
-      const mes = parseInt(a.data.substring(5, 7)) - 1;
-      consumoMensal[mes] += Number(a.litros || 0);
-      custoMensal[mes] += Number(a.litros || 0) * Number(a.precoLitro || 0);
-    }
-  });
-
-  const maxConsumoMensal = Math.max(...consumoMensal, 1);
-
-  // Alertas
-  const alertas = [];
-  
-  // Estoque baixo (menos de 500L)
-  tanques.forEach(t => {
-    if (t.litros < 500) {
-      alertas.push({
-        tipo: 'atencao',
-        titulo: '⚠️ Estoque Baixo',
-        descricao: `${t.deposito}: ${t.litros}L restantes`,
-        acao: 'Programe uma nova compra de diesel.'
-      });
-    }
-  });
-
-  // Estoque negativo
-  tanques.forEach(t => {
-    if (t.litros < 0) {
-      alertas.push({
-        tipo: 'critico',
-        titulo: '🚨 Estoque Negativo',
-        descricao: `${t.deposito}: ${t.litros}L`,
-        acao: 'Registre uma entrada imediatamente.'
-      });
-    }
-  });
-
-  // Consumo acima da média
-  const consumoMedioMensal = consumoMensal.reduce((s, c) => s + c, 0) / (consumoMensal.filter(c => c > 0).length || 1);
-  const ultimoMes = consumoMensal[new Date().getMonth()];
-  if (ultimoMes > consumoMedioMensal * 1.3) {
-    alertas.push({
-      tipo: 'info',
-      titulo: '📈 Consumo Elevado',
-      descricao: `Consumo ${((ultimoMes / consumoMedioMensal - 1) * 100).toFixed(0)}% acima da média.`,
-      acao: 'Verifique eficiência das máquinas.'
-    });
-  }
-
-  const content = document.getElementById("content");
-  content.innerHTML = `
-    <style>
-      .combustivel-tab-bar {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 20px;
-        border-bottom: 1px solid #2a2a30;
-        padding-bottom: 10px;
-        flex-wrap: wrap;
-      }
-      .combustivel-tab {
-        padding: 10px 20px;
-        background: #1a1a1f;
-        border: 1px solid #2a2a30;
-        border-radius: 8px 8px 0 0;
-        cursor: pointer;
-        color: #888;
-        transition: all 0.2s;
-      }
-      .combustivel-tab:hover {
-        background: #25252b;
-        color: #fff;
-      }
-      .combustivel-tab.active {
-        background: #FF9800;
-        color: #fff;
-        border-color: #FF9800;
-      }
-      .combustivel-tab-content {
-        display: none;
-      }
-      .combustivel-tab-content.active {
-        display: block;
-      }
-      .combustivel-card {
-        background: #1a1a1f;
-        border-radius: 8px;
-        padding: 15px;
-        border-left: 4px solid #FF9800;
-      }
-      .combustivel-stat {
-        font-size: 28px;
-        font-weight: bold;
-        color: #FF9800;
-      }
-      .combustivel-label {
-        font-size: 12px;
-        color: #888;
-      }
-      .combustivel-kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
-        margin-bottom: 20px;
-      }
-      .combustivel-grafico-barras {
-        display: flex;
-        align-items: flex-end;
-        gap: 10px;
-        height: 200px;
-        margin-top: 20px;
-      }
-      .combustivel-barra {
-        flex: 1;
-        background: #FF9800;
-        border-radius: 4px 4px 0 0;
-        min-height: 20px;
-        transition: height 0.3s;
-      }
-      .combustivel-barra-label {
-        text-align: center;
-        font-size: 11px;
-        margin-top: 5px;
-        color: #888;
-      }
-      .status-badge {
-        display: inline-block;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 11px;
-        font-weight: 500;
-      }
-      .status-ok {
-        background: rgba(76, 175, 80, 0.2);
-        color: #4CAF50;
-      }
-      .status-atencao {
-        background: rgba(255, 152, 0, 0.2);
-        color: #ff9800;
-      }
-      .status-critico {
-        background: rgba(244, 67, 54, 0.2);
-        color: #f44336;
-      }
-    </style>
-
-    <div class="combustivel-tab-bar">
-      <div class="combustivel-tab active" onclick="mudarAbaCombustivel('resumo')">📊 Resumo</div>
-      <div class="combustivel-tab" onclick="mudarAbaCombustivel('estoque')">⛽ Estoque</div>
-      <div class="combustivel-tab" onclick="mudarAbaCombustivel('entradas')">📥 Entradas</div>
-      <div class="combustivel-tab" onclick="mudarAbaCombustivel('abastecimentos')">🚜 Abastecimentos</div>
-      <div class="combustivel-tab" onclick="mudarAbaCombustivel('analise')">📈 Análise</div>
-      <div class="combustivel-tab" onclick="mudarAbaCombustivel('alertas')">⚠️ Alertas</div>
-    </div>
-
-    <!-- Aba Resumo -->
-    <div id="combustivel-aba-resumo" class="combustivel-tab-content active">
-      <!-- KPIs -->
-      <div class="combustivel-kpi-grid">
-        <div class="combustivel-card">
-          <div class="combustivel-label">⛽ Estoque Atual</div>
-          <div class="combustivel-stat">${num(totalLitros, 0)} L</div>
-          <div class="combustivel-label">${tanques.length} tanque(s)</div>
-        </div>
-        <div class="combustivel-card">
-          <div class="combustivel-label">💰 Custo Total Entradas</div>
-          <div class="combustivel-stat">${kbrl(custoTotalEntradas)}</div>
-          <div class="combustivel-label">Preço médio: ${kbrl(precoMedioEntradas)}/L</div>
-        </div>
-        <div class="combustivel-card">
-          <div class="combustivel-label">📊 Custo Total Abastec.</div>
-          <div class="combustivel-stat">${kbrl(custoTotalAbastecimentos)}</div>
-          <div class="combustivel-label">${totalAbastecimentos} L consumidos</div>
-        </div>
-        <div class="combustivel-card">
-          <div class="combustivel-label">🔄 Diferença</div>
-          <div class="combustivel-stat">${kbrl(custoTotalEntradas - custoTotalAbastecimentos)}</div>
-          <div class="combustivel-label">Entradas - Abastecimentos</div>
-        </div>
-      </div>
-
-      <!-- Gráfico de consumo mensal -->
-      <div class="card">
-        <h4>📈 Consumo Mensal de Diesel</h4>
-        <div class="combustivel-grafico-barras">
-          ${meses.map((mes, i) => `
-            <div style="flex:1; text-align:center;">
-              <div class="combustivel-barra" style="height: ${(consumoMensal[i] / maxConsumoMensal) * 180}px;"></div>
-              <div class="combustivel-barra-label">${mes}</div>
-              <div style="font-size:10px; color:#888;">${num(consumoMensal[i], 0)} L</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-
-      <!-- Últimos movimentos -->
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
-        <div class="card">
-          <h4>📥 Últimas Entradas</h4>
-          <table style="width:100%; margin-top:10px;">
-            <thead>
-              <tr><th>Data</th><th>Litros</th><th>Preço/L</th><th>Total</th></tr>
-            </thead>
-            <tbody>
-              ${entradas.slice(0, 5).map(e => `
-                <tr>
-                  <td>${e.data}</td>
-                  <td>${num(e.litros, 0)} L</td>
-                  <td>${kbrl(e.precoLitro)}</td>
-                  <td>${kbrl(e.litros * e.precoLitro)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-        <div class="card">
-          <h4>🚜 Últimos Abastecimentos</h4>
-          <table style="width:100%; margin-top:10px;">
-            <thead>
-              <tr><th>Data</th><th>Litros</th><th>Valor</th><th>Máquina</th></tr>
-            </thead>
-            <tbody>
-              ${abastecimentos.slice(0, 5).map(a => {
-                const maquina = maquinas.find(m => m.id === a.maquinaId);
-                return `
-                  <tr>
-                    <td>${a.data}</td>
-                    <td>${num(a.litros, 0)} L</td>
-                    <td>${kbrl(a.litros * a.precoLitro)}</td>
-                    <td>${maquina ? escapeHtml(maquina.nome) : '-'}</td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Aba Estoque -->
-    <div id="combustivel-aba-estoque" class="combustivel-tab-content">
-      <div class="combustivel-kpi-grid">
-        ${tanques.map(t => {
-          const status = t.litros < 0 ? 'critico' : t.litros < 500 ? 'atencao' : 'ok';
-          return `
-            <div class="combustivel-card">
-              <div class="combustivel-label">⛽ ${escapeHtml(t.deposito)}</div>
-              <div class="combustivel-stat">${num(t.litros, 0)} L</div>
-              <div class="combustivel-label">
-                <span class="status-badge status-${status}">
-                  ${status === 'critico' ? '🚨 NEGATIVO' : status === 'atencao' ? '⚠️ BAIXO' : '✅ NORMAL'}
-                </span>
-              </div>
-              <div class="combustivel-label">Preço vigente: ${kbrl(t.precoVigente || 0)}/L</div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-
-      <div class="card">
-        <h4>📊 Histórico de Preços</h4>
-        <table style="width:100%; margin-top:15px;">
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Depósito</th>
-              <th>Litros</th>
-              <th>Preço/L</th>
-              <th>Total</th>
-              <th>Obs</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${entradas.map(e => `
-              <tr>
-                <td>${e.data}</td>
-                <td>${escapeHtml(e.deposito)}</td>
-                <td>${num(e.litros, 0)} L</td>
-                <td>${kbrl(e.precoLitro)}</td>
-                <td>${kbrl(e.litros * e.precoLitro)}</td>
-                <td>${escapeHtml(e.obs || '')}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Aba Entradas -->
-    <div id="combustivel-aba-entradas" class="combustivel-tab-content">
-      <div class="card">
-        <h4>📋 Todas as Entradas</h4>
-        <table style="width:100%; margin-top:15px;">
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Depósito</th>
-              <th>Litros</th>
-              <th>Preço/L</th>
-              <th>Total</th>
-              <th>Obs</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${entradas.map(e => `
-              <tr>
-                <td>${e.data}</td>
-                <td>${escapeHtml(e.deposito)}</td>
-                <td><b>${num(e.litros, 0)} L</b></td>
-                <td>${kbrl(e.precoLitro)}</td>
-                <td>${kbrl(e.litros * e.precoLitro)}</td>
-                <td>${escapeHtml(e.obs || '')}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Aba Abastecimentos -->
-    <div id="combustivel-aba-abastecimentos" class="combustivel-tab-content">
-      <div class="card">
-        <h4>📋 Todos os Abastecimentos</h4>
-        <div style="margin-bottom:15px;">
-          <input type="text" class="input" id="filtroAbastecimento" placeholder="Filtrar por máquina/fazenda..." style="width:300px;" onkeyup="filtrarAbastecimentos()">
-        </div>
-        <div class="tableWrap">
-          <table id="tabelaAbastecimentos">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Fazenda</th>
-                <th>Talhão</th>
-                <th>Máquina</th>
-                <th>Operador</th>
-                <th>Litros</th>
-                <th>Preço/L</th>
-                <th>Custo</th>
-                <th>Obs</th>
-              </tr>
-            </thead>
-            <tbody id="tbodyAbastecimentos">
-              ${abastecimentos.map(a => {
-                const fazenda = findNameById(fazendas, a.fazendaId);
-                const talhao = a.talhaoId ? findNameById(talhoes, a.talhaoId) : '-';
-                const maquina = maquinas.find(m => m.id === a.maquinaId);
-                const operador = equipe.find(e => e.id === a.operadorId);
-                return `
-                  <tr>
-                    <td>${a.data}</td>
-                    <td>${escapeHtml(fazenda)}</td>
-                    <td>${escapeHtml(talhao)}</td>
-                    <td>${maquina ? escapeHtml(maquina.nome) : '-'}</td>
-                    <td>${operador ? escapeHtml(operador.nome) : '-'}</td>
-                    <td><b>${num(a.litros, 0)} L</b></td>
-                    <td>${kbrl(a.precoLitro)}</td>
-                    <td>${kbrl(a.litros * a.precoLitro)}</td>
-                    <td>${escapeHtml(a.obs || '')}</td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Aba Análise -->
-    <div id="combustivel-aba-analise" class="combustivel-tab-content">
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-        <!-- Consumo por fazenda -->
-        <div class="card">
-          <h4>🏢 Consumo por Fazenda</h4>
-          <table style="width:100%; margin-top:15px;">
-            <thead>
-              <tr>
-                <th>Fazenda</th>
-                <th>Litros</th>
-                <th>Custo</th>
-                <th>Média R$/L</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${consumoPorFazenda.map(f => `
-                <tr>
-                  <td><b>${escapeHtml(f.fazenda)}</b></td>
-                  <td>${num(f.litros, 0)} L</td>
-                  <td>${kbrl(f.custo)}</td>
-                  <td>${kbrl(f.media)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Consumo por máquina -->
-        <div class="card">
-          <h4>🚜 Consumo por Máquina</h4>
-          <table style="width:100%; margin-top:15px;">
-            <thead>
-              <tr>
-                <th>Máquina</th>
-                <th>Litros</th>
-                <th>Abastec.</th>
-                <th>Média/Abast.</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${consumoPorMaquina.map(m => `
-                <tr>
-                  <td><b>${escapeHtml(m.maquina)}</b></td>
-                  <td>${num(m.litros, 0)} L</td>
-                  <td>${m.abastecimentos}</td>
-                  <td>${num(m.media, 0)} L</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Gráfico de custo mensal -->
-      <div class="card" style="margin-top:20px;">
-        <h4>💰 Custo Mensal de Diesel</h4>
-        <div class="combustivel-grafico-barras" style="height:150px;">
-          ${meses.map((mes, i) => {
-            const altura = (custoMensal[i] / (Math.max(...custoMensal, 1))) * 130;
-            return `
-              <div style="flex:1; text-align:center;">
-                <div class="combustivel-barra" style="height: ${altura}px; background: #4CAF50;"></div>
-                <div class="combustivel-barra-label">${mes}</div>
-                <div style="font-size:9px;">${kbrl(custoMensal[i])}</div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    </div>
-
-    <!-- Aba Alertas -->
-    <div id="combustivel-aba-alertas" class="combustivel-tab-content">
-      <div class="card">
-        <h3 style="color:#ff9800;">⚠️ Alertas de Combustível</h3>
-        <div class="hr"></div>
-        ${alertas.length > 0 ? alertas.map(a => `
-          <div style="padding:15px; margin:10px 0; background: ${a.tipo === 'critico' ? 'rgba(244,67,54,0.1)' : a.tipo === 'atencao' ? 'rgba(255,152,0,0.1)' : 'rgba(33,150,243,0.1)'}; border-left:4px solid ${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'}; border-radius:4px;">
-            <h4 style="margin:0 0 5px 0; color:${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'};">${a.titulo}</h4>
-            <p style="margin:5px 0;">${a.descricao}</p>
-            <p style="margin:5px 0 0 0; color:#888; font-size:13px;">💡 ${a.acao}</p>
-          </div>
-        `).join('') : '<p style="color:#888;">Nenhum alerta de combustível no momento.</p>'}
-      </div>
-    </div>
-  `;
-
-  // ==================== FUNÇÕES ====================
-
-  // Mudar de aba
-  window.mudarAbaCombustivel = (aba) => {
-    document.querySelectorAll('.combustivel-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.combustivel-tab-content').forEach(c => c.classList.remove('active'));
-    
-    document.querySelector(`.combustivel-tab[onclick*="${aba}"]`).classList.add('active');
-    document.getElementById(`combustivel-aba-${aba}`).classList.add('active');
-  };
-
-  // Filtrar abastecimentos
-  window.filtrarAbastecimentos = () => {
-    const filtro = document.getElementById('filtroAbastecimento').value.toLowerCase();
-    const linhas = document.querySelectorAll('#tbodyAbastecimentos tr');
-    
-    linhas.forEach(linha => {
-      const texto = linha.textContent.toLowerCase();
-      linha.style.display = texto.includes(filtro) ? '' : 'none';
-    });
-  };
-
-  // Nova entrada
-  document.getElementById("btnNovaEntrada").addEventListener("click", () => {
-    const data = prompt("Data (YYYY-MM-DD):", nowISO());
-    if (!data) return;
-    
-    const deposito = prompt("Depósito/Tanque:", "Tanque Principal");
-    if (!deposito) return;
-    
-    const litros = parseFloat(prompt("Litros:", "0"));
-    if (!litros || litros <= 0) return alert("Litros inválido");
-    
-    const precoLitro = parseFloat(prompt("Preço por litro (R$):", "0"));
-    if (!precoLitro || precoLitro <= 0) return alert("Preço inválido");
-    
-    const obs = prompt("Observações:", "") || "";
-
-    const db2 = getDB();
-    registrarEntradaDiesel(db2, deposito, litros, precoLitro, data, obs);
-    setDB(db2);
-    toast("Entrada registrada", `+${litros}L a ${kbrl(precoLitro)}/L`);
-    pageCombustivel();
-  });
-
-  // Novo abastecimento
-  document.getElementById("btnNovoAbastecimento").addEventListener("click", () => {
-    const data = prompt("Data (YYYY-MM-DD):", nowISO());
-    if (!data) return;
-    
-    const deposito = prompt("Depósito:", "Tanque Principal");
-    if (!deposito) return;
-    
-    const tank = tanques.find(t => t.deposito === deposito);
-    if (!tank) return alert("Tanque não encontrado");
-    
-    const fazendaId = prompt(`ID da fazenda (${fazendas.map(f => `${f.id}:${f.nome}`).join(', ')}):`, fazendas[0]?.id || '');
-    if (!fazendaId) return;
-    
-    const talhaoId = prompt("ID do talhão (opcional):", "") || "";
-    const maquinaId = prompt("ID da máquina (opcional):", "") || "";
-    const operadorId = prompt("ID do operador (opcional):", "") || "";
-    
-    const litros = parseFloat(prompt("Litros:", "0"));
-    if (!litros || litros <= 0) return alert("Litros inválido");
-    
-    const kmOuHora = parseFloat(prompt("KM ou Horímetro:", "0")) || 0;
-    const posto = prompt("Posto/Origem:", "") || "";
-    const obs = prompt("Observações:", "") || "";
-
-    const db2 = getDB();
-    const res = baixaDiesel(db2, deposito, litros);
-    if (!res.ok) return alert(res.msg);
-
-    db2.combustivel.push({
-      id: uid("cmb"),
-      safraId: getSafraId(),
-      data,
-      tipo: "Diesel S10",
-      deposito,
-      posto,
-      maquinaId,
-      operadorId,
-      fazendaId,
-      talhaoId,
-      litros,
-      precoLitro: res.precoLitro,
-      kmOuHora,
-      obs
-    });
-    setDB(db2);
-    toast("Abastecimento registrado", `-${litros}L`);
-    pageCombustivel();
-  });
-
-  // Exportar CSV
-  document.getElementById("btnExportCSV").addEventListener("click", () => {
-    const dados = abastecimentos.map(a => ({
-      Data: a.data,
-      Deposito: a.deposito,
-      Fazenda: findNameById(fazendas, a.fazendaId),
-      Talhao: a.talhaoId ? findNameById(talhoes, a.talhaoId) : '-',
-      Maquina: maquinas.find(m => m.id === a.maquinaId)?.nome || '-',
-      Operador: equipe.find(e => e.id === a.operadorId)?.nome || '-',
-      Litros: a.litros,
-      PrecoLitro: a.precoLitro,
-      Custo: a.litros * a.precoLitro,
-      Obs: a.obs || ''
-    }));
-    downloadText(`combustivel-${nowISO()}.csv`, toCSV(dados));
-    toast("Exportado", "CSV baixado");
-  });
-}
 
 function pageClima() {
   const db = getDB();
@@ -2162,258 +1529,135 @@ function pageClima() {
   const talhoes = onlySafra(db.talhoes);
   const clima = onlySafra(db.clima || []).sort((a, b) => b.data.localeCompare(a.data));
 
-  setTopActions(`
-    <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
-    <button class="btn primary" id="btnNovoRegistro">+ Novo Registro</button>
-  `);
+  setTopActions(`<button class="btn" id="btnExportCSV">📥 Exportar CSV</button>`);
 
-  // ==================== CÁLCULOS CLIMÁTICOS ====================
+  // ==================== CÁLCULOS PARA OS CARDS ====================
   
-  // Totais e médias gerais
-  const totalChuva = clima.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
-  const diasComChuva = clima.filter(c => c.chuvaMm > 0).length;
-  const mediaChuva = clima.length ? totalChuva / clima.length : 0;
+  const hoje = nowISO();
+  const chuvaHoje = clima.filter(c => c.data === hoje).reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
   
-  const tempMaxMedia = clima.reduce((s, c) => s + Number(c.tempMax || 0), 0) / (clima.length || 1);
-  const tempMinMedia = clima.reduce((s, c) => s + Number(c.tempMin || 0), 0) / (clima.length || 1);
-  const tempMedia = (tempMaxMedia + tempMinMedia) / 2;
+  const seteDiasAtras = new Date();
+  seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+  const dataLimite7d = seteDiasAtras.toISOString().split('T')[0];
   
-  const umidadeMedia = clima.reduce((s, c) => s + Number(c.umidade || 0), 0) / (clima.length || 1);
-  const ventoMedio = clima.reduce((s, c) => s + Number(c.vento || 0), 0) / (clima.length || 1);
+  const chuva7d = clima
+    .filter(c => c.data >= dataLimite7d)
+    .reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
+  
+  const trintaDiasAtras = new Date();
+  trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30);
+  const dataLimite30d = trintaDiasAtras.toISOString().split('T')[0];
+  
+  const chuva30d = clima
+    .filter(c => c.data >= dataLimite30d)
+    .reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
 
-  // Dados por talhão
-  const climaPorTalhao = talhoes.map(t => {
-    const registrosTalhao = clima.filter(c => c.talhaoId === t.id);
-    const chuvaTalhao = registrosTalhao.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
-    const ultimoRegistro = registrosTalhao.sort((a, b) => b.data.localeCompare(a.data))[0];
-    
-    return {
-      talhao: t.nome,
-      fazenda: findNameById(fazendas, t.fazendaId),
-      totalChuva: chuvaTalhao,
-      mediaChuva: registrosTalhao.length ? chuvaTalhao / registrosTalhao.length : 0,
-      ultimoRegistro: ultimoRegistro?.data || '-',
-      ultimaChuva: ultimoRegistro?.chuvaMm || 0,
-      registros: registrosTalhao.length
-    };
-  }).sort((a, b) => b.totalChuva - a.totalChuva);
-
-  // Dados por mês
-  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-  const chuvaPorMes = new Array(12).fill(0);
-  const tempPorMes = new Array(12).fill(0);
-  const contagemPorMes = new Array(12).fill(0);
-  
+  // Médias por talhão para o resumo
+  const chuvaPorTalhao = new Map();
   clima.forEach(c => {
-    if (c.data) {
-      const mes = parseInt(c.data.substring(5, 7)) - 1;
-      chuvaPorMes[mes] += Number(c.chuvaMm || 0);
-      if (c.tempMax) {
-        tempPorMes[mes] += Number(c.tempMax);
-        contagemPorMes[mes]++;
-      }
+    if (c.talhaoId) {
+      const atual = chuvaPorTalhao.get(c.talhaoId) || 0;
+      chuvaPorTalhao.set(c.talhaoId, atual + Number(c.chuvaMm || 0));
     }
   });
 
-  const maxChuvaMensal = Math.max(...chuvaPorMes, 1);
-
-  // Alertas climáticos
-  const alertas = [];
-  const hoje = new Date();
-  const ultimos7Dias = new Date(hoje.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  
-  const chuvasRecentes = clima.filter(c => c.data >= ultimos7Dias && c.chuvaMm > 0);
-  if (chuvasRecentes.length > 0) {
-    const totalChuvaRecente = chuvasRecentes.reduce((s, c) => s + c.chuvaMm, 0);
-    alertas.push({
-      tipo: 'info',
-      titulo: '🌧️ Chuvas Recentes',
-      descricao: `${totalChuvaRecente.toFixed(1)} mm de chuva nos últimos 7 dias.`,
-      acao: 'Verifique condições para aplicações.'
-    });
-  }
-
-  const diasSecos = clima.filter(c => c.data >= ultimos7Dias && c.chuvaMm === 0).length;
-  if (diasSecos > 5) {
-    alertas.push({
-      tipo: 'atencao',
-      titulo: '☀️ Período Seco',
-      descricao: `${diasSecos} dias sem chuva na última semana.`,
-      acao: 'Atenção à umidade do solo.'
-    });
-  }
-
-  const ventosFortes = clima.filter(c => c.data >= ultimos7Dias && c.vento > 15);
-  if (ventosFortes.length > 0) {
-    alertas.push({
-      tipo: 'atencao',
-      titulo: '💨 Ventos Fortes',
-      descricao: `${ventosFortes.length} registro(s) de vento > 15 km/h.`,
-      acao: 'Evite pulverizações em dias ventosos.'
-    });
-  }
-
   const content = document.getElementById("content");
   content.innerHTML = `
-    <style>
-      .clima-tab-bar {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 20px;
-        border-bottom: 1px solid #2a2a30;
-        padding-bottom: 10px;
-        flex-wrap: wrap;
-      }
-      .clima-tab {
-        padding: 10px 20px;
-        background: #1a1a1f;
-        border: 1px solid #2a2a30;
-        border-radius: 8px 8px 0 0;
-        cursor: pointer;
-        color: #888;
-        transition: all 0.2s;
-      }
-      .clima-tab:hover {
-        background: #25252b;
-        color: #fff;
-      }
-      .clima-tab.active {
-        background: #2196f3;
-        color: #fff;
-        border-color: #2196f3;
-      }
-      .clima-tab-content {
-        display: none;
-      }
-      .clima-tab-content.active {
-        display: block;
-      }
-      .clima-card {
-        background: #1a1a1f;
-        border-radius: 8px;
-        padding: 15px;
-        border-left: 4px solid #2196f3;
-      }
-      .clima-stat {
-        font-size: 28px;
-        font-weight: bold;
-        color: #2196f3;
-      }
-      .clima-label {
-        font-size: 12px;
-        color: #888;
-      }
-      .clima-kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
-        margin-bottom: 20px;
-      }
-      .clima-grafico-barras {
-        display: flex;
-        align-items: flex-end;
-        gap: 10px;
-        height: 200px;
-        margin-top: 20px;
-      }
-      .clima-barra {
-        flex: 1;
-        background: #2196f3;
-        border-radius: 4px 4px 0 0;
-        min-height: 20px;
-        transition: height 0.3s;
-      }
-      .clima-barra-label {
-        text-align: center;
-        font-size: 11px;
-        margin-top: 5px;
-        color: #888;
-      }
-      .clima-alerta {
-        padding: 15px;
-        margin: 10px 0;
-        border-radius: 8px;
-        border-left: 4px solid;
-      }
-    </style>
-
-    <div class="clima-tab-bar">
-      <div class="clima-tab active" onclick="mudarAbaClima('resumo')">📊 Resumo Climático</div>
-      <div class="clima-tab" onclick="mudarAbaClima('talhoes')">🌱 Por Talhão</div>
-      <div class="clima-tab" onclick="mudarAbaClima('historico')">📅 Histórico</div>
-      <div class="clima-tab" onclick="mudarAbaClima('alertas')">⚠️ Alertas</div>
+    <!-- Cards de resumo -->
+    <div class="kpi">
+      <div class="card">
+        <h3>🌧️ Chuva (hoje)</h3>
+        <div class="big" id="kpiHoje">${num(chuvaHoje, 1)} mm</div>
+        <div class="sub">Somatório do dia</div>
+      </div>
+      <div class="card">
+        <h3>📊 Últimos 7 dias</h3>
+        <div class="big" id="kpi7d">${num(chuva7d, 1)} mm</div>
+        <div class="sub">Acumulado</div>
+      </div>
+      <div class="card">
+        <h3>📈 Últimos 30 dias</h3>
+        <div class="big" id="kpi30d">${num(chuva30d, 1)} mm</div>
+        <div class="sub">Acumulado</div>
+      </div>
+      <div class="card">
+        <h3>📝 Registros</h3>
+        <div class="big" id="kpiCount">${clima.length}</div>
+        <div class="sub">Total de lançamentos</div>
+      </div>
     </div>
 
-    <!-- Aba Resumo Climático -->
-    <div id="clima-aba-resumo" class="clima-tab-content active">
-      <!-- KPIs -->
-      <div class="clima-kpi-grid">
-        <div class="clima-card">
-          <div class="clima-label">🌧️ Total de Chuvas</div>
-          <div class="clima-stat">${num(totalChuva, 1)} mm</div>
-          <div class="clima-label">${diasComChuva} dias com chuva</div>
-        </div>
-        <div class="clima-card">
-          <div class="clima-label">📊 Média de Chuvas</div>
-          <div class="clima-stat">${num(mediaChuva, 1)} mm</div>
-          <div class="clima-label">por registro</div>
-        </div>
-        <div class="clima-card">
-          <div class="clima-label">🌡️ Temperatura Média</div>
-          <div class="clima-stat">${num(tempMedia, 1)}°C</div>
-          <div class="clima-label">Mín ${num(tempMinMedia, 1)}°C / Máx ${num(tempMaxMedia, 1)}°C</div>
-        </div>
-        <div class="clima-card">
-          <div class="clima-label">💧 Umidade Média</div>
-          <div class="clima-stat">${num(umidadeMedia, 0)}%</div>
-          <div class="clima-label">Vento médio: ${num(ventoMedio, 1)} km/h</div>
-        </div>
-      </div>
-
-      <!-- Gráfico de chuvas mensais -->
+    <!-- Formulário de registro (sempre visível) -->
+    <div class="section">
       <div class="card">
-        <h4>📈 Distribuição Mensal de Chuvas</h4>
-        <div class="clima-grafico-barras">
-          ${meses.map((mes, i) => `
-            <div style="flex:1; text-align:center;">
-              <div class="clima-barra" style="height: ${(chuvaPorMes[i] / maxChuvaMensal) * 180}px;"></div>
-              <div class="clima-barra-label">${mes}</div>
-              <div style="font-size:10px; color:#888;">${num(chuvaPorMes[i], 1)} mm</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
+        <h3>📋 Registrar novo clima</h3>
+        <div class="help">Preencha os dados e clique em Salvar. O registro aparecerá na tabela abaixo.</div>
+        <div class="hr"></div>
 
-      <!-- Últimos registros -->
-      <div class="tableWrap" style="margin-top:20px;">
-        <h4>📋 Últimos 10 Registros</h4>
+        <form id="frm" class="formGrid">
+          <div><small>Data</small><input class="input" name="data" type="date" value="${nowISO()}" required></div>
+
+          <div>
+            <small>Fazenda</small>
+            <select class="select" name="fazendaId" required>
+              <option value="">Selecione...</option>
+              ${fazendas.map(f => `<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join("")}
+            </select>
+          </div>
+
+          <div>
+            <small>Talhão</small>
+            <select class="select" name="talhaoId">
+              <option value="">(Geral / sem talhão)</option>
+              ${talhoes.map(t => `<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join("")}
+            </select>
+          </div>
+
+          <div><small>Chuva (mm)</small><input class="input" name="chuvaMm" type="number" step="0.1" placeholder="0"></div>
+          <div><small>Temp min (°C)</small><input class="input" name="tempMin" type="number" step="0.1" placeholder="0"></div>
+          <div><small>Temp max (°C)</small><input class="input" name="tempMax" type="number" step="0.1" placeholder="0"></div>
+          <div><small>Umidade (%)</small><input class="input" name="umidade" type="number" step="1" placeholder="0"></div>
+          <div><small>Vento (km/h)</small><input class="input" name="vento" type="number" step="0.1" placeholder="0"></div>
+
+          <div class="full">
+            <small>Observações</small>
+            <textarea class="textarea" name="obs" placeholder="Ex.: chuva isolada, temporal, observações..."></textarea>
+          </div>
+
+          <div class="full row" style="justify-content:flex-end">
+            <button class="btn primary" type="submit">💾 Salvar registro</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tabela de resumo por talhão -->
+    <div class="section" style="margin-top:20px;">
+      <div class="tableWrap">
+        <h4>📊 Acumulado por Talhão</h4>
         <table>
           <thead>
             <tr>
-              <th>Data</th>
-              <th>Fazenda</th>
               <th>Talhão</th>
-              <th>Chuva (mm)</th>
-              <th>Temp Máx</th>
-              <th>Temp Mín</th>
-              <th>Umidade</th>
-              <th>Vento</th>
+              <th>Fazenda</th>
+              <th>Área (ha)</th>
+              <th>Total Chuva (mm)</th>
+              <th>Média (mm)</th>
             </tr>
           </thead>
-          <tbody>
-            ${clima.slice(0, 10).map(c => {
-              const fazenda = findNameById(fazendas, c.fazendaId);
-              const talhao = c.talhaoId ? findNameById(talhoes, c.talhaoId) : 'Geral';
+          <tbody id="tbodyAcum">
+            ${talhoes.map(t => {
+              const total = chuvaPorTalhao.get(t.id) || 0;
+              const registrosTalhao = clima.filter(c => c.talhaoId === t.id).length;
+              const media = registrosTalhao > 0 ? total / registrosTalhao : 0;
+              const fazenda = findNameById(fazendas, t.fazendaId);
               return `
                 <tr>
-                  <td>${c.data}</td>
+                  <td><b>${escapeHtml(t.nome)}</b></td>
                   <td>${escapeHtml(fazenda)}</td>
-                  <td>${escapeHtml(talhao)}</td>
-                  <td><b>${num(c.chuvaMm || 0, 1)}</b></td>
-                  <td>${c.tempMax ? c.tempMax + '°C' : '-'}</td>
-                  <td>${c.tempMin ? c.tempMin + '°C' : '-'}</td>
-                  <td>${c.umidade ? c.umidade + '%' : '-'}</td>
-                  <td>${c.vento ? c.vento + ' km/h' : '-'}</td>
+                  <td>${num(t.areaHa || 0, 1)}</td>
+                  <td><b>${num(total, 1)} mm</b></td>
+                  <td>${num(media, 1)} mm</td>
                 </tr>
               `;
             }).join('')}
@@ -2422,153 +1666,51 @@ function pageClima() {
       </div>
     </div>
 
-    <!-- Aba Por Talhão -->
-    <div id="clima-aba-talhoes" class="clima-tab-content">
-      <div class="card">
-        <h4>🌱 Acumulado de Chuvas por Talhão</h4>
-        <table style="width:100%; margin-top:15px;">
-          <thead>
-            <tr>
-              <th>Talhão</th>
-              <th>Fazenda</th>
-              <th>Total Chuva (mm)</th>
-              <th>Média por Registro</th>
-              <th>Última Chuva</th>
-              <th>Registros</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${climaPorTalhao.map(t => `
-              <tr>
-                <td><b>${escapeHtml(t.talhao)}</b></td>
-                <td>${escapeHtml(t.fazenda)}</td>
-                <td><b>${num(t.totalChuva, 1)} mm</b></td>
-                <td>${num(t.mediaChuva, 1)} mm</td>
-                <td>${t.ultimaChuva > 0 ? num(t.ultimaChuva, 1) + ' mm' : '-'}</td>
-                <td>${t.registros}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Gráfico comparativo -->
-      <div class="card" style="margin-top:20px;">
-        <h4>📊 Comparativo de Chuvas por Talhão</h4>
-        <div class="clima-grafico-barras" style="height:150px;">
-          ${climaPorTalhao.slice(0, 8).map(t => {
-            const altura = (t.totalChuva / (climaPorTalhao[0]?.totalChuva || 1)) * 130;
+    <!-- Tabela de histórico (todos os registros) -->
+    <div class="tableWrap" style="margin-top:20px;">
+      <h4>📋 Histórico de registros</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Fazenda</th>
+            <th>Talhão</th>
+            <th>Chuva (mm)</th>
+            <th>Temp máx</th>
+            <th>Temp mín</th>
+            <th>Umidade</th>
+            <th>Vento</th>
+            <th>Obs</th>
+            <th class="noPrint">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          ${clima.map(c => {
+            const fazenda = findNameById(fazendas, c.fazendaId);
+            const talhao = c.talhaoId ? findNameById(talhoes, c.talhaoId) : "Geral";
             return `
-              <div style="flex:1; text-align:center;">
-                <div class="clima-barra" style="height: ${altura}px; background: #FF9800;"></div>
-                <div class="clima-barra-label" style="font-size:10px;">${escapeHtml(t.talhao)}</div>
-                <div style="font-size:9px;">${num(t.totalChuva, 0)} mm</div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    </div>
-
-    <!-- Aba Histórico -->
-    <div id="clima-aba-historico" class="clima-tab-content">
-      <div class="card">
-        <h4>📅 Todos os Registros Climáticos</h4>
-        <div style="margin-bottom:15px;">
-          <input type="text" class="input" id="filtroData" placeholder="Filtrar por data (YYYY-MM-DD)" style="width:200px;" onkeyup="filtrarClima()">
-        </div>
-        <div class="tableWrap">
-          <table id="tabelaClima">
-            <thead>
               <tr>
-                <th>Data</th>
-                <th>Fazenda</th>
-                <th>Talhão</th>
-                <th>Chuva (mm)</th>
-                <th>Temp Máx</th>
-                <th>Temp Mín</th>
-                <th>Umidade</th>
-                <th>Vento</th>
-                <th>Obs</th>
-                <th class="noPrint">Ações</th>
+                <td>${escapeHtml(c.data || "")}</td>
+                <td>${escapeHtml(fazenda)}</td>
+                <td>${escapeHtml(talhao)}</td>
+                <td><b>${escapeHtml(num(c.chuvaMm || 0, 1))}</b></td>
+                <td>${c.tempMax ? c.tempMax + '°C' : '-'}</td>
+                <td>${c.tempMin ? c.tempMin + '°C' : '-'}</td>
+                <td>${c.umidade ? c.umidade + '%' : '-'}</td>
+                <td>${c.vento ? c.vento + ' km/h' : '-'}</td>
+                <td>${escapeHtml(c.obs || "")}</td>
+                <td class="noPrint">
+                  <button class="btn danger" style="padding:4px 8px;" onclick="window.__delClima('${c.id}')">Excluir</button>
+                </td>
               </tr>
-            </thead>
-            <tbody id="tbodyClima">
-              ${clima.map(c => {
-                const fazenda = findNameById(fazendas, c.fazendaId);
-                const talhao = c.talhaoId ? findNameById(talhoes, c.talhaoId) : 'Geral';
-                return `
-                  <tr>
-                    <td>${c.data}</td>
-                    <td>${escapeHtml(fazenda)}</td>
-                    <td>${escapeHtml(talhao)}</td>
-                    <td><b>${num(c.chuvaMm || 0, 1)}</b></td>
-                    <td>${c.tempMax ? c.tempMax + '°C' : '-'}</td>
-                    <td>${c.tempMin ? c.tempMin + '°C' : '-'}</td>
-                    <td>${c.umidade ? c.umidade + '%' : '-'}</td>
-                    <td>${c.vento ? c.vento + ' km/h' : '-'}</td>
-                    <td>${escapeHtml(c.obs || '')}</td>
-                    <td class="noPrint">
-                      <button class="btn danger" style="padding:4px 8px;" onclick="window.__delClima('${c.id}')">Excluir</button>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Aba Alertas -->
-    <div id="clima-aba-alertas" class="clima-tab-content">
-      <div class="card">
-        <h3 style="color:#ff9800;">⚠️ Alertas Climáticos</h3>
-        <div class="hr"></div>
-        ${alertas.length > 0 ? alertas.map(a => `
-          <div style="padding:15px; margin:10px 0; background: ${a.tipo === 'critico' ? 'rgba(244,67,54,0.1)' : a.tipo === 'atencao' ? 'rgba(255,152,0,0.1)' : 'rgba(33,150,243,0.1)'}; border-left:4px solid ${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'}; border-radius:4px;">
-            <h4 style="margin:0 0 5px 0; color:${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'};">${a.titulo}</h4>
-            <p style="margin:5px 0;">${a.descricao}</p>
-            <p style="margin:5px 0 0 0; color:#888; font-size:13px;">💡 ${a.acao}</p>
-          </div>
-        `).join('') : '<p style="color:#888;">Nenhum alerta climático no momento.</p>'}
-      </div>
-
-      <!-- Recomendações -->
-      <div class="card" style="margin-top:20px;">
-        <h4>🌱 Recomendações Agronômicas</h4>
-        <ul style="margin-top:15px; padding-left:20px;">
-          ${umidadeMedia < 50 ? '<li style="margin-bottom:8px;">⚠️ Umidade baixa - Risco de deriva em pulverizações</li>' : ''}
-          ${ventoMedio > 15 ? '<li style="margin-bottom:8px;">💨 Ventos fortes - Evite aplicações</li>' : ''}
-          ${totalChuva > 200 ? '<li style="margin-bottom:8px;">🌧️ Excesso de chuvas - Monitore doenças fúngicas</li>' : ''}
-          ${diasComChuva === 0 ? '<li style="margin-bottom:8px;">☀️ Período seco - Verifique necessidade de irrigação</li>' : ''}
-          <li style="margin-bottom:8px;">✅ Mantenha registros diários para melhor rastreabilidade</li>
-        </ul>
-      </div>
+            `;
+          }).join("") || '<tr><td colspan="10" style="text-align:center;">Nenhum registro climático.</td></tr>'}
+        </tbody>
+      </table>
     </div>
   `;
 
   // ==================== FUNÇÕES ====================
-
-  // Mudar de aba
-  window.mudarAbaClima = (aba) => {
-    document.querySelectorAll('.clima-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.clima-tab-content').forEach(c => c.classList.remove('active'));
-    
-    document.querySelector(`.clima-tab[onclick*="${aba}"]`).classList.add('active');
-    document.getElementById(`clima-aba-${aba}`).classList.add('active');
-  };
-
-  // Filtrar tabela de histórico
-  window.filtrarClima = () => {
-    const filtro = document.getElementById('filtroData').value.toLowerCase();
-    const linhas = document.querySelectorAll('#tbodyClima tr');
-    
-    linhas.forEach(linha => {
-      const texto = linha.cells[0].textContent.toLowerCase();
-      linha.style.display = texto.includes(filtro) ? '' : 'none';
-    });
-  };
 
   // Excluir registro
   window.__delClima = (id) => {
@@ -2580,42 +1722,41 @@ function pageClima() {
     pageClima(); // Recarrega a página
   };
 
-  // Novo registro (modal simples)
-  document.getElementById("btnNovoRegistro").addEventListener("click", () => {
-    const data = prompt("Data (YYYY-MM-DD):", nowISO());
-    if (!data) return;
+  // Salvar novo registro
+  document.getElementById("frm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
     
-    const fazendaOpcoes = fazendas.map(f => `${f.id}:${f.nome}`).join(',');
-    const fazendaId = prompt(`ID da fazenda (opções: ${fazendaOpcoes}):`, fazendas[0]?.id || '');
-    if (!fazendaId) return;
-    
-    const talhaoOpcoes = talhoes.map(t => `${t.id}:${t.nome}`).join(',');
-    const talhaoId = prompt(`ID do talhão (opcional - deixe vazio para geral):`, '') || '';
-    
-    const chuva = parseFloat(prompt("Chuva (mm):", "0")) || 0;
-    const tempMax = parseFloat(prompt("Temperatura máxima (°C):", "")) || null;
-    const tempMin = parseFloat(prompt("Temperatura mínima (°C):", "")) || null;
-    const umidade = parseInt(prompt("Umidade (%):", "")) || null;
-    const vento = parseFloat(prompt("Vento (km/h):", "")) || null;
-    const obs = prompt("Observações:", "") || "";
-
-    const db2 = getDB();
-    db2.clima.push({
+    const obj = {
       id: uid("cli"),
       safraId: getSafraId(),
-      data,
-      fazendaId,
-      talhaoId,
-      chuvaMm: chuva,
-      tempMax,
-      tempMin,
-      umidade,
-      vento,
-      obs
-    });
+      data: fd.get("data") || nowISO(),
+      fazendaId: fd.get("fazendaId"),
+      talhaoId: fd.get("talhaoId") || "",
+      chuvaMm: Number(fd.get("chuvaMm") || 0),
+      tempMin: Number(fd.get("tempMin") || 0) || null,
+      tempMax: Number(fd.get("tempMax") || 0) || null,
+      umidade: Number(fd.get("umidade") || 0) || null,
+      vento: Number(fd.get("vento") || 0) || null,
+      obs: fd.get("obs") || ""
+    };
+
+    if (!obj.fazendaId) {
+      alert("Selecione uma fazenda");
+      return;
+    }
+
+    const db2 = getDB();
+    db2.clima = db2.clima || [];
+    db2.clima.push(obj);
     setDB(db2);
-    toast("Salvo", "Registro climático adicionado");
-    pageClima();
+
+    // Limpar formulário (mantém a data atual)
+    e.target.reset();
+    document.querySelector('input[name="data"]').value = nowISO();
+    
+    toast("Salvo", "Registro climático adicionado.");
+    pageClima(); // Recarrega para mostrar o novo registro
   });
 
   // Exportar CSV
@@ -2623,7 +1764,7 @@ function pageClima() {
     const dados = clima.map(c => ({
       Data: c.data,
       Fazenda: findNameById(fazendas, c.fazendaId),
-      Talhão: c.talhaoId ? findNameById(talhoes, c.talhaoId) : 'Geral',
+      Talhao: c.talhaoId ? findNameById(talhoes, c.talhaoId) : 'Geral',
       Chuva_mm: c.chuvaMm || 0,
       Temp_Max: c.tempMax || '',
       Temp_Min: c.tempMin || '',
