@@ -1915,45 +1915,40 @@ function pageClima() {
   const content = document.getElementById("content");
   content.innerHTML = `
     <style>
-      /* Garantir bom contraste em toda a página */
-      .clima-kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
-        margin-bottom: 20px;
+      /* Garantir que TODOS os textos sejam claros */
+      body, .main, .card, .clima-kpi-card, .form-clima, .tableWrap {
+        color: #fff;
       }
       .clima-kpi-card {
-        background: #2a2a30; /* mais claro que o fundo padrão */
+        background: #2a2a30;
         border-radius: 12px;
         padding: 20px;
         border-left: 4px solid #2196f3;
         box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-        color: #fff;
       }
       .clima-kpi-card h3 {
         margin: 0 0 10px 0;
-        color: #90caf9; /* azul claro */
+        color: #90caf9;
         font-size: 16px;
         font-weight: 500;
       }
       .clima-kpi-valor {
         font-size: 36px;
         font-weight: 700;
-        color: #ffffff;
-        line-height: 1.2;
+        color: #ffffff; /* branco puro */
       }
       .clima-kpi-unidade {
         font-size: 16px;
-        color: #bbb;
+        color: #cccccc; /* cinza claro visível */
         margin-left: 5px;
       }
       .clima-kpi-label {
-        color: #ccc;
+        color: #dddddd; /* quase branco */
         font-size: 13px;
         margin-top: 8px;
       }
       .form-clima {
-        background: #1e1e24; /* um pouco mais escuro para destacar o formulário */
+        background: #1e1e24;
         border-radius: 12px;
         padding: 20px;
         margin-bottom: 30px;
@@ -1963,6 +1958,28 @@ function pageClima() {
         margin-top: 0;
         color: #bbdefb;
       }
+      /* Inputs e labels com contraste */
+      .input, .select, .textarea {
+        background: #2c2c34;
+        color: #ffffff; /* texto branco */
+        border: 1px solid #4a4a55;
+        padding: 8px 12px;
+        border-radius: 6px;
+        width: 100%;
+      }
+      .input::placeholder, .textarea::placeholder {
+        color: #aaa;
+      }
+      .input:focus, .select:focus, .textarea:focus {
+        border-color: #2196f3;
+        outline: none;
+      }
+      small {
+        color: #ccc;
+        display: block;
+        margin-bottom: 4px;
+      }
+      /* Gráfico */
       .grafico-barras {
         display: flex;
         align-items: flex-end;
@@ -1972,7 +1989,7 @@ function pageClima() {
       }
       .barra {
         flex: 1;
-        background: #42a5f5; /* azul mais vibrante */
+        background: #42a5f5;
         border-radius: 4px 4px 0 0;
         min-height: 20px;
         transition: height 0.3s;
@@ -1983,10 +2000,7 @@ function pageClima() {
         margin-top: 5px;
         color: #ccc;
       }
-      .secao-tabela {
-        margin-top: 30px;
-      }
-      /* Melhorias nas tabelas */
+      /* Tabelas */
       .tableWrap {
         background: #1a1a1f;
         border-radius: 12px;
@@ -2022,12 +2036,7 @@ function pageClima() {
         font-size: 11px;
         margin-left: 4px;
       }
-      /* Inputs e botões já possuem bom contraste no CSS global, mas vamos garantir */
-      .input, .select, .textarea {
-        background: #25252b;
-        color: #fff;
-        border: 1px solid #444;
-      }
+      /* Botões já tem contraste, mas vamos reforçar */
       .btn {
         background: #333;
         color: #fff;
