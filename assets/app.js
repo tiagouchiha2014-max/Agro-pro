@@ -2175,6 +2175,462 @@ function pageAplicacoes() {
 
   render();
 }
+function pageCombustivel() {
+  const db = getDB();
+  const fazendas = onlySafra(db.fazendas);
+  const talhoes = onlySafra(db.talhoes);
+  const equipe = onlySafra(db.equipe);
+  const maquinas = onlySafra(db.maquinas);
+  const tanques = onlySafra(db.dieselEstoque);
+  const entradas = onlySafra(db.dieselEntradas || []).sort((a, b) => b.data.localeCompare(a.data));
+  const abastecimentos = onlySafra(db.combustivel || []).sort((a, b) => b.data.localeCompare(a.data));
+
+  setTopActions(`<button class="btn" id="btnExportCSV">📥 Exportar CSV</button>`);
+
+  // ==================== CÁLCULOS ====================
+  
+  // Totais gerais
+  const totalLitros = tanques.reduce((s, t) => s + Number(t.litros || 0), 0);
+  const totalEntradas = entradas.reduce((s, e) => s + Number(e.litros || 0), 0);
+  const totalAbastecimentos = abastecimentos.reduce((s, a) => s + Number(a.litros || 0), 0);
+  
+  // Custo total
+  const custoTotalEntradas = entradas.reduce((s, e) => s + (Number(e.litros || 0) * Number(e.precoLitro || 0)), 0);
+  const custoTotalAbastecimentos = abastecimentos.reduce((s, a) => s + (Number(a.litros || 0) * Number(a.precoLitro || 0)), 0);
+  
+  // Preços
+  const precoVigente = tanques[0]?.precoVigente || 0;
+  const precoMedioEntradas = totalEntradas > 0 ? custoTotalEntradas / totalEntradas : 0;
+
+  // Dados para gráficos
+  const ultimos7Abastecimentos = abastecimentos.slice(0, 7).reverse();
+  const maxLitros7 = Math.max(...ultimos7Abastecimentos.map(a => a.litros), 1);
+
+  // Consumo por máquina (para gráfico de pizza simplificado)
+  const consumoPorMaquina = {};
+  abastecimentos.forEach(a => {
+    if (a.maquinaId) {
+      const maquina = maquinas.find(m => m.id === a.maquinaId);
+      const nome = maquina ? maquina.nome : 'Desconhecida';
+      consumoPorMaquina[nome] = (consumoPorMaquina[nome] || 0) + Number(a.litros || 0);
+    }
+  });
+  
+  const topMaquinas = Object.entries(consumoPorMaquina)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+  const maxConsumoMaquina = Math.max(...topMaquinas.map(([_, v]) => v), 1);
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <style>
+      .combustivel-card {
+        background: linear-gradient(135deg, #1a2a3a, #0f1a24);
+        border-radius: 12px;
+        padding: 20px;
+        border-left: 4px solid #FF9800;
+      }
+      .combustivel-stat {
+        font-size: 28px;
+        font-weight: bold;
+        color: #FF9800;
+      }
+      .combustivel-label {
+        font-size: 12px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .status-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .status-ok {
+        background: rgba(76, 175, 80, 0.15);
+        color: #4CAF50;
+        border: 1px solid rgba(76, 175, 80, 0.3);
+      }
+      .status-atencao {
+        background: rgba(255, 152, 0, 0.15);
+        color: #ff9800;
+        border: 1px solid rgba(255, 152, 0, 0.3);
+      }
+      .status-critico {
+        background: rgba(244, 67, 54, 0.15);
+        color: #f44336;
+        border: 1px solid rgba(244, 67, 54, 0.3);
+      }
+      .mini-grafico {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        height: 60px;
+        margin-top: 15px;
+      }
+      .mini-barra {
+        flex: 1;
+        background: #FF9800;
+        border-radius: 4px 4px 0 0;
+        min-width: 20px;
+        transition: height 0.3s;
+      }
+      .pizza-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .pizza-cor {
+        width: 12px;
+        height: 12px;
+        border-radius: 4px;
+      }
+      .pizza-barra-container {
+        flex: 1;
+        height: 8px;
+        background: #2a2a30;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .pizza-barra {
+        height: 100%;
+        background: #FF9800;
+        border-radius: 4px;
+      }
+    </style>
+
+    <!-- Cards de resumo -->
+    <div class="kpi">
+      <div class="card">
+        <h3>⛽ Estoque Atual</h3>
+        <div class="big">${num(totalLitros, 0)} L</div>
+        <div class="sub">${tanques.length} tanque(s)</div>
+      </div>
+      <div class="card">
+        <h3>💰 Preço Vigente</h3>
+        <div class="big">${kbrl(precoVigente)}</div>
+        <div class="sub">Última entrada</div>
+      </div>
+      <div class="card">
+        <h3>📥 Total Entradas</h3>
+        <div class="big">${num(totalEntradas, 0)} L</div>
+        <div class="sub">${kbrl(custoTotalEntradas)}</div>
+      </div>
+      <div class="card">
+        <h3>🚜 Total Abastec.</h3>
+        <div class="big">${num(totalAbastecimentos, 0)} L</div>
+        <div class="sub">${kbrl(custoTotalAbastecimentos)}</div>
+      </div>
+    </div>
+
+    <!-- Status dos tanques -->
+    <div class="section" style="margin-top:10px;">
+      ${tanques.map(t => {
+        const status = t.litros < 0 ? 'critico' : t.litros < 500 ? 'atencao' : 'ok';
+        const statusText = t.litros < 0 ? '🚨 NEGATIVO' : t.litros < 500 ? '⚠️ BAIXO' : '✅ NORMAL';
+        return `
+          <div class="card" style="margin-bottom:10px; padding:15px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h4 style="margin:0;">⛽ ${escapeHtml(t.deposito)}</h4>
+                <div style="margin-top:5px;">
+                  <span class="status-badge status-${status}">${statusText}</span>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:24px; font-weight:bold; color:${t.litros < 0 ? '#f44336' : t.litros < 500 ? '#ff9800' : '#4CAF50'};">${num(t.litros, 0)} L</div>
+                <div style="font-size:12px; color:#888;">Preço: ${kbrl(t.precoVigente || 0)}/L</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <!-- Formulários lado a lado -->
+    <div class="section" style="grid-template-columns: 1fr 1fr;">
+      <!-- Formulário de entrada -->
+      <div class="card">
+        <h3>📥 Registrar entrada de diesel</h3>
+        <div class="help">Registre a compra de diesel para abastecer o tanque.</div>
+        <div class="hr"></div>
+        <form id="frmEntrada" class="formGrid">
+          <div class="full"><small>Data</small><input class="input" name="data" type="date" value="${nowISO()}" required></div>
+          <div class="full">
+            <small>Depósito / Tanque</small>
+            <select class="select" name="deposito" required>
+              ${tanques.map(t => `<option value="${escapeHtml(t.deposito)}">${escapeHtml(t.deposito)}</option>`).join('')}
+            </select>
+          </div>
+          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.1" placeholder="0" required></div>
+          <div><small>Preço por litro (R$)</small><input class="input" name="precoLitro" type="number" step="0.01" placeholder="0" required></div>
+          <div class="full"><small>Observações</small><textarea class="textarea" name="obs" placeholder="Nota fiscal, fornecedor..."></textarea></div>
+          <div class="full row" style="justify-content:flex-end">
+            <button class="btn primary" type="submit">💾 Registrar entrada</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Formulário de abastecimento -->
+      <div class="card">
+        <h3>🚜 Registrar abastecimento</h3>
+        <div class="help">Registre o abastecimento de máquinas. O custo usará o preço da última entrada.</div>
+        <div class="hr"></div>
+        <form id="frmSaida" class="formGrid">
+          <div class="full"><small>Data</small><input class="input" name="data" type="date" value="${nowISO()}" required></div>
+          <div class="full">
+            <small>Depósito / Tanque</small>
+            <select class="select" name="deposito" required>
+              ${tanques.map(t => `<option value="${escapeHtml(t.deposito)}">${escapeHtml(t.deposito)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="full">
+            <small>Fazenda</small>
+            <select class="select" name="fazendaId" required>
+              <option value="">Selecione...</option>
+              ${fazendas.map(f => `<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <small>Talhão (opcional)</small>
+            <select class="select" name="talhaoId">
+              <option value="">(sem talhão)</option>
+              ${talhoes.map(t => `<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <small>Máquina</small>
+            <select class="select" name="maquinaId">
+              <option value="">(opcional)</option>
+              ${maquinas.map(m => `<option value="${m.id}">${escapeHtml(m.nome)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <small>Operador</small>
+            <select class="select" name="operadorId">
+              <option value="">(opcional)</option>
+              ${equipe.map(e => `<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join('')}
+            </select>
+          </div>
+          <div><small>Litros</small><input class="input" name="litros" type="number" step="0.1" placeholder="0" required></div>
+          <div><small>KM/Horímetro</small><input class="input" name="kmOuHora" type="number" step="0.1" placeholder="0"></div>
+          <div><small>Posto</small><input class="input" name="posto" placeholder="Posto / origem"></div>
+          <div class="full"><small>Observações</small><textarea class="textarea" name="obs"></textarea></div>
+          <div class="full row" style="justify-content:flex-end">
+            <button class="btn primary" type="submit">💾 Registrar saída</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Mini gráficos -->
+    <div class="section" style="margin-top:20px; grid-template-columns: 1fr 1fr;">
+      <!-- Gráfico de últimos abastecimentos -->
+      <div class="card">
+        <h4>📊 Últimos 7 abastecimentos</h4>
+        <div class="mini-grafico">
+          ${ultimos7Abastecimentos.map(a => {
+            const altura = (a.litros / maxLitros7) * 50;
+            return `
+              <div style="flex:1; text-align:center;">
+                <div class="mini-barra" style="height: ${altura}px;"></div>
+                <div style="font-size:9px; margin-top:5px; color:#888;">${a.data.substring(5)}</div>
+                <div style="font-size:8px;">${num(a.litros,0)}L</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Gráfico de consumo por máquina -->
+      <div class="card">
+        <h4>🚜 Consumo por máquina</h4>
+        <div style="margin-top:15px;">
+          ${topMaquinas.map(([nome, litros], index) => {
+            const percentual = (litros / maxConsumoMaquina) * 100;
+            const cores = ['#FF9800', '#4CAF50', '#2196F3', '#9C27B0', '#F44336'];
+            return `
+              <div class="pizza-item">
+                <div class="pizza-cor" style="background:${cores[index % cores.length]};"></div>
+                <div style="width:80px; font-size:12px;">${escapeHtml(nome)}</div>
+                <div class="pizza-barra-container">
+                  <div class="pizza-barra" style="width:${percentual}%; background:${cores[index % cores.length]};"></div>
+                </div>
+                <div style="font-size:11px; color:#FF9800;">${num(litros,0)}L</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabela de entradas -->
+    <div class="tableWrap" style="margin-top:20px;">
+      <h4>📥 Últimas entradas</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Depósito</th>
+            <th>Litros</th>
+            <th>Preço/L</th>
+            <th>Total</th>
+            <th>Obs</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entradas.slice(0, 10).map(e => `
+            <tr>
+              <td>${e.data}</td>
+              <td>${escapeHtml(e.deposito)}</td>
+              <td><b>${num(e.litros, 0)} L</b></td>
+              <td>${kbrl(e.precoLitro)}</td>
+              <td>${kbrl(e.litros * e.precoLitro)}</td>
+              <td>${escapeHtml(e.obs || '')}</td>
+            </tr>
+          `).join('') || '<tr><td colspan="6">Nenhuma entrada registrada.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tabela de abastecimentos -->
+    <div class="tableWrap" style="margin-top:20px;">
+      <h4>🚜 Últimos abastecimentos</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Fazenda</th>
+            <th>Talhão</th>
+            <th>Máquina</th>
+            <th>Litros</th>
+            <th>Preço/L</th>
+            <th>Custo</th>
+            <th>Obs</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${abastecimentos.slice(0, 20).map(a => {
+            const fazenda = findNameById(fazendas, a.fazendaId);
+            const talhao = a.talhaoId ? findNameById(talhoes, a.talhaoId) : '-';
+            const maquina = maquinas.find(m => m.id === a.maquinaId);
+            return `
+              <tr>
+                <td>${a.data}</td>
+                <td>${escapeHtml(fazenda)}</td>
+                <td>${escapeHtml(talhao)}</td>
+                <td>${maquina ? escapeHtml(maquina.nome) : '-'}</td>
+                <td><b>${num(a.litros, 0)} L</b></td>
+                <td>${kbrl(a.precoLitro)}</td>
+                <td>${kbrl(a.litros * a.precoLitro)}</td>
+                <td>${escapeHtml(a.obs || '')}</td>
+              </tr>
+            `;
+          }).join('') || '<tr><td colspan="8">Nenhum abastecimento registrado.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  // ==================== FUNÇÕES ====================
+
+  // Registrar entrada
+  document.getElementById("frmEntrada").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    
+    const litros = Number(fd.get("litros") || 0);
+    if (litros <= 0) { alert("Litros deve ser > 0"); return; }
+    
+    const precoLitro = Number(fd.get("precoLitro") || 0);
+    if (precoLitro <= 0) { alert("Preço deve ser > 0"); return; }
+
+    const db2 = getDB();
+    registrarEntradaDiesel(
+      db2,
+      fd.get("deposito") || "Tanque Principal",
+      litros,
+      precoLitro,
+      fd.get("data") || nowISO(),
+      fd.get("obs") || ""
+    );
+    setDB(db2);
+    
+    e.target.reset();
+    document.querySelector('input[name="data"]').value = nowISO();
+    toast("Entrada registrada", `+${litros}L a ${kbrl(precoLitro)}/L`);
+    pageCombustivel();
+  });
+
+  // Registrar abastecimento
+  document.getElementById("frmSaida").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    
+    const litros = Number(fd.get("litros") || 0);
+    if (litros <= 0) { alert("Litros deve ser > 0"); return; }
+
+    const db2 = getDB();
+    const deposito = fd.get("deposito") || "Tanque Principal";
+    const tank = db2.dieselEstoque.find(t => t.safraId === getSafraId() && t.deposito === deposito);
+    if (!tank) { alert("Tanque não encontrado"); return; }
+
+    const res = baixaDiesel(db2, deposito, litros);
+    if (!res.ok) { alert(res.msg); return; }
+
+    const obj = {
+      id: uid("cmb"),
+      safraId: getSafraId(),
+      data: fd.get("data") || nowISO(),
+      tipo: "Diesel S10",
+      deposito,
+      posto: fd.get("posto") || "",
+      maquinaId: fd.get("maquinaId") || "",
+      operadorId: fd.get("operadorId") || "",
+      fazendaId: fd.get("fazendaId"),
+      talhaoId: fd.get("talhaoId") || "",
+      litros,
+      precoLitro: res.precoLitro,
+      kmOuHora: Number(fd.get("kmOuHora") || 0),
+      obs: fd.get("obs") || ""
+    };
+
+    if (!obj.fazendaId) {
+      alert("Selecione uma fazenda");
+      return;
+    }
+
+    db2.combustivel = db2.combustivel || [];
+    db2.combustivel.push(obj);
+    setDB(db2);
+    
+    e.target.reset();
+    document.querySelector('input[name="data"]').value = nowISO();
+    toast("Abastecimento registrado", `-${litros}L`);
+    pageCombustivel();
+  });
+
+  // Exportar CSV
+  document.getElementById("btnExportCSV").addEventListener("click", () => {
+    const dados = abastecimentos.map(a => ({
+      Data: a.data,
+      Deposito: a.deposito,
+      Fazenda: findNameById(fazendas, a.fazendaId),
+      Talhao: a.talhaoId ? findNameById(talhoes, a.talhaoId) : '-',
+      Maquina: maquinas.find(m => m.id === a.maquinaId)?.nome || '-',
+      Operador: equipe.find(e => e.id === a.operadorId)?.nome || '-',
+      Litros: a.litros,
+      PrecoLitro: a.precoLitro,
+      Custo: a.litros * a.precoLitro,
+      Obs: a.obs || ''
+    }));
+    downloadText(`combustivel-${nowISO()}.csv`, toCSV(dados));
+    toast("Exportado", "CSV baixado");
+  });
+}
 
 function pageRelatorios() {
   const db = getDB();
