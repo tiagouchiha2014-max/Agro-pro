@@ -1,11 +1,5 @@
 /* ============================================================
-   AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL
-   Atualizações:
-   + Sistema de SAFRAS (substitui empresas como filtro principal)
-   + Dados isolados por safra
-   + Acumulação de estoque corrigida
-   + Preços de mercado configuráveis
-   + Controle de diesel com UEPS
+   AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL CORRIGIDA
    ============================================================ */
 
 const Storage = {
@@ -122,30 +116,30 @@ function getProdutosBase() {
     { id: "prod3", tipo: "Fungicida", nome: "Fox", ingrediente: "Trifloxistrobina + Protioconazol", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 98.50, pragasAlvo: ["Ferrugem Asiática", "Oídio", "Cercosporiose"] },
     { id: "prod4", tipo: "Fungicida", nome: "Aproach", ingrediente: "Picoxistrobina", fabricante: "Corteva", carenciaDias: 14, reentradaHoras: 24, unidade: "L", preco: 76.00, pragasAlvo: ["Ferrugem Asiática", "Antracnose"] },
     { id: "prod5", tipo: "Fungicida", nome: "Priori Xtra", ingrediente: "Azoxistrobina + Ciproconazol", fabricante: "Syngenta", carenciaDias: 14, reentradaHoras: 24, unidade: "L", preco: 92.00, pragasAlvo: ["Ferrugem Asiática", "Oídio", "Mancha-alvo"] },
-    
+
     // Inseticidas para soja
     { id: "prod6", tipo: "Inseticida", nome: "Engeo Pleno", ingrediente: "Tiametoxam + Lambda-cialotrina", fabricante: "Syngenta", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 110.00, pragasAlvo: ["Lagarta-da-soja", "Percevejo-marrom", "Helicoverpa"] },
     { id: "prod7", tipo: "Inseticida", nome: "Connect", ingrediente: "Imidacloprido + Beta-ciflutrina", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 78.00, pragasAlvo: ["Lagarta-da-soja", "Percevejo-marrom"] },
     { id: "prod8", tipo: "Inseticida", nome: "Belt", ingrediente: "Flubendiamida", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 210.00, pragasAlvo: ["Lagarta-do-cartucho", "Helicoverpa"] },
     { id: "prod9", tipo: "Inseticida", nome: "Premio", ingrediente: "Clorantraniliprole", fabricante: "Syngenta", carenciaDias: 14, reentradaHoras: 24, unidade: "L", preco: 195.00, pragasAlvo: ["Lagarta-da-soja", "Helicoverpa"] },
     { id: "prod10", tipo: "Inseticida", nome: "Curyom", ingrediente: "Zeta-cipermetrina", fabricante: "FMC", carenciaDias: 14, reentradaHoras: 24, unidade: "L", preco: 45.00, pragasAlvo: ["Percevejo-marrom", "Lagarta-da-soja"] },
-    
+
     // Herbicidas
     { id: "prod11", tipo: "Herbicida", nome: "Roundup Original", ingrediente: "Glifosato", fabricante: "Bayer", carenciaDias: 0, reentradaHoras: 4, unidade: "L", preco: 32.00, pragasAlvo: ["Plantas daninhas"] },
     { id: "prod12", tipo: "Herbicida", nome: "Zapp Qi", ingrediente: "Glifosato", fabricante: "Syngenta", carenciaDias: 0, reentradaHoras: 4, unidade: "L", preco: 34.00, pragasAlvo: ["Plantas daninhas"] },
     { id: "prod13", tipo: "Herbicida", nome: "Aurora", ingrediente: "Carfentrazona-etílica", fabricante: "FMC", carenciaDias: 7, reentradaHoras: 24, unidade: "L", preco: 120.00, pragasAlvo: ["Plantas daninhas"] },
     { id: "prod14", tipo: "Herbicida", nome: "Classic", ingrediente: "Clorimurom-etílico", fabricante: "Corteva", carenciaDias: 60, reentradaHoras: 24, unidade: "kg", preco: 85.00, pragasAlvo: ["Plantas daninhas"] },
     { id: "prod15", tipo: "Herbicida", nome: "Spartan", ingrediente: "Sulfentrazona", fabricante: "FMC", carenciaDias: 30, reentradaHoras: 24, unidade: "L", preco: 95.00, pragasAlvo: ["Plantas daninhas"] },
-    
+
     // Inseticidas para milho
     { id: "prod16", tipo: "Inseticida", nome: "Match", ingrediente: "Lufenurom", fabricante: "Syngenta", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 68.00, pragasAlvo: ["Lagarta-do-cartucho"] },
     { id: "prod17", tipo: "Inseticida", nome: "Proclaim", ingrediente: "Benzoato de emamectina", fabricante: "Syngenta", carenciaDias: 14, reentradaHoras: 24, unidade: "kg", preco: 220.00, pragasAlvo: ["Lagarta-do-cartucho", "Helicoverpa"] },
-    
+
     // Inseticidas para algodão
     { id: "prod18", tipo: "Inseticida", nome: "Oberon", ingrediente: "Espiromesifeno", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 145.00, pragasAlvo: ["Ácaro-rajado", "Mosca-branca"] },
     { id: "prod19", tipo: "Inseticida", nome: "Diafuran", ingrediente: "Diafentiurom", fabricante: "Syngenta", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 130.00, pragasAlvo: ["Mosca-branca"] },
     { id: "prod20", tipo: "Inseticida", nome: "Carbaryl", ingrediente: "Carbaril", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 42.00, pragasAlvo: ["Bicudo-do-algodoeiro", "Pulgão"] },
-    
+
     // Fertilizantes foliares
     { id: "prod21", tipo: "Fertilizante", nome: "Nutricionamento", ingrediente: "NPK 20-20-20", fabricante: "Mosaic", carenciaDias: 0, reentradaHoras: 4, unidade: "kg", preco: 8.50, pragasAlvo: [] },
     { id: "prod22", tipo: "Fertilizante", nome: "Boro", ingrediente: "Ácido bórico", fabricante: "Quimifol", carenciaDias: 0, reentradaHoras: 4, unidade: "L", preco: 12.00, pragasAlvo: [] },
@@ -370,7 +364,7 @@ function renderShell(pageKey, title, subtitle) {
   const db = getDB();
   const safraId = getSafraId();
   const safra = getSafraAtual();
-  
+
   const nav = PAGES.map(p => {
     const active = (p.key === pageKey) ? "active" : "";
     return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span> ${escapeHtml(p.label)}</a>`;
@@ -630,7 +624,7 @@ function gerarAlertasPragas(db) {
 
 /* ------------------ Páginas ------------------ */
 
-// Página de Safras (substitui a antiga página de Empresas)
+// Página de Safras
 function pageSafras() {
   const db = getDB();
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
@@ -1231,7 +1225,7 @@ function pageEstoque() {
 
     const qtd = prompt(`Quantidade adicional para ${item.produtoNome || 'este produto'}:`, "0");
     if (!qtd) return;
-    
+
     const qtdNum = parseFloat(qtd);
     if (isNaN(qtdNum) || qtdNum <= 0) {
       alert("Quantidade inválida");
@@ -1256,7 +1250,7 @@ function pageEstoque() {
   document.getElementById("frm").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    
+
     const produtoId = fd.get("produtoId");
     const deposito = fd.get("deposito") || "Central";
     const qtd = Number(fd.get("qtd") || 0);
@@ -1462,8 +1456,6 @@ function pageTalhoes() {
   render();
 }
 
-
-
 function pageClima() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
@@ -1473,22 +1465,22 @@ function pageClima() {
   setTopActions(`<button class="btn" id="btnExportCSV">📥 Exportar CSV</button>`);
 
   // ==================== CÁLCULOS PARA OS CARDS ====================
-  
+
   const hoje = nowISO();
   const chuvaHoje = clima.filter(c => c.data === hoje).reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
-  
+
   const seteDiasAtras = new Date();
   seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
   const dataLimite7d = seteDiasAtras.toISOString().split('T')[0];
-  
+
   const chuva7d = clima
     .filter(c => c.data >= dataLimite7d)
     .reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
-  
+
   const trintaDiasAtras = new Date();
   trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30);
   const dataLimite30d = trintaDiasAtras.toISOString().split('T')[0];
-  
+
   const chuva30d = clima
     .filter(c => c.data >= dataLimite30d)
     .reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
@@ -1667,7 +1659,7 @@ function pageClima() {
   document.getElementById("frm").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    
+
     const obj = {
       id: uid("cli"),
       safraId: getSafraId(),
@@ -1695,7 +1687,7 @@ function pageClima() {
     // Limpar formulário (mantém a data atual)
     e.target.reset();
     document.querySelector('input[name="data"]').value = nowISO();
-    
+
     toast("Salvo", "Registro climático adicionado.");
     pageClima(); // Recarrega para mostrar o novo registro
   });
@@ -1895,7 +1887,7 @@ function pageAplicacoes() {
     novaLinha.style.gap = "10px";
     novaLinha.style.marginBottom = "10px";
     novaLinha.style.alignItems = "center";
-    
+
     novaLinha.innerHTML = `
       <select class="select" name="produtoId[]" onchange="atualizarPrecoUnit(this, ${produtoCount})">
         <option value="">Selecione um produto...</option>
@@ -1908,7 +1900,7 @@ function pageAplicacoes() {
         <button type="button" class="btn danger" style="padding:8px;" onclick="removerLinhaProduto(this)">✕</button>
       </div>
     `;
-    
+
     container.appendChild(novaLinha);
     produtoCount++;
   });
@@ -1941,17 +1933,17 @@ function pageAplicacoes() {
     linhas.forEach((linha, idx) => {
       const select = linha.querySelector('select[name="produtoId[]"]');
       const dose = parseFloat(linha.querySelector('input[name="dose[]"]').value) || 0;
-      
+
       if (select && select.value && dose > 0) {
         const opt = select.options[select.selectedIndex];
         const precoUnit = parseFloat(opt.dataset.preco) || 0;
         const produtoNome = opt.text.split(' — ')[0];
         const custoLinha = precoUnit * dose * area;
-        
+
         total += custoLinha;
         linha.querySelector(`#custo-${idx}`).innerText = kbrl(custoLinha);
         linha.querySelector(`#custo-${idx}`).style.color = '#4CAF50';
-        
+
         detalhes.push(`${produtoNome}: ${num(dose,2)} ${opt.dataset.unidade || ''} × ${num(area,1)} ha = ${kbrl(custoLinha)}`);
       } else {
         const custoEl = linha.querySelector(`#custo-${idx}`);
@@ -1964,7 +1956,7 @@ function pageAplicacoes() {
 
     // Atualizar display
     document.getElementById('custoTotalDisplay').innerText = kbrl(total);
-    
+
     const detalheEl = document.getElementById('detalheCusto');
     if (detalhes.length > 0) {
       detalheEl.innerHTML = detalhes.join('<br>');
@@ -1983,12 +1975,12 @@ function pageAplicacoes() {
     const db2 = getDB();
     const rows = onlySafra(db2.aplicacoes || []);
     const tb = document.getElementById("tbody");
-    
+
     tb.innerHTML = rows.slice().reverse().map(a => {
       const tal = findNameById(talhoes, a.talhaoId);
       const prds = (a.produtos || []).map(p => p.produtoNome).join(' + ');
       const corCusto = a.custoTotal > 1000 ? '#4CAF50' : (a.custoTotal > 500 ? '#FF9800' : '#888');
-      
+
       return `
         <tr>
           <td>${a.data}</td>
@@ -2018,7 +2010,7 @@ function pageAplicacoes() {
     e.preventDefault();
     const fd = new FormData(e.target);
     const area = Number(fd.get("areaHaAplicada") || 0);
-    
+
     if (area <= 0) { 
       alert("Área deve ser > 0"); 
       return; 
@@ -2090,7 +2082,7 @@ function pageAplicacoes() {
 
     setDB(db2);
     e.target.reset();
-    
+
     // Reset visual
     document.querySelectorAll('.produto-linha').forEach((linha, idx) => {
       if (idx > 0) linha.remove();
@@ -2103,7 +2095,7 @@ function pageAplicacoes() {
     });
     produtoCount = 1;
     calcularCustoTotal();
-    
+
     toast("Salvo", "Aplicação registrada. Baixa no estoque.");
     if (msgs.length) toast("Baixas", msgs.slice(0, 3).join(" • "));
     render();
@@ -2116,6 +2108,7 @@ function pageAplicacoes() {
 
   render();
 }
+
 function pageCombustivel() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
@@ -2129,16 +2122,16 @@ function pageCombustivel() {
   setTopActions(`<button class="btn" id="btnExportCSV">📥 Exportar CSV</button>`);
 
   // ==================== CÁLCULOS ====================
-  
+
   // Totais gerais
   const totalLitros = tanques.reduce((s, t) => s + Number(t.litros || 0), 0);
   const totalEntradas = entradas.reduce((s, e) => s + Number(e.litros || 0), 0);
   const totalAbastecimentos = abastecimentos.reduce((s, a) => s + Number(a.litros || 0), 0);
-  
+
   // Custo total
   const custoTotalEntradas = entradas.reduce((s, e) => s + (Number(e.litros || 0) * Number(e.precoLitro || 0)), 0);
   const custoTotalAbastecimentos = abastecimentos.reduce((s, a) => s + (Number(a.litros || 0) * Number(a.precoLitro || 0)), 0);
-  
+
   // Preços
   const precoVigente = tanques[0]?.precoVigente || 0;
   const precoMedioEntradas = totalEntradas > 0 ? custoTotalEntradas / totalEntradas : 0;
@@ -2156,7 +2149,7 @@ function pageCombustivel() {
       consumoPorMaquina[nome] = (consumoPorMaquina[nome] || 0) + Number(a.litros || 0);
     }
   });
-  
+
   const topMaquinas = Object.entries(consumoPorMaquina)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
@@ -2482,10 +2475,10 @@ function pageCombustivel() {
   document.getElementById("frmEntrada").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    
+
     const litros = Number(fd.get("litros") || 0);
     if (litros <= 0) { alert("Litros deve ser > 0"); return; }
-    
+
     const precoLitro = Number(fd.get("precoLitro") || 0);
     if (precoLitro <= 0) { alert("Preço deve ser > 0"); return; }
 
@@ -2499,7 +2492,7 @@ function pageCombustivel() {
       fd.get("obs") || ""
     );
     setDB(db2);
-    
+
     e.target.reset();
     document.querySelector('input[name="data"]').value = nowISO();
     toast("Entrada registrada", `+${litros}L a ${kbrl(precoLitro)}/L`);
@@ -2510,7 +2503,7 @@ function pageCombustivel() {
   document.getElementById("frmSaida").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    
+
     const litros = Number(fd.get("litros") || 0);
     if (litros <= 0) { alert("Litros deve ser > 0"); return; }
 
@@ -2547,7 +2540,7 @@ function pageCombustivel() {
     db2.combustivel = db2.combustivel || [];
     db2.combustivel.push(obj);
     setDB(db2);
-    
+
     e.target.reset();
     document.querySelector('input[name="data"]').value = nowISO();
     toast("Abastecimento registrado", `-${litros}L`);
@@ -2593,16 +2586,16 @@ function pageRelatorios() {
   `);
 
   // ==================== CÁLCULOS ====================
-  
+
   // Área total
   const areaTotal = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
-  
+
   // Custos
   const custoAplicacoes = aplicacoes.reduce((s, a) => s + Number(a.custoTotal || 0), 0);
   const custoCombustivel = combustivel.reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
   const custoTotal = custoAplicacoes + custoCombustivel;
   const custoPorHa = areaTotal > 0 ? custoTotal / areaTotal : 0;
-  
+
   // Produtos mais usados
   const usoProdutos = {};
   aplicacoes.forEach(a => {
@@ -2622,7 +2615,7 @@ function pageRelatorios() {
     const custoComb = combustivel
       .filter(c => c.talhaoId === t.id)
       .reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
-    
+
     return {
       talhao: t.nome,
       fazenda: findNameById(fazendas, t.fazendaId),
@@ -2642,7 +2635,7 @@ function pageRelatorios() {
       const custo = custosPorTalhao.find(c => c.talhao === t.nome)?.custoTotal || 0;
       return s + custo;
     }, 0);
-    
+
     return {
       fazenda: f.nome,
       area: areaFazenda,
@@ -2654,7 +2647,7 @@ function pageRelatorios() {
   // Dados para evolução mensal
   const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   const custosMensais = new Array(12).fill(0);
-  
+
   [...aplicacoes, ...combustivel].forEach(item => {
     if (item.data) {
       const mes = parseInt(item.data.substring(5, 7)) - 1;
@@ -2662,7 +2655,7 @@ function pageRelatorios() {
       custosMensais[mes] += valor;
     }
   });
-  
+
   const maxCustoMensal = Math.max(...custosMensais, 1);
 
   // Eficiência das máquinas
@@ -2672,7 +2665,7 @@ function pageRelatorios() {
       usoMaquinas[a.maquinaId] = (usoMaquinas[a.maquinaId] || 0) + a.areaHaAplicada;
     }
   });
-  
+
   const maquinasEficiencia = Object.entries(usoMaquinas).map(([id, area]) => {
     const maquina = maquinas.find(m => m.id === id);
     return {
@@ -3224,7 +3217,7 @@ function pageRelatorios() {
   window.mudarAba = (aba) => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    
+
     document.querySelector(`.tab[onclick*="${aba}"]`).classList.add('active');
     document.getElementById(`aba-${aba}`).classList.add('active');
   };
@@ -3248,7 +3241,7 @@ function pageRelatorios() {
     const aplicacoesSemClima = aplicacoes.filter(a => {
       return !clima.some(c => c.data === a.data && c.talhaoId === a.talhaoId);
     }).length;
-    
+
     if (aplicacoesSemClima > 5) {
       alertas.push({
         tipo: 'atencao',
@@ -3349,7 +3342,7 @@ function pageRelatorios() {
         custoHa: c.custoHa
       }))
     };
-    
+
     downloadText(`relatorio-completo-${nowISO()}.json`, JSON.stringify(dadosExport, null, 2));
     toast("Exportado", "Arquivo JSON baixado");
   });
@@ -3427,89 +3420,6 @@ function pageConfiguracoes() {
     };
     input.click();
   });
-}
-
-  // Importar Backup
-  function importarBackup() {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/json";
-    
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const data = JSON.parse(event.target.result);
-          
-          // Validação básica
-          if (!data.safras || !data.parametros) {
-            alert("❌ Arquivo de backup inválido!");
-            return;
-          }
-          
-          if (!confirm("⚠️ Isso vai SUBSTITUIR todos os dados atuais. Continuar?")) return;
-          
-          Storage.save(data);
-          toast("📥 Backup restaurado", "Recarregando sistema...");
-          setTimeout(() => location.reload(), 1500);
-          
-        } catch (error) {
-          alert("❌ Erro ao ler o arquivo. Certifique-se de que é um backup válido.");
-        }
-      };
-      reader.readAsText(file);
-    };
-    
-    input.click();
-  }
-
-  // Reset para dados de demonstração
-  function resetarDemo() {
-    if (!confirm("🔴 ATENÇÃO! Isso vai APAGAR TODOS os seus dados atuais e restaurar a versão de demonstração. Continuar?")) return;
-    
-    if (!confirm("⚡ Última chance! Tem certeza absoluta? Esta ação é irreversível.")) return;
-    
-    localStorage.removeItem(Storage.key);
-    seedDB();
-    toast("🔄 Reset concluído", "Sistema restaurado para dados de demonstração");
-    setTimeout(() => location.reload(), 1500);
-  }
-
-  // Adicionar event listeners
-  document.getElementById("btnExport").addEventListener("click", exportarBackup);
-  document.getElementById("btnExport2").addEventListener("click", exportarBackup);
-  document.getElementById("btnImport").addEventListener("click", importarBackup);
-  document.getElementById("btnImport2").addEventListener("click", importarBackup);
-  document.getElementById("btnResetDemo").addEventListener("click", resetarDemo);
-}
-
-  function importarBackup() {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/json";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const text = await file.text();
-      try {
-        const data = JSON.parse(text);
-        if (!data.safras) {
-          alert("Arquivo inválido.");
-          return;
-        }
-        if (!confirm("Importar vai SUBSTITUIR seus dados locais. Continuar?")) return;
-        Storage.save(data);
-        toast("Importado", "Recarregando…");
-        setTimeout(() => location.reload(), 200);
-      } catch (e) {
-        alert("Não foi possível ler o arquivo JSON.");
-      }
-    };
-    input.click();
-  }
 }
 
 /* ------------------ Boot ------------------ */
