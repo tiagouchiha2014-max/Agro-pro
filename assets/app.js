@@ -850,196 +850,253 @@ function pageOpsCenter() {
   const diesel = onlySafra(db.dieselEstoque || []);
   const aplicacoes = onlySafra(db.aplicacoes || []);
   const combustivel = onlySafra(db.combustivel || []);
-  const parametros = db.parametros || { precoSoja: 120 };
+  const parametros = db.parametros || { 
+    precoSoja: 120, 
+    produtividadeMinSoja: 65, 
+    produtividadeMaxSoja: 75,
+    precoMilho: 60,
+    produtividadeMinMilho: 100,
+    produtividadeMaxMilho: 130,
+    precoAlgodao: 180,
+    produtividadeMinAlgodao: 250,
+    produtividadeMaxAlgodao: 300
+  };
 
+  // Alertas de estoque
   const negEstoque = estoque.filter(s => Number(s.qtd || 0) < 0);
   const negDiesel = diesel.filter(d => Number(d.litros || 0) < 0);
-  const custoTal = calcCustosPorTalhao(db);
 
-  // Calcular receita potencial para talhões de soja
-  const talhoesSoja = talhoes.filter(t => t.cultura?.toLowerCase() === 'soja');
-  const prodMin = parametros.produtividadeMinSoja || 65;
-  const prodMax = parametros.produtividadeMaxSoja || 75;
-  const precoSoja = parametros.precoSoja || 120;
+  // Calcular custos por talhão (função já existente)
+  const custosPorTalhao = calcCustosPorTalhao(db);
 
-  const receitaPotencial = talhoesSoja.reduce((acc, t) => {
-    const area = Number(t.areaHa || 0);
-    const receitaMin = area * prodMin * precoSoja;
-    const receitaMax = area * prodMax * precoSoja;
-    return acc + (receitaMin + receitaMax) / 2;
-  }, 0);
+  // ==================== CÁLCULO DE RECEITA E LUCRO POR TALHÃO ====================
+  
+  let receitaTotal = 0;
+  let lucroTotal = 0;
+  
+  const talhoesComLucro = talhoes.map(talhao => {
+    const area = Number(talhao.areaHa || 0);
+    const cultura = talhao.cultura?.toLowerCase() || '';
+    
+    // Encontrar o custo deste talhão
+    const custoTalhao = custosPorTalhao.find(c => c.talhaoId === talhao.id)?.custoTotal || 0;
+    
+    // Determinar produtividade e preço baseado na cultura
+    let produtividadeEsperada = 0;
+    let precoSaca = 0;
+    let receita = 0;
+    let lucro = 0;
+    
+    switch(cultura) {
+      case 'soja':
+        produtividadeEsperada = (parametros.produtividadeMinSoja + parametros.produtividadeMaxSoja) / 2;
+        precoSaca = parametros.precoSoja || 120;
+        break;
+      case 'milho':
+        produtividadeEsperada = (parametros.produtividadeMinMilho + parametros.produtividadeMaxMilho) / 2;
+        precoSaca = parametros.precoMilho || 60;
+        break;
+      case 'algodao':
+      case 'algodão':
+        produtividadeEsperada = (parametros.produtividadeMinAlgodao + parametros.produtividadeMaxAlgodao) / 2;
+        precoSaca = parametros.precoAlgodao || 180;
+        break;
+      default:
+        // Culturas não configuradas não geram receita
+        produtividadeEsperada = 0;
+        precoSaca = 0;
+    }
+    
+    // Calcular receita e lucro
+    if (area > 0 && produtividadeEsperada > 0 && precoSaca > 0) {
+      receita = area * produtividadeEsperada * precoSaca;
+      lucro = receita - custoTalhao;
+      receitaTotal += receita;
+      lucroTotal += lucro;
+    }
+    
+    return {
+      ...talhao,
+      area,
+      cultura: talhao.cultura || 'Não definida',
+      custo: custoTalhao,
+      produtividade: produtividadeEsperada,
+      precoSaca,
+      receita,
+      lucro
+    };
+  }).filter(t => t.area > 0); // Apenas talhões com área
 
-  const custoTotal = custoTal.reduce((acc, t) => acc + t.custoTotal, 0);
-  const lucroPotencial = receitaPotencial - custoTotal;
+  // Ordenar por lucro (maior para menor)
+  const talhoesOrdenados = [...talhoesComLucro].sort((a, b) => b.lucro - a.lucro);
 
   const content = document.getElementById("content");
   content.innerHTML = `
+    <style>
+      .lucro-positivo {
+        color: #4CAF50;
+        font-weight: bold;
+      }
+      .lucro-negativo {
+        color: #f44336;
+        font-weight: bold;
+      }
+      .card-destaque {
+        background: linear-gradient(135deg, #1a2a3a, #0f1a24);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+    </style>
+
+    <!-- Alertas -->
     <div class="kpi">
-      <div class="card"><h3>Alertas estoque</h3><div class="big">${negEstoque.length}</div></div>
-      <div class="card"><h3>Alertas diesel</h3><div class="big">${negDiesel.length}</div></div>
-      <div class="card"><h3>Aplicações</h3><div class="big">${aplicacoes.length}</div></div>
-      <div class="card"><h3>Lucro Potencial</h3><div class="big">${kbrl(lucroPotencial)}</div></div>
+      <div class="card">
+        <h3>🚨 Alertas estoque</h3>
+        <div class="big">${negEstoque.length}</div>
+        <div class="sub">Produtos com saldo negativo</div>
+      </div>
+      <div class="card">
+        <h3>⛽ Alertas diesel</h3>
+        <div class="big">${negDiesel.length}</div>
+        <div class="sub">Tanques com saldo negativo</div>
+      </div>
+      <div class="card">
+        <h3>🌱 Total Talhões</h3>
+        <div class="big">${talhoes.length}</div>
+        <div class="sub">Área total: ${num(talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0), 1)} ha</div>
+      </div>
+      <div class="card">
+        <h3>🚜 Aplicações</h3>
+        <div class="big">${aplicacoes.length}</div>
+        <div class="sub">Operações realizadas</div>
+      </div>
     </div>
-    
-    <div class="card" style="margin-bottom:20px;">
-      <h3>📊 Resumo Financeiro</h3>
-      <table style="width:100%;">
-        <tr><td>Custo total (todos talhões):</td><td>${kbrl(custoTotal)}</td></tr>
-        <tr><td>Receita potencial (soja):</td><td>${kbrl(receitaPotencial)}</td></tr>
-        <tr><td><b>Lucro potencial:</b></td><td><b>${kbrl(lucroPotencial)}</b></td></tr>
-      </table>
-    </div>
 
-    <div class="tableWrap">
-      <h3>Custos por talhão</h3>
-      <table>
-        <thead><tr><th>Talhão</th><th>Custo total</th><th>Custo/ha</th><th>Receita est.</th><th>Lucro est.</th></tr></thead>
-        <tbody>${custoTal.map(r => {
-          const area = r.areaHa;
-          let receita = 0;
-          if (r.cultura?.toLowerCase() === 'soja') {
-            receita = area * ((prodMin + prodMax) / 2) * precoSoja;
-          }
-          const lucro = receita - r.custoTotal;
-          return `<tr>
-            <td>${escapeHtml(r.talhao)}</td>
-            <td>${kbrl(r.custoTotal)}</td>
-            <td>${kbrl(r.custoHa)}</td>
-            <td>${kbrl(receita)}</td>
-            <td>${kbrl(lucro)}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table>
-    </div>
-  `;
-}
-
-function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
-  const db = getDB();
-  const sid = getSafraId();
-
-  setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
-
-  const content = document.getElementById("content");
-
-  const formHtml = `
-    <div class="card">
-      <h3>Novo registro</h3>
-      <div class="help">${escapeHtml(subtitle || "")}</div>
-      <div class="hr"></div>
-      <form id="frm" class="formGrid">
-        ${fields.map(f => {
-          const full = f.full ? "full" : "";
-          if (f.type === "select") {
-            const opts = (typeof f.options === "function" ? f.options(getDB()) : (f.options || []))
-              .map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
-            return `
-              <div class="${full}">
-                <small>${escapeHtml(f.label)}</small>
-                <select class="select" name="${escapeHtml(f.key)}">${opts}</select>
-              </div>
-            `;
-          }
-          if (f.type === "textarea") {
-            return `
-              <div class="${full}">
-                <small>${escapeHtml(f.label)}</small>
-                <textarea class="textarea" name="${escapeHtml(f.key)}" placeholder="${escapeHtml(f.placeholder || "")}"></textarea>
-              </div>
-            `;
-          }
-          return `
-            <div class="${full}">
-              <small>${escapeHtml(f.label)}</small>
-              <input class="input" name="${escapeHtml(f.key)}" type="${escapeHtml(f.type || "text")}" placeholder="${escapeHtml(f.placeholder || "")}" />
-            </div>
-          `;
-        }).join("")}
-        <div class="full row" style="justify-content:flex-end; margin-top:6px;">
-          <button class="btn primary" type="submit">Salvar</button>
+    <!-- Card de resultado financeiro -->
+    <div class="card-destaque">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px;">
+        <div>
+          <h3 style="margin:0; color:#fff;">📊 RESULTADO FINANCEIRO DA SAFRA</h3>
+          <p style="color:#888; margin-top:5px;">Baseado nos parâmetros configurados e dados reais dos talhões</p>
         </div>
-      </form>
+        <div style="text-align:right;">
+          <div style="font-size:14px; color:#888;">CUSTO TOTAL</div>
+          <div style="font-size:28px; font-weight:bold; color:#FF9800;">${kbrl(talhoesOrdenados.reduce((s, t) => s + t.custo, 0))}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:14px; color:#888;">RECEITA TOTAL</div>
+          <div style="font-size:28px; font-weight:bold; color:#4CAF50;">${kbrl(receitaTotal)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:14px; color:#888;">LUCRO POTENCIAL</div>
+          <div style="font-size:32px; font-weight:bold; ${lucroTotal >= 0 ? 'color:#4CAF50;' : 'color:#f44336;'}">${kbrl(lucroTotal)}</div>
+        </div>
+      </div>
+      
+      <!-- Barra de progresso do lucro -->
+      <div style="margin-top:20px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+          <span style="color:#888;">Margem de lucro</span>
+          <span style="color:#fff; font-weight:bold;">${receitaTotal > 0 ? ((lucroTotal / receitaTotal) * 100).toFixed(1) : 0}%</span>
+        </div>
+        <div style="width:100%; height:10px; background:#2a2a30; border-radius:5px; overflow:hidden;">
+          <div style="height:100%; width:${receitaTotal > 0 ? Math.max(0, (lucroTotal / receitaTotal) * 100) : 0}%; background:${lucroTotal >= 0 ? '#4CAF50' : '#f44336'}; border-radius:5px;"></div>
+        </div>
+      </div>
     </div>
-  `;
 
-  const tableHtml = `
+    <!-- Tabela detalhada por talhão -->
     <div class="tableWrap">
+      <h3>📋 Análise detalhada por talhão</h3>
       <table>
         <thead>
           <tr>
-            ${columns.map(c => `<th>${escapeHtml(c.label)}</th>`).join("")}
-            <th class="noPrint">Ações</th>
+            <th>Talhão</th>
+            <th>Fazenda</th>
+            <th>Cultura</th>
+            <th>Área (ha)</th>
+            <th>Custo Total</th>
+            <th>Produtividade</th>
+            <th>Preço/Saca</th>
+            <th>Receita</th>
+            <th>Lucro</th>
           </tr>
         </thead>
-        <tbody id="tbody"></tbody>
+        <tbody>
+          ${talhoesOrdenados.map(t => {
+            const lucroClass = t.lucro >= 0 ? 'lucro-positivo' : 'lucro-negativo';
+            return `
+              <tr>
+                <td><b>${escapeHtml(t.nome)}</b></td>
+                <td>${escapeHtml(findNameById(fazendas, t.fazendaId))}</td>
+                <td>${escapeHtml(t.cultura)}</td>
+                <td>${num(t.area, 1)}</td>
+                <td>${kbrl(t.custo)}</td>
+                <td>${t.produtividade > 0 ? num(t.produtividade, 1) + ' sc/ha' : '-'}</td>
+                <td>${t.precoSaca > 0 ? kbrl(t.precoSaca) : '-'}</td>
+                <td style="color:#4CAF50;">${kbrl(t.receita)}</td>
+                <td class="${lucroClass}">${kbrl(t.lucro)}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+        <tfoot style="border-top:2px solid #2a2a30;">
+          <tr>
+            <td colspan="4"><b>TOTAIS</b></td>
+            <td><b>${kbrl(talhoesOrdenados.reduce((s, t) => s + t.custo, 0))}</b></td>
+            <td></td>
+            <td></td>
+            <td><b style="color:#4CAF50;">${kbrl(receitaTotal)}</b></td>
+            <td><b class="${lucroTotal >= 0 ? 'lucro-positivo' : 'lucro-negativo'}">${kbrl(lucroTotal)}</b></td>
+          </tr>
+        </tfoot>
       </table>
     </div>
+
+    <!-- Cards de resumo por cultura -->
+    <div class="section" style="margin-top:20px;">
+      ${['soja', 'milho', 'algodao'].map(cultura => {
+        const talhoesCultura = talhoesOrdenados.filter(t => t.cultura?.toLowerCase() === cultura);
+        if (talhoesCultura.length === 0) return '';
+        
+        const areaTotal = talhoesCultura.reduce((s, t) => s + t.area, 0);
+        const custoTotal = talhoesCultura.reduce((s, t) => s + t.custo, 0);
+        const receitaTotal = talhoesCultura.reduce((s, t) => s + t.receita, 0);
+        const lucroTotal = talhoesCultura.reduce((s, t) => s + t.lucro, 0);
+        
+        const nomesCultura = {
+          'soja': '🌱 Soja',
+          'milho': '🌽 Milho',
+          'algodao': '🌾 Algodão'
+        };
+        
+        return `
+          <div class="card">
+            <h4>${nomesCultura[cultura] || cultura}</h4>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:15px; margin-top:15px;">
+              <div>
+                <small>Área total</small>
+                <div class="big">${num(areaTotal, 1)} ha</div>
+              </div>
+              <div>
+                <small>Custo total</small>
+                <div class="big" style="color:#FF9800;">${kbrl(custoTotal)}</div>
+              </div>
+              <div>
+                <small>Receita total</small>
+                <div class="big" style="color:#4CAF50;">${kbrl(receitaTotal)}</div>
+              </div>
+              <div>
+                <small>Lucro total</small>
+                <div class="big" style="color:${lucroTotal >= 0 ? '#4CAF50' : '#f44336'};">${kbrl(lucroTotal)}</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
   `;
-
-  content.innerHTML = `<div class="section">${formHtml}${tableHtml}</div>`;
-
-  function renderTable() {
-    const db2 = getDB();
-    const rows0 = onlySafra(db2[entityKey] || []);
-    const rows = helpers?.filter ? helpers.filter(rows0, db2) : rows0;
-
-    const tb = document.getElementById("tbody");
-    tb.innerHTML = rows.slice().reverse().map(r => {
-      const tds = columns.map(c => {
-        const v = c.render ? c.render(r, db2) : r[c.key];
-        return `<td>${escapeHtml(v ?? "")}</td>`;
-      }).join("");
-      return `
-        <tr>
-          ${tds}
-          <td class="noPrint">
-            <button class="btn danger" onclick="window.__del('${r.id}')">Excluir</button>
-          </td>
-        </tr>
-      `;
-    }).join("") || `<tr><td colspan="${columns.length + 1}">Sem registros.</td></tr>`;
-  }
-
-  window.__del = (id) => {
-    if (!confirm("Excluir este registro?")) return;
-    const db2 = getDB();
-    db2[entityKey] = (db2[entityKey] || []).filter(x => x.id !== id);
-    if (helpers?.onDelete) helpers.onDelete(id, db2);
-    setDB(db2);
-    toast("Excluído", "Registro removido.");
-    renderTable();
-  };
-
-  document.getElementById("frm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const obj = { id: uid(entityKey.slice(0, 3)), safraId: sid };
-
-    fields.forEach(f => {
-      let v = fd.get(f.key);
-      if (f.type === "number") v = Number(v || 0);
-      obj[f.key] = v;
-    });
-
-    const db2 = getDB();
-    if (helpers?.beforeSave) helpers.beforeSave(obj, db2);
-    db2[entityKey] = db2[entityKey] || [];
-    db2[entityKey].push(obj);
-    setDB(db2);
-
-    e.target.reset();
-    toast("Salvo", "Registro adicionado com sucesso.");
-    renderTable();
-  });
-
-  document.getElementById("btnExportCSV").addEventListener("click", () => {
-    const db2 = getDB();
-    const rows = onlySafra(db2[entityKey] || []);
-    downloadText(`${entityKey}-${nowISO()}.csv`, toCSV(rows));
-    toast("Exportado", "CSV baixado.");
-  });
-
-  renderTable();
 }
 
 // Páginas específicas adaptadas para safra
@@ -3420,97 +3477,563 @@ function pageRelatorios() {
 
 function pageConfiguracoes() {
   const db = getDB();
-  const params = db.parametros || { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75 };
+  const params = db.parametros || { 
+    // Soja
+    precoSoja: 120, 
+    produtividadeMinSoja: 65, 
+    produtividadeMaxSoja: 75,
+    
+    // Milho
+    precoMilho: 60,
+    produtividadeMinMilho: 100,
+    produtividadeMaxMilho: 130,
+    
+    // Algodão
+    precoAlgodao: 180,
+    produtividadeMinAlgodao: 250,
+    produtividadeMaxAlgodao: 300,
+    
+    // Cana (opcional)
+    precoCana: 70,
+    produtividadeMinCana: 80,
+    produtividadeMaxCana: 100,
+    
+    // Café (opcional)
+    precoCafe: 500,
+    produtividadeMinCafe: 25,
+    produtividadeMaxCafe: 35
+  };
 
   setTopActions(`
-    <button class="btn" id="btnImport">Importar Backup</button>
-    <button class="btn primary" id="btnExport">Exportar Backup</button>
+    <button class="btn" id="btnImport">📥 Importar Backup</button>
+    <button class="btn primary" id="btnExport">📤 Exportar Backup</button>
   `);
 
   const content = document.getElementById("content");
   content.innerHTML = `
-    <div class="section">
-      <div class="card">
+    <style>
+      .config-section {
+        background: #1a1a1f;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        border: 1px solid #2a2a30;
+      }
+      .config-titulo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+      }
+      .config-titulo h3 {
+        margin: 0;
+        color: #fff;
+      }
+      .config-titulo .badge {
+        background: #2a2a30;
+        padding: 4px 8px;
+        border-radius: 20px;
+        font-size: 11px;
+        color: #888;
+      }
+      .cultura-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+      .cultura-card {
+        background: #0f0f13;
+        border-radius: 10px;
+        padding: 15px;
+        border-left: 4px solid;
+        transition: transform 0.2s;
+      }
+      .cultura-card:hover {
+        transform: translateY(-2px);
+      }
+      .cultura-card.soja { border-left-color: #4CAF50; }
+      .cultura-card.milho { border-left-color: #FF9800; }
+      .cultura-card.algodao { border-left-color: #2196F3; }
+      .cultura-card.cana { border-left-color: #9C27B0; }
+      .cultura-card.cafe { border-left-color: #8B4513; }
+      
+      .cultura-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+      .cultura-header h4 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .cultura-icon {
+        font-size: 24px;
+      }
+      .param-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        padding: 5px 0;
+        border-bottom: 1px dashed #2a2a30;
+      }
+      .param-label {
+        color: #888;
+        font-size: 13px;
+      }
+      .param-value {
+        font-weight: bold;
+        color: #fff;
+      }
+      .info-box {
+        background: rgba(33, 150, 243, 0.1);
+        border-left: 4px solid #2196F3;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+      }
+      .info-box h4 {
+        margin: 0 0 10px 0;
+        color: #2196F3;
+      }
+      .info-box p {
+        margin: 5px 0;
+        color: #888;
+        font-size: 13px;
+      }
+      .button-group {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .danger-zone {
+        border: 1px solid rgba(244, 67, 54, 0.3);
+        background: rgba(244, 67, 54, 0.05);
+      }
+    </style>
+
+    <!-- Seção de Parâmetros de Mercado -->
+    <div class="config-section">
+      <div class="config-titulo">
         <h3>⚙️ Parâmetros de Mercado</h3>
-        <div class="help">Configure os valores usados nos cálculos de receita e lucro.</div>
-        <div class="hr"></div>
-        <form id="frmParams" class="formGrid">
-          <div><small>Preço da saca de soja (R$)</small><input class="input" name="precoSoja" type="number" step="0.01" value="${params.precoSoja}" /></div>
-          <div><small>Produtividade mínima soja (sc/ha)</small><input class="input" name="prodMinSoja" type="number" step="0.1" value="${params.produtividadeMinSoja}" /></div>
-          <div><small>Produtividade máxima soja (sc/ha)</small><input class="input" name="prodMaxSoja" type="number" step="0.1" value="${params.produtividadeMaxSoja}" /></div>
-          <div class="full row" style="justify-content:flex-end">
-            <button class="btn primary" type="submit">Salvar parâmetros</button>
+        <span class="badge">Configurações por cultura</span>
+      </div>
+      <div class="help" style="margin-bottom:20px;">
+        Configure os valores usados nos cálculos de receita e lucro. 
+        A produtividade média será calculada entre os valores mínimo e máximo.
+      </div>
+
+      <form id="frmParams">
+        <!-- Cards de Culturas -->
+        <div class="cultura-grid">
+          <!-- Soja -->
+          <div class="cultura-card soja">
+            <div class="cultura-header">
+              <h4>🌱 Soja</h4>
+              <span class="cultura-icon">🟢</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Preço da saca (R$)</span>
+              <span class="param-value">
+                <input class="input" name="precoSoja" type="number" step="0.01" value="${params.precoSoja}" style="width:100px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade mínima (sc/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMinSoja" type="number" step="0.1" value="${params.produtividadeMinSoja}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade máxima (sc/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMaxSoja" type="number" step="0.1" value="${params.produtividadeMaxSoja}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Média estimada</span>
+              <span class="param-value">${num((params.produtividadeMinSoja + params.produtividadeMaxSoja) / 2, 1)} sc/ha</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Receita/ha média</span>
+              <span class="param-value" style="color:#4CAF50;">
+                ${kbrl(((params.produtividadeMinSoja + params.produtividadeMaxSoja) / 2) * params.precoSoja)}
+              </span>
+            </div>
           </div>
-        </form>
-      </div>
 
-      <div class="card">
+          <!-- Milho -->
+          <div class="cultura-card milho">
+            <div class="cultura-header">
+              <h4>🌽 Milho</h4>
+              <span class="cultura-icon">🟠</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Preço da saca (R$)</span>
+              <span class="param-value">
+                <input class="input" name="precoMilho" type="number" step="0.01" value="${params.precoMilho}" style="width:100px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade mínima (sc/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMinMilho" type="number" step="0.1" value="${params.produtividadeMinMilho}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade máxima (sc/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMaxMilho" type="number" step="0.1" value="${params.produtividadeMaxMilho}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Média estimada</span>
+              <span class="param-value">${num((params.produtividadeMinMilho + params.produtividadeMaxMilho) / 2, 1)} sc/ha</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Receita/ha média</span>
+              <span class="param-value" style="color:#4CAF50;">
+                ${kbrl(((params.produtividadeMinMilho + params.produtividadeMaxMilho) / 2) * params.precoMilho)}
+              </span>
+            </div>
+          </div>
+
+          <!-- Algodão -->
+          <div class="cultura-card algodao">
+            <div class="cultura-header">
+              <h4>🌾 Algodão</h4>
+              <span class="cultura-icon">🔵</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Preço da @ (R$)</span>
+              <span class="param-value">
+                <input class="input" name="precoAlgodao" type="number" step="0.01" value="${params.precoAlgodao}" style="width:100px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade mínima (@/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMinAlgodao" type="number" step="0.1" value="${params.produtividadeMinAlgodao}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade máxima (@/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMaxAlgodao" type="number" step="0.1" value="${params.produtividadeMaxAlgodao}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Média estimada</span>
+              <span class="param-value">${num((params.produtividadeMinAlgodao + params.produtividadeMaxAlgodao) / 2, 1)} @/ha</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Receita/ha média</span>
+              <span class="param-value" style="color:#4CAF50;">
+                ${kbrl(((params.produtividadeMinAlgodao + params.produtividadeMaxAlgodao) / 2) * params.precoAlgodao)}
+              </span>
+            </div>
+          </div>
+
+          <!-- Cana (opcional) -->
+          <div class="cultura-card cana">
+            <div class="cultura-header">
+              <h4>🎋 Cana-de-açúcar</h4>
+              <span class="cultura-icon">🟣</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Preço da tonelada (R$)</span>
+              <span class="param-value">
+                <input class="input" name="precoCana" type="number" step="0.01" value="${params.precoCana}" style="width:100px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade mínima (t/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMinCana" type="number" step="0.1" value="${params.produtividadeMinCana}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade máxima (t/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMaxCana" type="number" step="0.1" value="${params.produtividadeMaxCana}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Média estimada</span>
+              <span class="param-value">${num((params.produtividadeMinCana + params.produtividadeMaxCana) / 2, 1)} t/ha</span>
+            </div>
+          </div>
+
+          <!-- Café (opcional) -->
+          <div class="cultura-card cafe">
+            <div class="cultura-header">
+              <h4>☕ Café</h4>
+              <span class="cultura-icon">🟤</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Preço da saca (R$)</span>
+              <span class="param-value">
+                <input class="input" name="precoCafe" type="number" step="0.01" value="${params.precoCafe}" style="width:100px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade mínima (sc/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMinCafe" type="number" step="0.1" value="${params.produtividadeMinCafe}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Produtividade máxima (sc/ha)</span>
+              <span class="param-value">
+                <input class="input" name="prodMaxCafe" type="number" step="0.1" value="${params.produtividadeMaxCafe}" style="width:80px; text-align:right;">
+              </span>
+            </div>
+            <div class="param-row">
+              <span class="param-label">Média estimada</span>
+              <span class="param-value">${num((params.produtividadeMinCafe + params.produtividadeMaxCafe) / 2, 1)} sc/ha</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Botão Salvar -->
+        <div class="full row" style="justify-content:flex-end; margin-top:20px;">
+          <button class="btn primary" type="submit" style="padding:12px 24px;">
+            💾 Salvar todos os parâmetros
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Informações sobre os cálculos -->
+    <div class="info-box">
+      <h4>📊 Como o lucro é calculado?</h4>
+      <p>• <b>Receita por talhão</b> = Área (ha) × Produtividade média (sc/ha) × Preço da saca (R$)</p>
+      <p>• <b>Custo por talhão</b> = Soma de todas as aplicações + combustível gasto no talhão</p>
+      <p>• <b>Lucro por talhão</b> = Receita - Custo</p>
+      <p>• <b>Produtividade média</b> = (Mínimo + Máximo) / 2</p>
+      <p style="margin-top:10px; color:#2196F3;">💡 Os valores são atualizados automaticamente no Ops Center e Relatórios.</p>
+    </div>
+
+    <!-- Seção de Backup e Restauração -->
+    <div class="config-section">
+      <div class="config-titulo">
         <h3>💾 Backup e Restauração</h3>
-        <div class="help">
-          • Use backup para trocar de aparelho sem perder dados.<br/>
-          • Importar substitui o banco local atual.
-        </div>
-        <div class="hr"></div>
-        <div class="row" style="justify-content:space-around;">
-          <button class="btn primary" id="btnExport2">Exportar Backup</button>
-          <button class="btn" id="btnImport2">Importar Backup</button>
+        <span class="badge">Proteja seus dados</span>
+      </div>
+      <div class="help">
+        • Use backup para trocar de aparelho ou fazer uma cópia de segurança.<br>
+        • O arquivo de backup contém TODOS os dados (safras, fazendas, aplicações, etc).<br>
+        • Importar um backup SUBSTITUI todos os dados atuais.
+      </div>
+      <div class="hr"></div>
+      
+      <div class="button-group" style="margin-top:20px;">
+        <button class="btn primary" id="btnExport2" style="flex:1;">
+          📤 Exportar Backup (Download .json)
+        </button>
+        <button class="btn" id="btnImport2" style="flex:1;">
+          📥 Importar Backup (Substituir dados)
+        </button>
+      </div>
+      
+      <div style="margin-top:15px; padding:10px; background:#0f0f13; border-radius:8px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:24px;">💡</span>
+          <span style="color:#888; font-size:13px;">
+            O backup é um arquivo .json que você pode guardar onde quiser. 
+            Para restaurar, basta importar o mesmo arquivo.
+          </span>
         </div>
       </div>
+    </div>
 
-      <div class="card">
-        <h3>⚠️ Reset de Dados</h3>
-        <div class="help">Restaura o banco de dados para os valores iniciais de demonstração.</div>
-        <div class="hr"></div>
-        <button class="btn danger" id="btnResetDemo" style="width:100%;">Resetar para dados de demonstração</button>
+    <!-- Zona de Perigo - Reset de Dados -->
+    <div class="config-section danger-zone">
+      <div class="config-titulo">
+        <h3 style="color:#f44336;">⚠️ Zona de Perigo</h3>
+        <span class="badge" style="background:rgba(244,67,54,0.2); color:#f44336;">Ações irreversíveis</span>
+      </div>
+      <div class="help" style="color:#f44336;">
+        As operações abaixo são PERMANENTES e não podem ser desfeitas.
+      </div>
+      <div class="hr"></div>
+
+      <div style="margin-top:20px;">
+        <h4 style="color:#fff;">🔄 Resetar para dados de demonstração</h4>
+        <p style="color:#888; font-size:13px; margin-bottom:15px;">
+          Isso vai apagar TODOS os seus dados atuais e restaurar o sistema 
+          com dados de exemplo (safra 2025/26, produtos pré-cadastrados, etc).
+        </p>
+        <button class="btn danger" id="btnResetDemo" style="width:100%; padding:12px;">
+          ⚠️ Resetar para dados de demonstração
+        </button>
       </div>
 
-      <div class="card">
-        <h3>📈 Sobre o sistema</h3>
-        <div class="help">
-          <b>Agro Pro v6.0</b><br/>
-          • Sistema baseado em SAFRAS (dados isolados por safra)<br/>
-          • Base de dados com +100 produtos e +20 pragas pré-cadastradas<br/>
-          • Alertas automáticos de pragas baseados no clima<br/>
-          • Cálculo de custos com preços reais de produtos e diesel (UEPS)<br/>
-          • Estimativa de receita e lucro por talhão<br/>
-          • Controle completo de entrada e saída de diesel
+      <div style="margin-top:20px; padding:15px; background:rgba(244,67,54,0.1); border-radius:8px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:24px;">🔒</span>
+          <span style="color:#f44336; font-size:13px;">
+            Esta ação NÃO pode ser desfeita. Faça um backup antes se tiver dados importantes.
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sobre o sistema -->
+    <div class="config-section">
+      <div class="config-titulo">
+        <h3>📈 Sobre o Agro Pro</h3>
+        <span class="badge">v6.0</span>
+      </div>
+      
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-top:20px;">
+        <div>
+          <h4 style="color:#4CAF50; margin-bottom:10px;">✅ Funcionalidades</h4>
+          <ul style="color:#888; font-size:13px; list-style-type:none; padding:0;">
+            <li style="margin-bottom:8px;">• Sistema baseado em SAFRAS</li>
+            <li style="margin-bottom:8px;">• +100 produtos pré-cadastrados</li>
+            <li style="margin-bottom:8px;">• +20 pragas com alertas</li>
+            <li style="margin-bottom:8px;">• Cálculo automático de custos</li>
+            <li style="margin-bottom:8px;">• Controle de diesel (UEPS)</li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="color:#FF9800; margin-bottom:10px;">🚀 Em breve</h4>
+          <ul style="color:#888; font-size:13px; list-style-type:none; padding:0;">
+            <li style="margin-bottom:8px;">• Gráficos interativos</li>
+            <li style="margin-bottom:8px;">• Exportação PDF</li>
+            <li style="margin-bottom:8px;">• Múltiplos usuários</li>
+            <li style="margin-bottom:8px;">• Backup na nuvem</li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="color:#2196F3; margin-bottom:10px;">📞 Suporte</h4>
+          <ul style="color:#888; font-size:13px; list-style-type:none; padding:0;">
+            <li style="margin-bottom:8px;">• Dúvidas? Entre em contato</li>
+            <li style="margin-bottom:8px;">• Sistema 100% offline</li>
+            <li style="margin-bottom:8px;">• Dados salvos no navegador</li>
+          </ul>
         </div>
       </div>
     </div>
   `;
 
+  // ==================== FUNÇÕES ====================
+
+  // Salvar parâmetros
   document.getElementById("frmParams").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    
     const db2 = getDB();
     db2.parametros = {
-      precoSoja: Number(fd.get("precoSoja") || 120),
-      produtividadeMinSoja: Number(fd.get("prodMinSoja") || 65),
-      produtividadeMaxSoja: Number(fd.get("prodMaxSoja") || 75)
+      // Soja
+      precoSoja: Number(fd.get("precoSoja")) || 120,
+      produtividadeMinSoja: Number(fd.get("prodMinSoja")) || 65,
+      produtividadeMaxSoja: Number(fd.get("prodMaxSoja")) || 75,
+      
+      // Milho
+      precoMilho: Number(fd.get("precoMilho")) || 60,
+      produtividadeMinMilho: Number(fd.get("prodMinMilho")) || 100,
+      produtividadeMaxMilho: Number(fd.get("prodMaxMilho")) || 130,
+      
+      // Algodão
+      precoAlgodao: Number(fd.get("precoAlgodao")) || 180,
+      produtividadeMinAlgodao: Number(fd.get("prodMinAlgodao")) || 250,
+      produtividadeMaxAlgodao: Number(fd.get("prodMaxAlgodao")) || 300,
+      
+      // Cana
+      precoCana: Number(fd.get("precoCana")) || 70,
+      produtividadeMinCana: Number(fd.get("prodMinCana")) || 80,
+      produtividadeMaxCana: Number(fd.get("prodMaxCana")) || 100,
+      
+      // Café
+      precoCafe: Number(fd.get("precoCafe")) || 500,
+      produtividadeMinCafe: Number(fd.get("prodMinCafe")) || 25,
+      produtividadeMaxCafe: Number(fd.get("prodMaxCafe")) || 35
     };
+    
     setDB(db2);
-    toast("Parâmetros salvos", "Valores atualizados.");
+    toast("✅ Parâmetros salvos", "Valores atualizados para todas as culturas");
+    
+    // Atualizar a página para mostrar os novos valores
+    setTimeout(() => pageConfiguracoes(), 500);
   });
 
-  document.getElementById("btnExport").addEventListener("click", () => {
-    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(getDB(), null, 2));
-    toast("Backup exportado", "Arquivo .json baixado.");
-  });
-  document.getElementById("btnExport2").addEventListener("click", () => {
-    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(getDB(), null, 2));
-    toast("Backup exportado", "Arquivo .json baixado.");
-  });
+  // Exportar Backup
+  function exportarBackup() {
+    const db2 = getDB();
+    const dataStr = JSON.stringify(db2, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `agro-pro-backup-${nowISO()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("📦 Backup exportado", "Arquivo .json baixado");
+  }
 
-  document.getElementById("btnImport").addEventListener("click", importarBackup);
-  document.getElementById("btnImport2").addEventListener("click", importarBackup);
+  // Importar Backup
+  function importarBackup() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+    
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target.result);
+          
+          // Validação básica
+          if (!data.safras || !data.parametros) {
+            alert("❌ Arquivo de backup inválido!");
+            return;
+          }
+          
+          if (!confirm("⚠️ Isso vai SUBSTITUIR todos os dados atuais. Continuar?")) return;
+          
+          Storage.save(data);
+          toast("📥 Backup restaurado", "Recarregando sistema...");
+          setTimeout(() => location.reload(), 1500);
+          
+        } catch (error) {
+          alert("❌ Erro ao ler o arquivo. Certifique-se de que é um backup válido.");
+        }
+      };
+      reader.readAsText(file);
+    };
+    
+    input.click();
+  }
 
-  document.getElementById("btnResetDemo").addEventListener("click", () => {
-    if (!confirm("⚠️ ATENÇÃO! Isso vai apagar TODOS os dados atuais e restaurar a versão de demonstração. Continuar?")) return;
+  // Reset para dados de demonstração
+  function resetarDemo() {
+    if (!confirm("🔴 ATENÇÃO! Isso vai APAGAR TODOS os seus dados atuais e restaurar a versão de demonstração. Continuar?")) return;
+    
+    if (!confirm("⚡ Última chance! Tem certeza absoluta? Esta ação é irreversível.")) return;
+    
     localStorage.removeItem(Storage.key);
     seedDB();
-    toast("Reset concluído", "Banco restaurado para dados de demonstração.");
-    setTimeout(() => location.reload(), 200);
-  });
+    toast("🔄 Reset concluído", "Sistema restaurado para dados de demonstração");
+    setTimeout(() => location.reload(), 1500);
+  }
+
+  // Adicionar event listeners
+  document.getElementById("btnExport").addEventListener("click", exportarBackup);
+  document.getElementById("btnExport2").addEventListener("click", exportarBackup);
+  document.getElementById("btnImport").addEventListener("click", importarBackup);
+  document.getElementById("btnImport2").addEventListener("click", importarBackup);
+  document.getElementById("btnResetDemo").addEventListener("click", resetarDemo);
+}
 
   function importarBackup() {
     const input = document.createElement("input");
