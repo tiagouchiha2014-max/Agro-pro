@@ -3505,17 +3505,61 @@ function pageRelatorios() {
 
 function pageConfiguracoes() {
   const db = getDB();
-  const params = db.parametros || { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75 };
+  const params = db.parametros || { 
+    precoSoja: 120, 
+    produtividadeMinSoja: 65, 
+    produtividadeMaxSoja: 75,
+    precoMilho: 60,
+    produtividadeMinMilho: 100,
+    produtividadeMaxMilho: 130,
+    precoAlgodao: 150,
+    produtividadeMinAlgodao: 250,
+    produtividadeMaxAlgodao: 300
+  };
 
   setTopActions(`
-    <button class="btn" id="btnImport">Importar Backup</button>
-    <button class="btn primary" id="btnExport">Exportar Backup</button>
+    <button class="btn" id="btnImport">📥 Importar Backup</button>
+    <button class="btn primary" id="btnExport">📤 Exportar Backup</button>
   `);
 
   const content = document.getElementById("content");
   content.innerHTML = `
-    <div class="section">
-      <div class="card">
+    <style>
+      .config-section {
+        margin-bottom: 30px;
+      }
+      .config-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
+      }
+      .config-card h3 {
+        margin-top: 0;
+        color: #2563eb;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 10px;
+      }
+      .reset-buttons {
+        display: flex;
+        gap: 15px;
+        margin-top: 15px;
+        flex-wrap: wrap;
+      }
+      .btn.warning {
+        background: #f59e0b;
+        color: white;
+      }
+      .btn.warning:hover {
+        background: #d97706;
+      }
+    </style>
+
+    <div class="config-section">
+      <!-- Parâmetros de mercado -->
+      <div class="config-card">
         <h3>⚙️ Parâmetros de Mercado</h3>
         <div class="help">Configure os valores usados nos cálculos de receita e lucro.</div>
         <div class="hr"></div>
@@ -3523,47 +3567,67 @@ function pageConfiguracoes() {
           <div><small>Preço da saca de soja (R$)</small><input class="input" name="precoSoja" type="number" step="0.01" value="${params.precoSoja}" /></div>
           <div><small>Produtividade mínima soja (sc/ha)</small><input class="input" name="prodMinSoja" type="number" step="0.1" value="${params.produtividadeMinSoja}" /></div>
           <div><small>Produtividade máxima soja (sc/ha)</small><input class="input" name="prodMaxSoja" type="number" step="0.1" value="${params.produtividadeMaxSoja}" /></div>
+          
+          <div><small>Preço do milho (R$/sc)</small><input class="input" name="precoMilho" type="number" step="0.01" value="${params.precoMilho || 60}" /></div>
+          <div><small>Produtividade mínima milho (sc/ha)</small><input class="input" name="prodMinMilho" type="number" step="0.1" value="${params.produtividadeMinMilho || 100}" /></div>
+          <div><small>Produtividade máxima milho (sc/ha)</small><input class="input" name="prodMaxMilho" type="number" step="0.1" value="${params.produtividadeMaxMilho || 130}" /></div>
+          
+          <div><small>Preço do algodão (R$/sc)</small><input class="input" name="precoAlgodao" type="number" step="0.01" value="${params.precoAlgodao || 150}" /></div>
+          <div><small>Produtividade mínima algodão (sc/ha)</small><input class="input" name="prodMinAlgodao" type="number" step="0.1" value="${params.produtividadeMinAlgodao || 250}" /></div>
+          <div><small>Produtividade máxima algodão (sc/ha)</small><input class="input" name="prodMaxAlgodao" type="number" step="0.1" value="${params.produtividadeMaxAlgodao || 300}" /></div>
+          
           <div class="full row" style="justify-content:flex-end">
             <button class="btn primary" type="submit">Salvar parâmetros</button>
           </div>
         </form>
       </div>
 
-      <div class="card">
+      <!-- Backup e Restauração -->
+      <div class="config-card">
         <h3>💾 Backup e Restauração</h3>
         <div class="help">
           • Use backup para trocar de aparelho sem perder dados.<br/>
           • Importar substitui o banco local atual.
         </div>
         <div class="hr"></div>
-        <div class="row" style="justify-content:space-around;">
-          <button class="btn primary" id="btnExport2">Exportar Backup</button>
-          <button class="btn" id="btnImport2">Importar Backup</button>
+        <div class="row" style="justify-content:space-around; gap:10px;">
+          <button class="btn primary" id="btnExport2">📤 Exportar Backup</button>
+          <button class="btn" id="btnImport2">📥 Importar Backup</button>
         </div>
       </div>
 
-      <div class="card">
+      <!-- Reset de Dados -->
+      <div class="config-card">
         <h3>⚠️ Reset de Dados</h3>
-        <div class="help">Restaura o banco de dados para os valores iniciais de demonstração.</div>
+        <div class="help">Escolha uma das opções abaixo para reinicializar os dados.</div>
         <div class="hr"></div>
-        <button class="btn danger" id="btnResetDemo" style="width:100%;">Resetar para dados de demonstração</button>
+        <div class="reset-buttons">
+          <button class="btn warning" id="btnZerarDados">🧹 Zerar todos os dados</button>
+          <button class="btn primary" id="btnRestaurarDemo">🔄 Restaurar dados de demonstração</button>
+        </div>
+        <p style="margin-top:15px; color:#64748b; font-size:13px;">
+          <strong>Zerar dados:</strong> remove todas as fazendas, talhões, produtos, estoque, aplicações, etc., mantendo apenas a safra atual.<br>
+          <strong>Restaurar demo:</strong> recria o banco com os dados de exemplo (inclusive safras de demonstração).
+        </p>
       </div>
 
-      <div class="card">
+      <!-- Sobre -->
+      <div class="config-card">
         <h3>📈 Sobre o sistema</h3>
         <div class="help">
-          <b>Agro Pro v6.0</b><br/>
+          <b>Agro Pro v6.1</b><br/>
           • Sistema baseado em SAFRAS (dados isolados por safra)<br/>
           • Base de dados com +100 produtos e +20 pragas pré-cadastradas<br/>
           • Alertas automáticos de pragas baseados no clima<br/>
           • Cálculo de custos com preços reais de produtos e diesel (UEPS)<br/>
-          • Estimativa de receita e lucro por talhão<br/>
+          • Estimativa de receita e lucro por talhão (soja, milho, algodão)<br/>
           • Controle completo de entrada e saída de diesel
         </div>
       </div>
     </div>
   `;
 
+  // Salvar parâmetros
   document.getElementById("frmParams").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -3571,33 +3635,28 @@ function pageConfiguracoes() {
     db2.parametros = {
       precoSoja: Number(fd.get("precoSoja") || 120),
       produtividadeMinSoja: Number(fd.get("prodMinSoja") || 65),
-      produtividadeMaxSoja: Number(fd.get("prodMaxSoja") || 75)
+      produtividadeMaxSoja: Number(fd.get("prodMaxSoja") || 75),
+      precoMilho: Number(fd.get("precoMilho") || 60),
+      produtividadeMinMilho: Number(fd.get("prodMinMilho") || 100),
+      produtividadeMaxMilho: Number(fd.get("prodMaxMilho") || 130),
+      precoAlgodao: Number(fd.get("precoAlgodao") || 150),
+      produtividadeMinAlgodao: Number(fd.get("prodMinAlgodao") || 250),
+      produtividadeMaxAlgodao: Number(fd.get("prodMaxAlgodao") || 300)
     };
     setDB(db2);
     toast("Parâmetros salvos", "Valores atualizados.");
   });
 
-  document.getElementById("btnExport").addEventListener("click", () => {
+  // Exportar backup
+  const exportBackup = () => {
     downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(getDB(), null, 2));
     toast("Backup exportado", "Arquivo .json baixado.");
-  });
-  document.getElementById("btnExport2").addEventListener("click", () => {
-    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(getDB(), null, 2));
-    toast("Backup exportado", "Arquivo .json baixado.");
-  });
+  };
+  document.getElementById("btnExport").addEventListener("click", exportBackup);
+  document.getElementById("btnExport2").addEventListener("click", exportBackup);
 
-  document.getElementById("btnImport").addEventListener("click", importarBackup);
-  document.getElementById("btnImport2").addEventListener("click", importarBackup);
-
-  document.getElementById("btnResetDemo").addEventListener("click", () => {
-    if (!confirm("⚠️ ATENÇÃO! Isso vai apagar TODOS os dados atuais e restaurar a versão de demonstração. Continuar?")) return;
-    localStorage.removeItem(Storage.key);
-    seedDB();
-    toast("Reset concluído", "Banco restaurado para dados de demonstração.");
-    setTimeout(() => location.reload(), 200);
-  });
-
-  function importarBackup() {
+  // Importar backup
+  const importBackup = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "application/json";
@@ -3608,10 +3667,10 @@ function pageConfiguracoes() {
       try {
         const data = JSON.parse(text);
         if (!data.safras) {
-          alert("Arquivo inválido.");
+          alert("Arquivo inválido (não contém safras).");
           return;
         }
-        if (!confirm("Importar vai SUBSTITUIR seus dados locais. Continuar?")) return;
+        if (!confirm("Importar vai SUBSTITUIR todos os dados locais. Continuar?")) return;
         Storage.save(data);
         toast("Importado", "Recarregando…");
         setTimeout(() => location.reload(), 200);
@@ -3620,7 +3679,56 @@ function pageConfiguracoes() {
       }
     };
     input.click();
-  }
+  };
+  document.getElementById("btnImport").addEventListener("click", importBackup);
+  document.getElementById("btnImport2").addEventListener("click", importBackup);
+
+  // Zerar todos os dados (mantém apenas a safra atual)
+  document.getElementById("btnZerarDados").addEventListener("click", () => {
+    if (!confirm("⚠️ Isso vai APAGAR todas as fazendas, talhões, produtos, estoque, aplicações, etc. Deseja continuar?")) return;
+    
+    const db2 = getDB();
+    const safraAtualId = getSafraId();
+    
+    // Limpar todas as coleções, mas preservar safras e parâmetros
+    db2.fazendas = [];
+    db2.talhoes = [];
+    db2.produtos = [];
+    db2.estoque = [];
+    db2.equipe = [];
+    db2.maquinas = [];
+    db2.clima = [];
+    db2.dieselEntradas = [];
+    db2.dieselEstoque = [];
+    db2.combustivel = [];
+    db2.aplicacoes = [];
+    db2.lembretes = [];
+    db2.pragas = [];
+    
+    // Recriar um tanque de diesel vazio para a safra atual
+    db2.dieselEstoque.push({
+      id: uid("dsl"),
+      safraId: safraAtualId,
+      deposito: "Tanque Principal",
+      litros: 0,
+      precoVigente: 0,
+      obs: "Estoque zerado"
+    });
+    
+    setDB(db2);
+    toast("Dados zerados", "Todos os registros foram removidos.");
+    setTimeout(() => location.reload(), 200);
+  });
+
+  // Restaurar dados de demonstração (seedDB completo)
+  document.getElementById("btnRestaurarDemo").addEventListener("click", () => {
+    if (!confirm("⚠️ Isso vai SUBSTITUIR todos os dados atuais pelos dados de demonstração. Continuar?")) return;
+    
+    localStorage.removeItem(Storage.key);
+    seedDB(); // recria o banco demo
+    toast("Demonstração restaurada", "Banco de dados recriado.");
+    setTimeout(() => location.reload(), 200);
+  });
 }
 
 /* ------------------ Boot ------------------ */
