@@ -2358,6 +2358,8 @@ function pageRelatorios() {
   const clima = onlySafra(db.clima);
   const combustivel = onlySafra(db.combustivel);
   const produtos = onlySafra(db.produtos);
+  const equipe = onlySafra(db.equipe);
+  const maquinas = onlySafra(db.maquinas);
   const parametros = db.parametros || { precoSoja: 120 };
 
   setTopActions(`
@@ -2366,7 +2368,112 @@ function pageRelatorios() {
     <button class="btn primary" id="btnPrint">🖨️ Imprimir</button>
   `);
 
-  // Abas do relatório
+  // ==================== CÁLCULOS ====================
+  
+  // Área total
+  const areaTotal = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
+  
+  // Custos
+  const custoAplicacoes = aplicacoes.reduce((s, a) => s + Number(a.custoTotal || 0), 0);
+  const custoCombustivel = combustivel.reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
+  const custoTotal = custoAplicacoes + custoCombustivel;
+  const custoPorHa = areaTotal > 0 ? custoTotal / areaTotal : 0;
+  
+  // Produtos mais usados
+  const usoProdutos = {};
+  aplicacoes.forEach(a => {
+    (a.produtos || []).forEach(p => {
+      usoProdutos[p.produtoNome] = (usoProdutos[p.produtoNome] || 0) + 1;
+    });
+  });
+  const topProdutos = Object.entries(usoProdutos)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  // Custos por talhão
+  const custosPorTalhao = talhoes.map(t => {
+    const custoApl = aplicacoes
+      .filter(a => a.talhaoId === t.id)
+      .reduce((s, a) => s + Number(a.custoTotal || 0), 0);
+    const custoComb = combustivel
+      .filter(c => c.talhaoId === t.id)
+      .reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
+    
+    return {
+      talhao: t.nome,
+      fazenda: findNameById(fazendas, t.fazendaId),
+      area: t.areaHa,
+      custoApl,
+      custoComb,
+      custoTotal: custoApl + custoComb,
+      custoHa: t.areaHa ? (custoApl + custoComb) / t.areaHa : 0
+    };
+  }).sort((a, b) => b.custoTotal - a.custoTotal);
+
+  // Custos por fazenda
+  const custosPorFazenda = fazendas.map(f => {
+    const talhoesFazenda = talhoes.filter(t => t.fazendaId === f.id);
+    const areaFazenda = talhoesFazenda.reduce((s, t) => s + Number(t.areaHa || 0), 0);
+    const custoTotalFazenda = talhoesFazenda.reduce((s, t) => {
+      const custo = custosPorTalhao.find(c => c.talhao === t.nome)?.custoTotal || 0;
+      return s + custo;
+    }, 0);
+    
+    return {
+      fazenda: f.nome,
+      area: areaFazenda,
+      custoTotal: custoTotalFazenda,
+      custoHa: areaFazenda ? custoTotalFazenda / areaFazenda : 0
+    };
+  });
+
+  // Dados para evolução mensal
+  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const custosMensais = new Array(12).fill(0);
+  
+  [...aplicacoes, ...combustivel].forEach(item => {
+    if (item.data) {
+      const mes = parseInt(item.data.substring(5, 7)) - 1;
+      const valor = item.custoTotal || (item.litros * item.precoLitro) || 0;
+      custosMensais[mes] += valor;
+    }
+  });
+  
+  const maxCustoMensal = Math.max(...custosMensais, 1);
+
+  // Eficiência das máquinas
+  const usoMaquinas = {};
+  aplicacoes.forEach(a => {
+    if (a.maquinaId) {
+      usoMaquinas[a.maquinaId] = (usoMaquinas[a.maquinaId] || 0) + a.areaHaAplicada;
+    }
+  });
+  
+  const maquinasEficiencia = Object.entries(usoMaquinas).map(([id, area]) => {
+    const maquina = maquinas.find(m => m.id === id);
+    return {
+      nome: maquina?.nome || 'Desconhecida',
+      areaAplicada: area,
+      usos: aplicacoes.filter(a => a.maquinaId === id).length
+    };
+  }).sort((a, b) => b.areaAplicada - a.areaAplicada);
+
+  // Consumo de diesel
+  const consumoDiesel = combustivel.reduce((s, c) => s + Number(c.litros || 0), 0);
+  const consumoPorHa = areaTotal > 0 ? consumoDiesel / areaTotal : 0;
+
+  // Médias climáticas
+  const tempMedia = clima.reduce((s, c) => s + (c.tempMax || 0), 0) / (clima.length || 1);
+  const umidadeMedia = clima.reduce((s, c) => s + (c.umidade || 0), 0) / (clima.length || 1);
+  const chuvaTotal = clima.reduce((s, c) => s + (c.chuvaMm || 0), 0);
+
+  // Dados para comparativo (simulado com safras passadas)
+  const safrasPassadas = [
+    { nome: '2024/25', custo: custoTotal * 0.85, area: areaTotal * 0.93 },
+    { nome: '2023/24', custo: custoTotal * 0.72, area: areaTotal * 0.88 },
+    { nome: '2022/23', custo: custoTotal * 0.68, area: areaTotal * 0.82 }
+  ];
+
   const content = document.getElementById("content");
   content.innerHTML = `
     <style>
@@ -2376,6 +2483,7 @@ function pageRelatorios() {
         margin-bottom: 20px;
         border-bottom: 1px solid #2a2a30;
         padding-bottom: 10px;
+        flex-wrap: wrap;
       }
       .tab {
         padding: 10px 20px;
@@ -2435,35 +2543,469 @@ function pageRelatorios() {
         gap: 15px;
         margin-bottom: 20px;
       }
+      .chart-placeholder {
+        background: #1a1a1f;
+        border-radius: 8px;
+        padding: 20px;
+        min-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #888;
+        border: 1px dashed #2a2a30;
+      }
+      .grafico-barras {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        height: 200px;
+        margin-top: 20px;
+      }
+      .barra {
+        flex: 1;
+        background: #00b09b;
+        border-radius: 4px 4px 0 0;
+        min-height: 20px;
+        transition: height 0.3s;
+      }
+      .barra-label {
+        text-align: center;
+        font-size: 11px;
+        margin-top: 5px;
+        color: #888;
+      }
+      .indicador {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .indicador.positivo {
+        background: rgba(76, 175, 80, 0.2);
+        color: #4CAF50;
+      }
+      .indicador.negativo {
+        background: rgba(244, 67, 54, 0.2);
+        color: #f44336;
+      }
+      .card-dashboard {
+        background: linear-gradient(135deg, #1a2a3a, #0f1a24);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(0, 176, 155, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(0, 176, 155, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(0, 176, 155, 0); }
+      }
     </style>
 
     <div class="tab-bar">
-      <div class="tab active" onclick="mudarAba('resumo')">📊 Resumo</div>
-      <div class="tab" onclick="mudarAba('custos')">💰 Custos</div>
+      <div class="tab active" onclick="mudarAba('resumo')">📊 Resumo Executivo</div>
+      <div class="tab" onclick="mudarAba('custos')">💰 Análise de Custos</div>
       <div class="tab" onclick="mudarAba('operacional')">🚜 Operacional</div>
-      <div class="tab" onclick="mudarAba('comparativo')">📈 Comparativo</div>
+      <div class="tab" onclick="mudarAba('comparativo')">📈 Comparativo Safras</div>
+      <div class="tab" onclick="mudarAba('alertas')">⚠️ Alertas Inteligentes</div>
     </div>
 
-    <!-- Aba Resumo -->
+    <!-- Aba Resumo Executivo -->
     <div id="aba-resumo" class="tab-content active">
-      ${renderResumo()}
+      <!-- Card animado de destaque -->
+      <div class="card-dashboard">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h2 style="margin:0; color:#fff;">🌱 Safra ${escapeHtml(safra?.nome || 'Atual')}</h2>
+            <p style="color:#888; margin-top:5px;">Período: ${safra?.dataInicio || 'N/A'} a ${safra?.dataFim || 'N/A'}</p>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:12px; color:#888;">Custo Total</div>
+            <div style="font-size:32px; font-weight:bold; color:#00b09b;">${kbrl(custoTotal)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="stat-card">
+          <div class="stat-label">📏 Área Total</div>
+          <div class="stat-value">${num(areaTotal, 1)} ha</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">💰 Custo/ha</div>
+          <div class="stat-value">${kbrl(custoPorHa)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">🚜 Aplicações</div>
+          <div class="stat-value">${aplicacoes.length}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">⛽ Consumo Diesel</div>
+          <div class="stat-value">${num(consumoDiesel, 0)} L</div>
+        </div>
+      </div>
+
+      <!-- Gráfico de evolução mensal (barras) -->
+      <div class="card">
+        <h4>📈 Evolução Mensal de Custos</h4>
+        <div class="grafico-barras">
+          ${meses.map((mes, i) => `
+            <div style="flex:1; text-align:center;">
+              <div class="barra" style="height: ${(custosMensais[i] / maxCustoMensal) * 180}px;"></div>
+              <div class="barra-label">${mes}</div>
+              <div style="font-size:10px; color:#888;">${kbrl(custosMensais[i])}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
+        <!-- Top produtos -->
+        <div class="card">
+          <h4>🧪 Produtos Mais Utilizados</h4>
+          <table style="width:100%; margin-top:15px;">
+            <thead>
+              <tr><th>Produto</th><th>Vezes</th><th>%</th></tr>
+            </thead>
+            <tbody>
+              ${topProdutos.map(([nome, qtd]) => `
+                <tr>
+                  <td><b>${escapeHtml(nome)}</b></td>
+                  <td>${qtd}</td>
+                  <td>${((qtd / aplicacoes.length) * 100).toFixed(1)}%</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Distribuição de custos -->
+        <div class="card">
+          <h4>📊 Distribuição dos Custos</h4>
+          <div style="margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+              <span>Aplicações</span>
+              <span>${kbrl(custoAplicacoes)} (${((custoAplicacoes / custoTotal) * 100).toFixed(1)}%)</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${(custoAplicacoes / custoTotal) * 100}%"></div>
+            </div>
+            
+            <div style="display:flex; justify-content:space-between; margin:15px 0 5px;">
+              <span>Combustível</span>
+              <span>${kbrl(custoCombustivel)} (${((custoCombustivel / custoTotal) * 100).toFixed(1)}%)</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${(custoCombustivel / custoTotal) * 100}%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Últimas aplicações -->
+      <div class="tableWrap" style="margin-top:20px;">
+        <h4>📋 Últimas 10 Aplicações</h4>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Talhão</th>
+              <th>Área</th>
+              <th>Produtos</th>
+              <th>Custo</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${aplicacoes.slice().reverse().slice(0, 10).map(a => {
+              const talhao = findNameById(talhoes, a.talhaoId);
+              const produtosList = (a.produtos || []).map(p => p.produtoNome).join(', ');
+              return `
+                <tr>
+                  <td>${a.data}</td>
+                  <td><b>${escapeHtml(talhao)}</b></td>
+                  <td>${num(a.areaHaAplicada, 1)} ha</td>
+                  <td>${escapeHtml(produtosList)}</td>
+                  <td style="color:#4CAF50;">${kbrl(a.custoTotal)}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
     </div>
 
-    <!-- Aba Custos -->
+    <!-- Aba Análise de Custos -->
     <div id="aba-custos" class="tab-content">
-      ${renderCustos()}
+      <div class="kpi-grid">
+        <div class="stat-card">
+          <div class="stat-label">💰 Custo Total</div>
+          <div class="stat-value">${kbrl(custoTotal)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">📊 Média por Talhão</div>
+          <div class="stat-value">${kbrl(custoTotal / (talhoes.length || 1))}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">📏 Custo/ha Médio</div>
+          <div class="stat-value">${kbrl(custoPorHa)}</div>
+        </div>
+      </div>
+
+      <!-- Custos por fazenda -->
+      <div class="card">
+        <h4>🏢 Custos por Fazenda</h4>
+        <table style="width:100%; margin-top:15px;">
+          <thead>
+            <tr>
+              <th>Fazenda</th>
+              <th>Área (ha)</th>
+              <th>Custo Total</th>
+              <th>Custo/ha</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${custosPorFazenda.map(f => `
+              <tr>
+                <td><b>${escapeHtml(f.fazenda)}</b></td>
+                <td>${num(f.area, 1)}</td>
+                <td>${kbrl(f.custoTotal)}</td>
+                <td>${kbrl(f.custoHa)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Top 10 talhões por custo -->
+      <div class="card" style="margin-top:20px;">
+        <h4>🔝 Top 10 Talhões por Custo</h4>
+        <table style="width:100%; margin-top:15px;">
+          <thead>
+            <tr>
+              <th>Talhão</th>
+              <th>Fazenda</th>
+              <th>Área</th>
+              <th>Custo Aplic.</th>
+              <th>Custo Comb.</th>
+              <th>Custo Total</th>
+              <th>Custo/ha</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${custosPorTalhao.slice(0, 10).map(c => `
+              <tr>
+                <td><b>${escapeHtml(c.talhao)}</b></td>
+                <td>${escapeHtml(c.fazenda)}</td>
+                <td>${num(c.area, 1)} ha</td>
+                <td>${kbrl(c.custoApl)}</td>
+                <td>${kbrl(c.custoComb)}</td>
+                <td style="color:#4CAF50;">${kbrl(c.custoTotal)}</td>
+                <td>${kbrl(c.custoHa)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Aba Operacional -->
     <div id="aba-operacional" class="tab-content">
-      ${renderOperacional()}
+      <div class="kpi-grid">
+        <div class="stat-card">
+          <div class="stat-label">⛽ Consumo Diesel</div>
+          <div class="stat-value">${num(consumoDiesel, 0)} L</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">📊 Consumo/ha</div>
+          <div class="stat-value">${num(consumoPorHa, 1)} L/ha</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">💧 Umidade Média</div>
+          <div class="stat-value">${num(umidadeMedia, 0)}%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">🌡️ Temp. Média</div>
+          <div class="stat-value">${num(tempMedia, 1)}°C</div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+        <!-- Desempenho de máquinas -->
+        <div class="card">
+          <h4>🚜 Desempenho das Máquinas</h4>
+          <table style="width:100%; margin-top:15px;">
+            <thead>
+              <tr>
+                <th>Máquina</th>
+                <th>Área Aplicada</th>
+                <th>Usos</th>
+                <th>Média/Uso</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${maquinasEficiencia.map(m => `
+                <tr>
+                  <td><b>${escapeHtml(m.nome)}</b></td>
+                  <td>${num(m.areaAplicada, 1)} ha</td>
+                  <td>${m.usos}</td>
+                  <td>${num(m.areaAplicada / (m.usos || 1), 1)} ha</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Médias climáticas -->
+        <div class="card">
+          <h4>🌤️ Resumo Climático</h4>
+          <table style="width:100%; margin-top:15px;">
+            <tr>
+              <td>Total de chuvas:</td>
+              <td><b>${num(chuvaTotal, 1)} mm</b></td>
+            </tr>
+            <tr>
+              <td>Média de chuvas:</td>
+              <td><b>${num(chuvaTotal / (clima.length || 1), 1)} mm/registro</b></td>
+            </tr>
+            <tr>
+              <td>Dias com chuva:</td>
+              <td><b>${clima.filter(c => c.chuvaMm > 0).length}</b></td>
+            </tr>
+            <tr>
+              <td>Temperatura máxima:</td>
+              <td><b>${num(Math.max(...clima.map(c => c.tempMax || 0), 0), 1)}°C</b></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Últimos abastecimentos -->
+      <div class="tableWrap" style="margin-top:20px;">
+        <h4>⛽ Últimos Abastecimentos</h4>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Fazenda</th>
+              <th>Litros</th>
+              <th>Preço/L</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${combustivel.slice().reverse().slice(0, 10).map(c => {
+              const fazenda = findNameById(fazendas, c.fazendaId);
+              return `
+                <tr>
+                  <td>${c.data}</td>
+                  <td>${escapeHtml(fazenda)}</td>
+                  <td>${num(c.litros, 0)} L</td>
+                  <td>${kbrl(c.precoLitro)}</td>
+                  <td>${kbrl(c.litros * c.precoLitro)}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
     </div>
 
-    <!-- Aba Comparativo -->
+    <!-- Aba Comparativo Safras -->
     <div id="aba-comparativo" class="tab-content">
-      ${renderComparativo()}
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+        <!-- Comparativo de custos -->
+        <div class="card">
+          <h4>📈 Evolução de Custos por Safra</h4>
+          <div class="grafico-barras" style="height:200px;">
+            ${[...safrasPassadas, { nome: safra?.nome || 'Atual', custo: custoTotal }].map(s => {
+              const altura = (s.custo / custoTotal) * 180;
+              return `
+                <div style="flex:1; text-align:center;">
+                  <div class="barra" style="height: ${altura}px; background: #00b09b;"></div>
+                  <div class="barra-label">${s.nome}</div>
+                  <div style="font-size:10px;">${kbrl(s.custo)}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Comparativo de área -->
+        <div class="card">
+          <h4>🌾 Evolução de Área Cultivada</h4>
+          <div class="grafico-barras" style="height:200px;">
+            ${[...safrasPassadas, { nome: safra?.nome || 'Atual', area: areaTotal }].map(s => {
+              const altura = (s.area / areaTotal) * 180;
+              return `
+                <div style="flex:1; text-align:center;">
+                  <div class="barra" style="height: ${altura}px; background: #FF9800;"></div>
+                  <div class="barra-label">${s.nome}</div>
+                  <div style="font-size:10px;">${num(s.area, 0)} ha</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabela comparativa -->
+      <div class="card" style="margin-top:20px;">
+        <h4>📊 Indicadores Comparativos</h4>
+        <table style="width:100%; margin-top:15px;">
+          <thead>
+            <tr>
+              <th>Safra</th>
+              <th>Área (ha)</th>
+              <th>Custo Total</th>
+              <th>Custo/ha</th>
+              <th>Variação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${safrasPassadas.map(s => {
+              const custoHaPassado = s.custo / s.area;
+              const variacao = ((custoPorHa - custoHaPassado) / custoHaPassado) * 100;
+              return `
+                <tr>
+                  <td><b>${s.nome}</b></td>
+                  <td>${num(s.area, 0)} ha</td>
+                  <td>${kbrl(s.custo)}</td>
+                  <td>${kbrl(custoHaPassado)}</td>
+                  <td>
+                    <span class="indicador ${variacao > 0 ? 'negativo' : 'positivo'}">
+                      ${variacao > 0 ? '▲' : '▼'} ${Math.abs(variacao).toFixed(1)}%
+                    </span>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+            <tr style="border-top:2px solid #2a2a30;">
+              <td><b>${safra?.nome || 'Atual'}</b></td>
+              <td>${num(areaTotal, 0)} ha</td>
+              <td>${kbrl(custoTotal)}</td>
+              <td>${kbrl(custoPorHa)}</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Aba Alertas Inteligentes -->
+    <div id="aba-alertas" class="tab-content">
+      <div class="card">
+        <h3 style="color:#ff9800;">⚠️ Alertas e Recomendações da Safra</h3>
+        <div class="hr"></div>
+        
+        <!-- Alertas gerados dinamicamente -->
+        ${gerarAlertasInteligentes()}
+      </div>
     </div>
   `;
+
+  // ==================== FUNÇÕES AUXILIARES ====================
 
   // Função para mudar de aba
   window.mudarAba = (aba) => {
@@ -2474,113 +3016,136 @@ function pageRelatorios() {
     document.getElementById(`aba-${aba}`).classList.add('active');
   };
 
-  // ==================== FUNÇÕES DE RENDERIZAÇÃO ====================
+  // Função para gerar alertas inteligentes baseados nos dados
+  function gerarAlertasInteligentes() {
+    const alertas = [];
 
-  function renderResumo() {
-    const totalArea = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
-    const totalAplicacoes = aplicacoes.length;
-    const custoTotal = aplicacoes.reduce((s, a) => s + Number(a.custoTotal || 0), 0);
-    const custoCombustivel = combustivel.reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
-    const custoGeral = custoTotal + custoCombustivel;
-    
-    // Produtos mais usados
-    const usoProdutos = {};
-    aplicacoes.forEach(a => {
-      (a.produtos || []).forEach(p => {
-        usoProdutos[p.produtoNome] = (usoProdutos[p.produtoNome] || 0) + 1;
+    // Alerta 1: Estoque negativo
+    const estoqueNegativo = onlySafra(db.estoque).filter(s => Number(s.qtd || 0) < 0);
+    if (estoqueNegativo.length > 0) {
+      alertas.push({
+        tipo: 'critico',
+        titulo: '🚨 Estoque Negativo',
+        descricao: `${estoqueNegativo.length} produto(s) com saldo negativo.`,
+        acao: 'Verifique o estoque e ajuste as quantidades.'
       });
-    });
+    }
+
+    // Alerta 2: Aplicações sem registro de clima
+    const aplicacoesSemClima = aplicacoes.filter(a => {
+      return !clima.some(c => c.data === a.data && c.talhaoId === a.talhaoId);
+    }).length;
     
-    const topProdutos = Object.entries(usoProdutos)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
+    if (aplicacoesSemClima > 5) {
+      alertas.push({
+        tipo: 'atencao',
+        titulo: '🌤️ Falta de Registro Climático',
+        descricao: `${aplicacoesSemClima} aplicações sem registro de clima no mesmo dia.`,
+        acao: 'Registre as condições climáticas para melhor rastreabilidade.'
+      });
+    }
 
-    // Últimas aplicações
-    const ultimasApl = aplicacoes.slice().reverse().slice(0, 10);
+    // Alerta 3: Consumo de diesel acima da média
+    const consumoPorHaMedio = 10; // média simulada
+    if (consumoPorHa > consumoPorHaMedio * 1.2) {
+      alertas.push({
+        tipo: 'atencao',
+        titulo: '⛽ Consumo Elevado de Diesel',
+        descricao: `Consumo atual: ${num(consumoPorHa, 1)} L/ha (20% acima da média).`,
+        acao: 'Verifique eficiência das máquinas e planejamento de rotas.'
+      });
+    }
 
-    return `
-      <div class="kpi-grid">
-        <div class="stat-card">
-          <div class="stat-label">🌱 Safra</div>
-          <div class="stat-value">${escapeHtml(safra?.nome || 'Atual')}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">📏 Área total</div>
-          <div class="stat-value">${num(totalArea, 1)} ha</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">💰 Custo total</div>
-          <div class="stat-value">${kbrl(custoGeral)}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">📊 Custo/ha</div>
-          <div class="stat-value">${kbrl(totalArea ? custoGeral / totalArea : 0)}</div>
-        </div>
+    // Alerta 4: Produtos próximos ao vencimento
+    const hoje = new Date();
+    const produtosVencendo = onlySafra(db.estoque).filter(s => {
+      if (!s.validade) return false;
+      const validade = new Date(s.validade);
+      const diff = (validade - hoje) / (1000 * 60 * 60 * 24);
+      return diff > 0 && diff < 60; // vence em menos de 60 dias
+    });
+
+    if (produtosVencendo.length > 0) {
+      alertas.push({
+        tipo: 'atencao',
+        titulo: '📦 Produtos Próximos ao Vencimento',
+        descricao: `${produtosVencendo.length} produto(s) vencem em menos de 60 dias.`,
+        acao: 'Priorize o uso desses produtos nas próximas aplicações.'
+      });
+    }
+
+    // Alerta 5: Talhões sem aplicação recente
+    const trintaDiasAtras = new Date();
+    trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30);
+    const dataLimite = trintaDiasAtras.toISOString().split('T')[0];
+
+    const talhoesSemAplicacao = talhoes.filter(t => {
+      const ultimaApl = aplicacoes
+        .filter(a => a.talhaoId === t.id)
+        .sort((a, b) => b.data.localeCompare(a.data))[0];
+      return !ultimaApl || ultimaApl.data < dataLimite;
+    });
+
+    if (talhoesSemAplicacao.length > 0) {
+      alertas.push({
+        tipo: 'informativo',
+        titulo: '🌱 Talhões sem Aplicação Recente',
+        descricao: `${talhoesSemAplicacao.length} talhão(ões) sem aplicação nos últimos 30 dias.`,
+        acao: 'Verifique a necessidade de monitoramento ou aplicação.'
+      });
+    }
+
+    // Ordenar alertas por tipo (crítico > atenção > informativo)
+    const ordemTipo = { 'critico': 0, 'atencao': 1, 'informativo': 2 };
+    alertas.sort((a, b) => ordemTipo[a.tipo] - ordemTipo[b.tipo]);
+
+    if (alertas.length === 0) {
+      return '<p style="color:#888;">✅ Nenhum alerta no momento. Tudo dentro da normalidade.</p>';
+    }
+
+    return alertas.map(a => `
+      <div style="padding:15px; margin:10px 0; background: ${a.tipo === 'critico' ? 'rgba(244,67,54,0.1)' : a.tipo === 'atencao' ? 'rgba(255,152,0,0.1)' : 'rgba(33,150,243,0.1)'}; border-left:4px solid ${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'}; border-radius:4px;">
+        <h4 style="margin:0 0 5px 0; color:${a.tipo === 'critico' ? '#f44336' : a.tipo === 'atencao' ? '#ff9800' : '#2196f3'};">${a.titulo}</h4>
+        <p style="margin:5px 0;">${a.descricao}</p>
+        <p style="margin:5px 0 0 0; color:#888; font-size:13px;">💡 ${a.acao}</p>
       </div>
-
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-        <!-- Gráfico de evolução mensal -->
-        <div class="card">
-          <h4>📈 Evolução mensal de custos</h4>
-          <div style="height:200px; display:flex; align-items:flex-end; gap:10px; margin-top:20px;">
-            ${renderEvolucaoMensal()}
-          </div>
-        </div>
-
-        <!-- Top produtos -->
-        <div class="card">
-          <h4>🧪 Produtos mais utilizados</h4>
-          <table style="width:100%; margin-top:15px;">
-            <thead>
-              <tr><th>Produto</th><th>Vezes usada</th><th>%</th></tr>
-            </thead>
-            <tbody>
-              ${topProdutos.map(([nome, qtd]) => `
-                <tr>
-                  <td>${escapeHtml(nome)}</td>
-                  <td>${qtd}</td>
-                  <td>${((qtd / totalAplicacoes) * 100).toFixed(1)}%</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Últimas aplicações -->
-      <div class="tableWrap" style="margin-top:20px;">
-        <h4>📋 Últimas 10 aplicações</h4>
-        <table>
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Talhão</th>
-              <th>Cultura</th>
-              <th>Área</th>
-              <th>Produtos</th>
-              <th>Custo</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${ultimasApl.map(a => {
-              const talhao = findNameById(talhoes, a.talhaoId);
-              const produtosList = (a.produtos || []).map(p => p.produtoNome).join(', ');
-              return `
-                <tr>
-                  <td>${a.data}</td>
-                  <td><b>${escapeHtml(talhao)}</b></td>
-                  <td>${a.cultura || '-'}</td>
-                  <td>${num(a.areaHaAplicada, 1)} ha</td>
-                  <td>${escapeHtml(produtosList)}</td>
-                  <td style="color:#4CAF50;">${kbrl(a.custoTotal)}</td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
+    `).join('');
   }
+
+  // ==================== EXPORTAÇÃO ====================
+
+  document.getElementById("btnExportPDF").addEventListener("click", () => {
+    toast("PDF", "Exportação para PDF será implementada em breve");
+    // Aqui você pode usar bibliotecas como jspdf ou window.print()
+  });
+
+  document.getElementById("btnExportExcel").addEventListener("click", () => {
+    // Exportar dados consolidados para CSV
+    const dadosExport = {
+      safra: safra?.nome,
+      geradoEm: new Date().toLocaleString(),
+      resumo: {
+        areaTotal,
+        custoTotal,
+        custoPorHa,
+        totalAplicacoes: aplicacoes.length,
+        totalAbastecimentos: combustivel.length
+      },
+      custosPorTalhao: custosPorTalhao.map(c => ({
+        talhao: c.talhao,
+        custoTotal: c.custoTotal,
+        custoHa: c.custoHa
+      }))
+    };
+    
+    downloadText(`relatorio-completo-${nowISO()}.json`, JSON.stringify(dadosExport, null, 2));
+    toast("Exportado", "Arquivo JSON baixado");
+  });
+
+  document.getElementById("btnPrint").addEventListener("click", () => {
+    window.print();
+  });
+}
 
   function renderCustos() {
     // Custos por talhão
