@@ -2972,68 +2972,208 @@ function pageRelatorios() {
   const fazendas = onlySafra(db.fazendas);
   const talhoes = onlySafra(db.talhoes);
   const aplicacoes = onlySafra(db.aplicacoes);
-  const clima = onlySafra(db.clima);
   const combustivel = onlySafra(db.combustivel);
   const colheitas = onlySafra(db.colheitas);
-  const params = db.parametros || { precoSoja: 120 };
+  const params = db.parametros || { 
+    precoSoja: 120, 
+    precoMilho: 60, 
+    precoAlgodao: 150,
+    pesoPadraoSaca: 60
+  };
 
   setTopActions(`
-    <button class="btn" id="btnExportPDF">📄 PDF</button>
-    <button class="btn" id="btnExportExcel">📊 Excel</button>
+    <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
     <button class="btn primary" id="btnPrint">🖨️ Imprimir</button>
   `);
 
+  // Totais gerais
   const areaTotal = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
-  const custoTotal = aplicacoes.reduce((s, a) => s + Number(a.custoTotal || 0), 0) + combustivel.reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
+  const custoTotal = aplicacoes.reduce((s, a) => s + Number(a.custoTotal || 0), 0) + 
+                     combustivel.reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
   const custoPorHa = areaTotal > 0 ? custoTotal / areaTotal : 0;
 
-  const producaoTotal = colheitas.reduce((s, c) => s + c.producaoTotal, 0);
-  const receitaReal = colheitas.reduce((s, c) => {
+  // Produção e receita real
+  let producaoTotalKg = 0;
+  let receitaRealTotal = 0;
+  const colheitaMap = new Map();
+  colheitas.forEach(c => {
+    colheitaMap.set(c.talhaoId, c);
+    producaoTotalKg += c.producaoTotal;
     const talhao = talhoes.find(t => t.id === c.talhaoId);
-    if (!talhao) return s;
-    const cultura = talhao.cultura?.toLowerCase() || '';
+    if (talhao) {
+      const cultura = talhao.cultura?.toLowerCase() || '';
+      let preco = params.precoSoja;
+      if (cultura === 'milho') preco = params.precoMilho;
+      if (cultura === 'algodao') preco = params.precoAlgodao;
+      const sacas = c.unidade === 'kg' ? c.producaoTotal / params.pesoPadraoSaca : c.producaoTotal;
+      receitaRealTotal += sacas * preco;
+    }
+  });
+
+  // Receita estimada total (usando produtividade média)
+  const produtividadeMedia = {
+    soja: (params.produtividadeMinSoja + params.produtividadeMaxSoja) / 2,
+    milho: (params.produtividadeMinMilho + params.produtividadeMaxMilho) / 2,
+    algodao: (params.produtividadeMinAlgodao + params.produtividadeMaxAlgodao) / 2
+  };
+  let receitaEstimadaTotal = 0;
+  talhoes.forEach(t => {
+    const cultura = t.cultura?.toLowerCase() || '';
     let preco = params.precoSoja;
-    if (cultura === 'milho') preco = params.precoMilho || 60;
-    if (cultura === 'algodao') preco = params.precoAlgodao || 150;
-    const sacas = c.unidade === 'kg' ? c.producaoTotal / (params.pesoPadraoSaca || 60) : c.producaoTotal;
-    return s + (sacas * preco);
-  }, 0);
+    let prodMedia = produtividadeMedia.soja;
+    if (cultura === 'milho') {
+      preco = params.precoMilho;
+      prodMedia = produtividadeMedia.milho;
+    } else if (cultura === 'algodao') {
+      preco = params.precoAlgodao;
+      prodMedia = produtividadeMedia.algodao;
+    }
+    receitaEstimadaTotal += (t.areaHa || 0) * prodMedia * preco;
+  });
+
+  const lucroEstimadoTotal = receitaEstimadaTotal - custoTotal;
+  const lucroRealTotal = receitaRealTotal - custoTotal;
+
+  // Dados por talhão
+  const dadosTalhoes = talhoes.map(t => {
+    const custo = aplicacoes.filter(a => a.talhaoId === t.id).reduce((s, a) => s + Number(a.custoTotal || 0), 0) +
+                  combustivel.filter(c => c.talhaoId === t.id).reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
+    const colheita = colheitaMap.get(t.id);
+    const producaoKg = colheita ? colheita.producaoTotal : 0;
+    const cultura = t.cultura?.toLowerCase() || '';
+    let preco = params.precoSoja;
+    let prodMedia = produtividadeMedia.soja;
+    if (cultura === 'milho') {
+      preco = params.precoMilho;
+      prodMedia = produtividadeMedia.milho;
+    } else if (cultura === 'algodao') {
+      preco = params.precoAlgodao;
+      prodMedia = produtividadeMedia.algodao;
+    }
+    const receitaEstimada = (t.areaHa || 0) * prodMedia * preco;
+    const receitaReal = colheita ? (colheita.unidade === 'kg' ? (colheita.producaoTotal / params.pesoPadraoSaca) * preco : colheita.producaoTotal * preco) : 0;
+    const lucroReal = receitaReal - custo;
+
+    return {
+      talhao: t.nome,
+      fazenda: findNameById(fazendas, t.fazendaId),
+      cultura: t.cultura || '-',
+      area: t.areaHa || 0,
+      custo,
+      producaoKg,
+      receitaEstimada,
+      receitaReal,
+      lucroReal,
+      temColheita: !!colheita
+    };
+  }).sort((a, b) => b.custo - a.custo);
 
   const content = document.getElementById("content");
   content.innerHTML = `
-    <div class="printOnly">
-      <h2>Relatório Agro Pro - ${escapeHtml(safra?.nome || 'Safra Atual')}</h2>
-      <p>Gerado em: ${new Date().toLocaleString("pt-BR")}</p>
-      <div class="hr"></div>
+    <style>
+      .relatorio-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .relatorio-kpi-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        border-left: 4px solid #3b82f6;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      }
+      .relatorio-kpi-card h3 {
+        margin: 0 0 10px 0;
+        color: #3b82f6;
+        font-size: 16px;
+      }
+      .relatorio-kpi-valor {
+        font-size: 28px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .relatorio-kpi-label {
+        color: #475569;
+        font-size: 12px;
+        margin-top: 5px;
+      }
+      .destaque-positivo { color: #059669; }
+      .destaque-negativo { color: #b91c1c; }
+    </style>
+
+    <div class="relatorio-kpi-grid">
+      <div class="relatorio-kpi-card">
+        <h3>📏 Área Total</h3>
+        <div class="relatorio-kpi-valor">${num(areaTotal, 1)} ha</div>
+      </div>
+      <div class="relatorio-kpi-card">
+        <h3>💰 Custo Total</h3>
+        <div class="relatorio-kpi-valor">${kbrl(custoTotal)}</div>
+        <div class="relatorio-kpi-label">R$ ${num(custoPorHa, 2)}/ha</div>
+      </div>
+      <div class="relatorio-kpi-card">
+        <h3>🌾 Produção Total</h3>
+        <div class="relatorio-kpi-valor">${num(producaoTotalKg, 0)} kg</div>
+      </div>
+      <div class="relatorio-kpi-card">
+        <h3>📊 Lucro Real</h3>
+        <div class="relatorio-kpi-valor ${lucroRealTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">${kbrl(lucroRealTotal)}</div>
+        <div class="relatorio-kpi-label">vs estimado ${kbrl(lucroEstimadoTotal)}</div>
+      </div>
     </div>
 
-    <div class="kpi">
-      <div class="card"><h3>Área total</h3><div class="big">${num(areaTotal, 1)} ha</div></div>
-      <div class="card"><h3>Custo total</h3><div class="big">${kbrl(custoTotal)}</div></div>
-      <div class="card"><h3>Produção total</h3><div class="big">${num(producaoTotal, 0)} kg</div></div>
-      <div class="card"><h3>Receita real</h3><div class="big">${kbrl(receitaReal)}</div></div>
+    <div class="card" style="margin-bottom:20px;">
+      <h3>📈 Comparativo Receita</h3>
+      <table style="width:100%;">
+        <tr>
+          <td><b>Receita estimada:</b></td>
+          <td style="text-align:right">${kbrl(receitaEstimadaTotal)}</td>
+        </tr>
+        <tr>
+          <td><b>Receita real:</b></td>
+          <td style="text-align:right">${kbrl(receitaRealTotal)}</td>
+        </tr>
+        <tr>
+          <td><b>Diferença:</b></td>
+          <td style="text-align:right ${receitaRealTotal - receitaEstimadaTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">
+            ${kbrl(receitaRealTotal - receitaEstimadaTotal)}
+          </td>
+        </tr>
+      </table>
     </div>
 
     <div class="tableWrap">
-      <h3>📋 Resumo por Talhão</h3>
+      <h3>📋 Detalhamento por Talhão</h3>
       <table>
         <thead>
           <tr>
-            <th>Talhão</th><th>Cultura</th><th>Área</th><th>Custo</th><th>Produção</th><th>Receita</th><th>Lucro</th>
+            <th>Talhão</th>
+            <th>Fazenda</th>
+            <th>Cultura</th>
+            <th>Área (ha)</th>
+            <th>Custo (R$)</th>
+            <th>Produção (kg)</th>
+            <th>Receita Est. (R$)</th>
+            <th>Receita Real (R$)</th>
+            <th>Lucro Real (R$)</th>
           </tr>
         </thead>
         <tbody>
-          ${talhoes.map(t => {
-            const custo = aplicacoes.filter(a => a.talhaoId === t.id).reduce((s, a) => s + Number(a.custoTotal || 0), 0) + combustivel.filter(c => c.talhaoId === t.id).reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
-            const colheita = colheitas.find(c => c.talhaoId === t.id);
-            const producao = colheita ? colheita.producaoTotal : 0;
-            const cultura = t.cultura?.toLowerCase() || '';
-            let preco = params.precoSoja;
-            if (cultura === 'milho') preco = params.precoMilho || 60;
-            if (cultura === 'algodao') preco = params.precoAlgodao || 150;
-            const receita = colheita ? (colheita.unidade === 'kg' ? (colheita.producaoTotal / (params.pesoPadraoSaca || 60)) * preco : colheita.producaoTotal * preco) : 0;
-            const lucro = receita - custo;
-            return `<tr><td><b>${escapeHtml(t.nome)}</b></td><td>${escapeHtml(t.cultura||'-')}</td><td>${num(t.areaHa,1)}</td><td>${kbrl(custo)}</td><td>${num(producao,0)} kg</td><td>${kbrl(receita)}</td><td class="${lucro >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">${kbrl(lucro)}</td></tr>`;
+          ${dadosTalhoes.map(d => {
+            const lucroClass = d.lucroReal >= 0 ? 'destaque-positivo' : 'destaque-negativo';
+            return `<tr>
+              <td><b>${escapeHtml(d.talhao)}</b></td>
+              <td>${escapeHtml(d.fazenda)}</td>
+              <td>${escapeHtml(d.cultura)}</td>
+              <td>${num(d.area, 1)}</td>
+              <td>${kbrl(d.custo)}</td>
+              <td>${d.temColheita ? num(d.producaoKg, 0) : '-'}</td>
+              <td>${kbrl(d.receitaEstimada)}</td>
+              <td>${d.temColheita ? kbrl(d.receitaReal) : '-'}</td>
+              <td class="${lucroClass}">${d.temColheita ? kbrl(d.lucroReal) : '-'}</td>
+            </tr>`;
           }).join('')}
         </tbody>
       </table>
@@ -3041,18 +3181,22 @@ function pageRelatorios() {
   `;
 
   document.getElementById("btnPrint").addEventListener("click", () => window.print());
-  document.getElementById("btnExportExcel").addEventListener("click", () => {
-    const dados = talhoes.map(t => ({
-      Talhão: t.nome,
-      Cultura: t.cultura,
-      Área_ha: t.areaHa,
-      Custo_R$: custoTotal,
-      Produção_kg: colheitas.find(c => c.talhaoId === t.id)?.producaoTotal || 0
+
+  document.getElementById("btnExportCSV").addEventListener("click", () => {
+    const dados = dadosTalhoes.map(d => ({
+      Talhão: d.talhao,
+      Fazenda: d.fazenda,
+      Cultura: d.cultura,
+      Área_ha: d.area,
+      Custo_R$: d.custo,
+      Produção_kg: d.producaoKg,
+      Receita_Estimada_R$: d.receitaEstimada,
+      Receita_Real_R$: d.receitaReal,
+      Lucro_Real_R$: d.lucroReal
     }));
-    downloadText(`relatorio-${nowISO()}.csv`, toCSV(dados));
-    toast("Exportado", "CSV baixado");
+    downloadText(`relatorio-safra-${nowISO()}.csv`, toCSV(dados));
+    toast("Exportado", "CSV baixado.");
   });
-  document.getElementById("btnExportPDF").addEventListener("click", () => toast("PDF", "Em breve"));
 }
 
 function boot() {
