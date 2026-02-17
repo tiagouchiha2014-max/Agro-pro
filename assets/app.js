@@ -2,6 +2,8 @@
    AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL COM COLHEITAS
    ============================================================ */
 
+let fazendaAtual = null;  // Filtro global de fazenda
+
 const Storage = {
   key: "agro_pro_v10",
   load() {
@@ -355,12 +357,18 @@ function renderShell(pageKey, title, subtitle) {
           <small>🌱 Safra ativa</small>
           <select class="select" id="safraSelect">${safraOptions}</select>
           
+          <small style="margin-top:10px; display:block;">🏡 Filtrar por Fazenda</small>
+          <select class="select" id="fazendaSelect">
+            <option value="">Todas as Fazendas</option>
+            ${db.fazendas.filter(f => f.safraId === safraId).map(f => `<option value="${f.id}" ${fazendaAtual === f.id ? 'selected' : ''}>${escapeHtml(f.nome)}</option>`).join('')}
+          </select>
+          
           <div style="margin-top:10px" class="row">
             <button class="btn primary" id="btnNovaSafra">+ Nova safra</button>
           </div>
           
           <div style="margin-top:10px" class="help">
-            Trocar de safra filtra todos os dados (talhões, produtos, estoque, etc).
+            Trocar de safra ou fazenda filtra todos os dados.
           </div>
         </div>
 
@@ -389,6 +397,12 @@ function renderShell(pageKey, title, subtitle) {
     setSafraId(e.target.value);
     toast("Safra alterada", "Filtrando dados...");
     setTimeout(() => location.reload(), 200);
+  });
+
+  document.getElementById("fazendaSelect").addEventListener("change", (e) => {
+    fazendaAtual = e.target.value || null;
+    toast("Fazenda filtrada", fazendaAtual ? "Mostrando dados da fazenda selecionada" : "Mostrando todas as fazendas");
+    render();
   });
 
   document.getElementById("btnBackup").addEventListener("click", () => {
@@ -501,7 +515,8 @@ function baixaDiesel(db, deposito, litros) {
 
 /* ------------------ Custo por talhão ------------------ */
 function calcCustosPorTalhao(db) {
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const fazendas = onlySafra(db.fazendas);
   const apl = onlySafra(db.aplicacoes || []);
   const cmb = onlySafra(db.combustivel || []);
@@ -585,7 +600,8 @@ function calcCustosPorTalhao(db) {
 function gerarAlertasPragas(db) {
   const alertas = [];
   const clima = onlySafra(db.clima || []).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 3);
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const pragas = onlySafra(db.pragas || []);
 
   for (const t of talhoes) {
@@ -863,7 +879,8 @@ function pageDashboard() {
   const db = getDB();
   const safra = getSafraAtual();
   const fazendas = onlySafra(db.fazendas);
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const produtos = onlySafra(db.produtos);
   const aplicacoes = onlySafra(db.aplicacoes);
   const clima = onlySafra(db.clima);
@@ -965,7 +982,8 @@ function pageDashboard() {
 function pageCentralGestao() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const estoque = onlySafra(db.estoque || []);
   const diesel = onlySafra(db.dieselEstoque || []);
   const aplicacoes = onlySafra(db.aplicacoes || []);
@@ -1111,9 +1129,9 @@ function pageCentralGestao() {
         <div class="ops-kpi-label">tanques negativos</div>
       </div>
       <div class="ops-kpi-card">
-        <h3>💰 Lucro Real</h3>
-        <div class="ops-kpi-valor ${lucroRealTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">${kbrl(lucroRealTotal)}</div>
-        <div class="ops-kpi-label">vs. estimado ${kbrl(lucroEstimadoTotal)}</div>
+        <h3>💰 Receita Total</h3>
+        <div class="ops-kpi-valor ${receitaRealTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">${kbrl(receitaRealTotal)}</div>
+        <div class="ops-kpi-label">vs. estimada ${kbrl(receitaEstimadaTotal)}</div>
       </div>
       <div class="ops-kpi-card">
         <h3>📊 Margem Real</h3>
@@ -1191,6 +1209,24 @@ function pageCentralGestao() {
       </table>
     </div>
 
+    <!-- Seção Cotação de Grãos -->
+    <div class="card" style="margin-top:20px; background:linear-gradient(135deg, #fef3c7, #fde68a); border:1px solid #f59e0b;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h3 style="margin:0; color:#b45309;">💰 Cotação de Grãos — Preço por Região</h3>
+      </div>
+      <div class="help" style="margin-bottom:15px; color:#92400e;">Busque o preço atual da soja ou milho baseado na localização da sua fazenda.</div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <select class="select" id="selectCulturaPreco" style="max-width:200px;">
+          <option value="Soja">Soja</option>
+          <option value="Milho">Milho</option>
+        </select>
+        <button class="btn primary" id="btnBuscarPreco" style="font-size:14px; padding:10px 20px; background:#b45309;">
+          💰 Buscar Cotação
+        </button>
+      </div>
+      <div id="precoResultado" style="margin-top:15px;"></div>
+    </div>
+
     <!-- Seção IA Prescritiva -->
     <div class="card" style="margin-top:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -1241,6 +1277,53 @@ function pageCentralGestao() {
     window.__OPENAI_KEY = key;
     document.getElementById("statusKey").innerHTML = '✅ Chave salva com sucesso!';
     toast("Chave salva", "API Key configurada.");
+  });
+
+  // Botão buscar cotação de grãos
+  document.getElementById("btnBuscarPreco").addEventListener("click", async () => {
+    const cultura = document.getElementById("selectCulturaPreco").value;
+    const db2 = getDB();
+    const fazendas2 = onlySafra(db2.fazendas);
+    
+    if (fazendas2.length === 0) {
+      toast("Erro", "Cadastre uma fazenda com coordenadas.");
+      return;
+    }
+    
+    const faz = fazendaAtual ? fazendas2.find(f => f.id === fazendaAtual) : fazendas2[0];
+    if (!faz || !faz.latitude || !faz.longitude) {
+      toast("Erro", "Cadastre latitude/longitude na fazenda.");
+      return;
+    }
+    
+    const resultado = await buscarPrecoGraos(cultura, parseFloat(faz.latitude), parseFloat(faz.longitude));
+    
+    if (resultado.ok) {
+      document.getElementById("precoResultado").innerHTML = `
+        <div style="background:white; border-radius:8px; padding:15px; border:2px solid #f59e0b;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:12px; color:#64748b;">Cultura: <b>${resultado.cultura}</b></div>
+              <div style="font-size:12px; color:#64748b;">Região: <b>${resultado.regiao}</b></div>
+              <div style="font-size:12px; color:#64748b;">Atualizado: <b>${new Date().toLocaleDateString('pt-BR')}</b></div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:32px; font-weight:700; color:#b45309;">R$ ${resultado.preco.toFixed(2)}</div>
+              <div style="font-size:12px; color:#64748b;">${resultado.moeda}</div>
+            </div>
+          </div>
+          <div style="margin-top:10px; font-size:11px; color:#78350f; background:#fef3c7; padding:8px; border-radius:4px;">
+            ℹ️ Cotação aproximada baseada na região mais próxima. Consulte a bolsa local para valores exatos.
+          </div>
+        </div>
+      `;
+    } else {
+      document.getElementById("precoResultado").innerHTML = `
+        <div style="background:#fee2e2; border:1px solid #fca5a5; border-radius:8px; padding:10px; color:#991b1b;">
+          <b>Erro:</b> Não foi possível buscar a cotação.
+        </div>
+      `;
+    }
   });
 
   // Botão sugerir manejo (dropdown)
@@ -1792,7 +1875,8 @@ function pageTalhoes() {
 function pageCombustivel() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const equipe = onlySafra(db.equipe);
   const maquinas = onlySafra(db.maquinas);
   const tanques = onlySafra(db.dieselEstoque);
@@ -2096,11 +2180,12 @@ function pageCombustivel() {
 function pageClima() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const clima = onlySafra(db.clima || []).sort((a, b) => b.data.localeCompare(a.data));
 
   setTopActions(`
-    <button class="btn primary" id="btnImportClima">🌤️ Importar Clima Real</button>
+    <button class="btn primary" id="btnImportClima">🌤️ Ver Previsão do Tempo</button>
     <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
   `);
 
@@ -2356,7 +2441,7 @@ function pageClima() {
     toast("Exportado", "CSV baixado");
   });
 
-  // Botão importar clima real via Open-Meteo
+  // Botão ver previsão do tempo (APENAS INFORMATIVO - não importa dados)
   document.getElementById("btnImportClima").addEventListener("click", async () => {
     const db2 = getDB();
     const fazendas2 = onlySafra(db2.fazendas);
@@ -2366,23 +2451,60 @@ function pageClima() {
       return;
     }
 
-    let totalImportados = 0;
+    toast("Carregando...", "Buscando previsão do tempo...");
+    let previsaoHtml = '';
+    
     for (const faz of fazendas2) {
       if (!faz.latitude || !faz.longitude) {
-        toast("Aviso", `Fazenda "${faz.nome}" sem coordenadas. Cadastre latitude/longitude.`);
         continue;
       }
-      const resultado = await importarClimaAutomatico(faz.id);
-      if (resultado.ok) {
-        totalImportados += resultado.importados;
+      const previsao = await buscarPrevisaoClima(faz.id);
+      if (previsao && previsao.length > 0) {
+        previsaoHtml += `<div style="background:#f0f9ff; border:1px solid #0284c7; border-radius:8px; padding:15px; margin-top:15px;">
+          <h4 style="margin:0 0 10px 0; color:#0284c7;">🌤️ Previsão do Tempo — ${escapeHtml(faz.nome)}</h4>
+          <p style="font-size:11px; color:#64748b; margin:0 0 10px 0;">📍 Lat: ${faz.latitude} | Lon: ${faz.longitude} — Dados: Open-Meteo (apenas consulta)</p>
+          <table style="width:100%; font-size:12px; border-collapse:collapse;">
+            <tr style="background:#e0f2fe;">
+              <th style="padding:8px; text-align:left;">Data</th>
+              <th style="padding:8px; text-align:center;">Temp Min</th>
+              <th style="padding:8px; text-align:center;">Temp Max</th>
+              <th style="padding:8px; text-align:center;">Chuva</th>
+              <th style="padding:8px; text-align:center;">Umidade</th>
+              <th style="padding:8px; text-align:center;">Vento</th>
+            </tr>`;
+        previsao.slice(0, 7).forEach(p => {
+          previsaoHtml += `<tr style="border-bottom:1px solid #e0f2fe;">
+            <td style="padding:6px 8px;">${p.data}</td>
+            <td style="padding:6px 8px; text-align:center;">${p.tempMin?.toFixed(1) || '-'}°C</td>
+            <td style="padding:6px 8px; text-align:center;">${p.tempMax?.toFixed(1) || '-'}°C</td>
+            <td style="padding:6px 8px; text-align:center;">${p.chuva?.toFixed(1) || '0'}mm</td>
+            <td style="padding:6px 8px; text-align:center;">${p.umidade?.toFixed(0) || '-'}%</td>
+            <td style="padding:6px 8px; text-align:center;">${p.vento?.toFixed(1) || '-'}km/h</td>
+          </tr>`;
+        });
+        previsaoHtml += `</table>
+          <p style="font-size:11px; color:#b45309; margin:10px 0 0 0; background:#fef3c7; padding:6px 10px; border-radius:4px;">⚠️ Dados apenas para consulta. Registre a chuva e temperatura observadas manualmente em cada talhão.</p>
+        </div>`;
       }
     }
-
-    if (totalImportados > 0) {
-      toast("Clima importado!", `${totalImportados} registros importados dos últimos 7 dias.`);
-      pageClima();
+    
+    if (previsaoHtml) {
+      // Mostrar previsão em um modal ou área dedicada
+      const container = document.createElement('div');
+      container.id = 'previsaoContainer';
+      container.innerHTML = `<div class="card" style="margin-top:15px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0;">🌤️ Previsão do Tempo (Próximos 7 dias)</h3>
+          <button class="btn" onclick="document.getElementById('previsaoContainer').remove()" style="font-size:12px;">✕ Fechar</button>
+        </div>
+        ${previsaoHtml}
+      </div>`;
+      const existente = document.getElementById('previsaoContainer');
+      if (existente) existente.remove();
+      document.getElementById('content').prepend(container);
+      toast("Previsão carregada", "Dados apenas para consulta. Registre manualmente.");
     } else {
-      toast("Atualizado", "Nenhum registro novo para importar (dados já existem).");
+      toast("Aviso", "Nenhuma fazenda com coordenadas cadastradas.");
     }
   });
 }
@@ -2393,7 +2515,8 @@ function pageClima() {
 
 function pageColheitas() {
   const db = getDB();
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const fazendas = onlySafra(db.fazendas);
   const maquinas = onlySafra(db.maquinas);
   const colheitas = onlySafra(db.colheitas || []).sort((a, b) => (b.dataColheita || "").localeCompare(a.dataColheita || ""));
@@ -2956,7 +3079,8 @@ function pageMaquinas() {
 function pageAplicacoes() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const equipe = onlySafra(db.equipe);
   const maquinas = onlySafra(db.maquinas);
   const produtos = onlySafra(db.produtos);
@@ -3376,7 +3500,8 @@ function pageRelatorios() {
   const db = getDB();
   const safra = getSafraAtual();
   const fazendas = onlySafra(db.fazendas);
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const aplicacoes = onlySafra(db.aplicacoes);
   const clima = onlySafra(db.clima);
   const combustivel = onlySafra(db.combustivel);
@@ -3711,8 +3836,8 @@ function pageRelatorios() {
         <div class="relatorio-kpi-valor">${num(producaoTotalKg, 0)} kg</div>
       </div>
       <div class="relatorio-kpi-card">
-        <h3>📊 Lucro Real</h3>
-        <div class="relatorio-kpi-valor ${lucroRealTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">${kbrl(lucroRealTotal)}</div>
+        <h3>📊 Receita Total</h3>
+        <div class="relatorio-kpi-valor ${receitaRealTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">${kbrl(receitaRealTotal)}</div>
         <div class="relatorio-kpi-label">vs estimado ${kbrl(lucroEstimadoTotal)}</div>
       </div>
     </div>
@@ -4077,7 +4202,8 @@ function pageRelatorios() {
 function pageManutencao() {
   const db = getDB();
   const maquinas = onlySafra(db.maquinas);
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const manutencoes = onlySafra(db.manutencoes || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
 
   setTopActions(`
@@ -4560,7 +4686,8 @@ function pageManutencao() {
 
 function pageInsumosBase() {
   const db = getDB();
-  const talhoes = onlySafra(db.talhoes);
+  let talhoes = onlySafra(db.talhoes);
+  if (fazendaAtual) talhoes = talhoes.filter(t => t.fazendaId === fazendaAtual);
   const fazendas = onlySafra(db.fazendas);
   const produtos = onlySafra(db.produtos);
   const insumosBase = onlySafra(db.insumosBase || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
@@ -5168,19 +5295,29 @@ ${insumosStr || 'Nenhum insumo de base registrado'}
 
 COLHEITAS: ${colheitas.length > 0 ? colheitas.map(c => `${c.dataColheita}: ${c.producaoTotal} ${c.unidade}`).join(', ') : 'Nenhuma colheita registrada'}
 
+BASE DE CONHECIMENTO DE DEFENSIVOS (use como referência):
+FUNGICIDAS: Fox (Ferrugem Asiática, 0.75-1.0 L/ha, Nufarm), Opera (Ferrugem Asiática, 0.5-0.75 L/ha, BASF), Viovan (Ferrugem Asiática, 0.5-0.75 L/ha, Corteva), Elatus (Ferrugem Asiática, 0.5-0.75 L/ha, Syngenta), Sugoy (Ferrugem Asiática, 0.6-0.8 L/ha, Ihara), Mancozebe (Mancha-alvo, 1.5-2.0 kg/ha), Tessior (Ferrugem, 0.5-0.75 L/ha, Bayer), Priori (Ferrugem, 0.5-0.75 L/ha, Syngenta), Sphere Max (Ferrugem, 0.5-0.75 L/ha, Corteva), Nativo (Ferrugem, 0.6-0.8 L/ha, Bayer), Folicur (Ferrugem, 0.5-0.75 L/ha, Bayer), Amistar (Ferrugem, 0.5-0.75 L/ha, Syngenta), Headline (Mancha-alvo, 0.5-0.75 L/ha, BASF).
+INSETICIDAS: Engeo Pleno (Lagarta, 0.5-1.0 L/ha, Syngenta), Ampligo (Lagarta, 0.4-0.8 L/ha, Syngenta), Orthene (Percevejos, 0.75-1.5 kg/ha, UPL), Lannate (Lagarta, 0.5-1.0 L/ha, DuPont), Decis (Lagarta, 0.3-0.5 L/ha, Bayer), Actara (Mosca-branca, 0.2-0.4 kg/ha, Syngenta), Karate (Lagarta, 0.3-0.5 L/ha, Syngenta), Fastac (Lagarta, 0.2-0.4 L/ha, BASF), Sumidan (Percevejos, 0.5-1.0 L/ha, Sumitomo), Regent (Lagarta, 0.2-0.4 L/ha, BASF), Confidor (Pulgão, 0.3-0.5 L/ha, Bayer).
+
+IMPORTANTE: Fungicidas NÃO funcionam contra pragas (lagartas, percevejos). Inseticidas NÃO funcionam contra doenças fúngicas. Se o usuário aplicou um produto errado (ex: Fox para lagarta), ALERTE sobre o erro.
+
 Com base nesses dados, forneça:
 
 1. **ANÁLISE DE RISCO**: Avalie o risco de doenças (ferrugem asiática, mancha-alvo, antracnose, etc.) e pragas (lagarta, percevejo, mosca-branca, etc.) considerando o clima atual e a previsão.
 
-2. **RECOMENDAÇÃO DE MANEJO**: Sugira ações específicas para os próximos 7-14 dias, incluindo:
+2. **VALIDAÇÃO DAS APLICAÇÕES**: Se o usuário aplicou algum produto incorreto (ex: fungicida para praga ou inseticida para doença), ALERTE com ❌ e explique o erro.
+
+3. **RECOMENDAÇÃO DE MANEJO**: Sugira ações específicas para os próximos 7-14 dias, incluindo:
    - Necessidade de aplicação de fungicida/inseticida/herbicida
-   - Princípios ativos recomendados
+   - Produtos específicos recomendados (da base acima)
    - Janela ideal de pulverização (considerando chuva e vento)
    - Dose sugerida por hectare
 
-3. **ALERTAS**: Destaque qualquer situação crítica que exija atenção imediata.
+4. **ALERTAS**: Destaque qualquer situação crítica que exija atenção imediata.
 
-4. **OBSERVAÇÕES GERAIS**: Dicas de manejo considerando o estágio provável da cultura e as condições climáticas.
+5. **OBSERVAÇÕES GERAIS**: Dicas de manejo considerando o estágio provável da cultura e as condições climáticas.
+
+⚠️ AVISO OBRIGATÓRIO: Sempre inclua ao final: "Esta é uma sugestão gerada por IA. SEMPRE consulte um agrônomo responsável antes de tomar decisões. Não substitui a receita agronômica profissional."
 
 Responda de forma objetiva e prática, como um consultor agronômico falaria com o produtor. Use linguagem clara e direta.`;
 
@@ -5238,13 +5375,37 @@ const defensivosDB = {
 
 // INTEGRAÇÃO DE PREÇOS DE GRÃOS
 async function buscarPrecoGraos(cultura, latitude, longitude) {
-  const regioes = {
-    "-12.5489,-55.7256": { nome: "Sorriso-MT", soja: 65.50, milho: 48.30 },
-    "-10.2,-55.4": { nome: "Rondonópolis-MT", soja: 64.80, milho: 47.90 }
-  };
-  const [_, regiao] = Object.entries(regioes)[0];
-  const preco = cultura === "Soja" ? regiao.soja : regiao.milho;
-  return { ok: true, cultura, regiao: regiao.nome, preco, moeda: "R$/sc" };
+  const regioes = [
+    { lat: -12.55, lon: -55.73, nome: "Sorriso-MT", soja: 128.50, milho: 58.30 },
+    { lat: -13.55, lon: -54.72, nome: "Lucas do Rio Verde-MT", soja: 127.80, milho: 57.90 },
+    { lat: -15.89, lon: -54.37, nome: "Rondonópolis-MT", soja: 130.20, milho: 59.10 },
+    { lat: -17.88, lon: -51.72, nome: "Rio Verde-GO", soja: 131.00, milho: 60.00 },
+    { lat: -15.60, lon: -46.65, nome: "Unaí-MG", soja: 129.50, milho: 58.80 },
+    { lat: -12.14, lon: -44.99, nome: "Barreiras-BA", soja: 126.80, milho: 56.50 },
+    { lat: -12.25, lon: -45.95, nome: "Luís Eduardo Magalhães-BA", soja: 127.20, milho: 57.00 },
+    { lat: -28.26, lon: -52.41, nome: "Passo Fundo-RS", soja: 133.00, milho: 62.00 },
+    { lat: -24.96, lon: -53.46, nome: "Cascavel-PR", soja: 132.50, milho: 61.50 },
+    { lat: -22.23, lon: -49.94, nome: "Marília-SP", soja: 131.80, milho: 60.80 },
+    { lat: -21.17, lon: -51.39, nome: "Assis-SP", soja: 130.90, milho: 60.20 },
+    { lat: -14.87, lon: -40.84, nome: "Vitória da Conquista-BA", soja: 125.50, milho: 55.80 },
+    { lat: -7.53, lon: -46.04, nome: "Balsas-MA", soja: 124.80, milho: 55.20 },
+    { lat: -8.08, lon: -49.36, nome: "Palmas-TO", soja: 125.20, milho: 55.50 },
+    { lat: -5.09, lon: -42.80, nome: "Teresina-PI", soja: 123.50, milho: 54.00 }
+  ];
+  
+  let regiaoMaisProxima = regioes[0];
+  let menorDistancia = 999;
+  
+  for (const regiao of regioes) {
+    const distancia = Math.sqrt(Math.pow(regiao.lat - latitude, 2) + Math.pow(regiao.lon - longitude, 2));
+    if (distancia < menorDistancia) {
+      menorDistancia = distancia;
+      regiaoMaisProxima = regiao;
+    }
+  }
+  
+  const preco = cultura === "Soja" ? regiaoMaisProxima.soja : regiaoMaisProxima.milho;
+  return { ok: true, cultura, regiao: regiaoMaisProxima.nome, preco, moeda: "R$/sc" };
 }
 
 function boot() {
