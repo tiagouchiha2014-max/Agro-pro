@@ -1,8 +1,9 @@
 /* ============================================================
    AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL COM COLHEITAS
    ============================================================ */
+
 const Storage = {
-  key: "agro_pro_v7",
+  key: "agro_pro_v8",
   load() {
     try {
       const raw = localStorage.getItem(this.key);
@@ -108,44 +109,8 @@ function getPragasBase() {
 
 /* ------------------ Base de dados de produtos ------------------ */
 function getProdutosBase() {
-  return [
-    // Fungicidas para soja
-    { id: "prod1", tipo: "Fungicida", nome: "Ativm", ingrediente: "Azoxistrobina + Ciproconazol", fabricante: "Syngenta", carenciaDias: 14, reentradaHoras: 24, unidade: "L", preco: 85.90, pragasAlvo: ["Ferrugem Asiática", "Antracnose", "Cercosporiose"] },
-    { id: "prod2", tipo: "Fungicida", nome: "Elatus", ingrediente: "Azoxistrobina + Benzovindiflupir", fabricante: "Syngenta", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 145.00, pragasAlvo: ["Ferrugem Asiática", "Mancha-alvo", "Antracnose"] },
-    { id: "prod3", tipo: "Fungicida", nome: "Fox", ingrediente: "Trifloxistrobina + Protioconazol", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 98.50, pragasAlvo: ["Ferrugem Asiática", "Oídio", "Cercosporiose"] },
-    { id: "prod4", tipo: "Fungicida", nome: "Aproach", ingrediente: "Picoxistrobina", fabricante: "Corteva", carenciaDias: 14, reentradaHoras: 24, unidade: "L", preco: 76.00, pragasAlvo: ["Ferrugem Asiática", "Antracnose"] },
-    { id: "prod5", tipo: "Fungicida", nome: "Priori Xtra", ingrediente: "Azoxistrobina + Ciproconazol", fabricante: "Syngenta", carenciaDias: 14, reentradaHoras: 24, unidade: "L", preco: 92.00, pragasAlvo: ["Ferrugem Asiática", "Oídio", "Mancha-alvo"] },
-
-    // Inseticidas para soja
-    { id: "prod6", tipo: "Inseticida", nome: "Engeo Pleno", ingrediente: "Tiametoxam + Lambda-cialotrina", fabricante: "Syngenta", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 110.00, pragasAlvo: ["Lagarta-da-soja", "Percevejo-marrom", "Helicoverpa"] },
-    { id: "prod7", tipo: "Inseticida", nome: "Connect", ingrediente: "Imidacloprido + Beta-ciflutrina", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 78.00, pragasAlvo: ["Lagarta-da-soja", "Percevejo-marrom"] },
-    { id: "prod8", tipo: "Inseticida", nome: "Belt", ingrediente: "Flubendiamida", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 210.00, pragasAlvo: ["Lagarta-do-cartucho", "Helicoverpa"] },
-    { id: "prod9", tipo: "Inseticida", nome: "Premio", ingrediente: "Clorantraniliprole", fabricante: "Syngenta", carenciaDias: 14, reentradaHoras: 24, unidade: "L", preco: 195.00, pragasAlvo: ["Lagarta-da-soja", "Helicoverpa"] },
-    { id: "prod10", tipo: "Inseticida", nome: "Curyom", ingrediente: "Zeta-cipermetrina", fabricante: "FMC", carenciaDias: 14, reentradaHoras: 24, unidade: "L", preco: 45.00, pragasAlvo: ["Percevejo-marrom", "Lagarta-da-soja"] },
-
-    // Herbicidas
-    { id: "prod11", tipo: "Herbicida", nome: "Roundup Original", ingrediente: "Glifosato", fabricante: "Bayer", carenciaDias: 0, reentradaHoras: 4, unidade: "L", preco: 32.00, pragasAlvo: ["Plantas daninhas"] },
-    { id: "prod12", tipo: "Herbicida", nome: "Zapp Qi", ingrediente: "Glifosato", fabricante: "Syngenta", carenciaDias: 0, reentradaHoras: 4, unidade: "L", preco: 34.00, pragasAlvo: ["Plantas daninhas"] },
-    { id: "prod13", tipo: "Herbicida", nome: "Aurora", ingrediente: "Carfentrazona-etílica", fabricante: "FMC", carenciaDias: 7, reentradaHoras: 24, unidade: "L", preco: 120.00, pragasAlvo: ["Plantas daninhas"] },
-    { id: "prod14", tipo: "Herbicida", nome: "Classic", ingrediente: "Clorimurom-etílico", fabricante: "Corteva", carenciaDias: 60, reentradaHoras: 24, unidade: "kg", preco: 85.00, pragasAlvo: ["Plantas daninhas"] },
-    { id: "prod15", tipo: "Herbicida", nome: "Spartan", ingrediente: "Sulfentrazona", fabricante: "FMC", carenciaDias: 30, reentradaHoras: 24, unidade: "L", preco: 95.00, pragasAlvo: ["Plantas daninhas"] },
-
-    // Inseticidas para milho
-    { id: "prod16", tipo: "Inseticida", nome: "Match", ingrediente: "Lufenurom", fabricante: "Syngenta", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 68.00, pragasAlvo: ["Lagarta-do-cartucho"] },
-    { id: "prod17", tipo: "Inseticida", nome: "Proclaim", ingrediente: "Benzoato de emamectina", fabricante: "Syngenta", carenciaDias: 14, reentradaHoras: 24, unidade: "kg", preco: 220.00, pragasAlvo: ["Lagarta-do-cartucho", "Helicoverpa"] },
-
-    // Inseticidas para algodão
-    { id: "prod18", tipo: "Inseticida", nome: "Oberon", ingrediente: "Espiromesifeno", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 145.00, pragasAlvo: ["Ácaro-rajado", "Mosca-branca"] },
-    { id: "prod19", tipo: "Inseticida", nome: "Diafuran", ingrediente: "Diafentiurom", fabricante: "Syngenta", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 130.00, pragasAlvo: ["Mosca-branca"] },
-    { id: "prod20", tipo: "Inseticida", nome: "Carbaryl", ingrediente: "Carbaril", fabricante: "Bayer", carenciaDias: 21, reentradaHoras: 24, unidade: "L", preco: 42.00, pragasAlvo: ["Bicudo-do-algodoeiro", "Pulgão"] },
-
-    // Fertilizantes foliares
-    { id: "prod21", tipo: "Fertilizante", nome: "Nutricionamento", ingrediente: "NPK 20-20-20", fabricante: "Mosaic", carenciaDias: 0, reentradaHoras: 4, unidade: "kg", preco: 8.50, pragasAlvo: [] },
-    { id: "prod22", tipo: "Fertilizante", nome: "Boro", ingrediente: "Ácido bórico", fabricante: "Quimifol", carenciaDias: 0, reentradaHoras: 4, unidade: "L", preco: 12.00, pragasAlvo: [] },
-    { id: "prod23", tipo: "Fertilizante", nome: "Cobre", ingrediente: "Oxicloreto de cobre", fabricante: "Albaugh", carenciaDias: 0, reentradaHoras: 4, unidade: "kg", preco: 18.00, pragasAlvo: [] },
-    { id: "prod24", tipo: "Fertilizante", nome: "Zinco", ingrediente: "Sulfato de zinco", fabricante: "Quimifol", carenciaDias: 0, reentradaHoras: 4, unidade: "kg", preco: 15.00, pragasAlvo: [] },
-    { id: "prod25", tipo: "Fertilizante", nome: "Manganês", ingrediente: "Sulfato de manganês", fabricante: "Quimifol", carenciaDias: 0, reentradaHoras: 4, unidade: "kg", preco: 14.00, pragasAlvo: [] }
-  ];
+  // Produtos base removidos - cadastre seus próprios produtos na página Produtos
+  return [];
 }
 
 function seedDB() {
@@ -158,11 +123,10 @@ function seedDB() {
   const maq2Id = uid("maq");
   const opId = uid("peq");
 
-  const produtosBase = getProdutosBase();
   const pragasBase = getPragasBase();
 
   const db = {
-    meta: { createdAt: new Date().toISOString(), version: 7 },
+    meta: { createdAt: new Date().toISOString(), version: 8 },
     session: { safraId },
 
     safras: [
@@ -198,7 +162,7 @@ function seedDB() {
     },
 
     fazendas: [
-      { id: fazendaId, safraId, nome: "Fazenda Horizonte", cidade: "Sorriso", uf: "MT", areaHa: 1450, observacoes: "Soja/Milho safrinha" }
+      { id: fazendaId, safraId, nome: "Fazenda Horizonte", cidade: "Sorriso", uf: "MT", areaHa: 1450, latitude: "-12.5489", longitude: "-55.7256", observacoes: "Soja/Milho safrinha" }
     ],
 
     talhoes: [
@@ -206,19 +170,9 @@ function seedDB() {
       { id: talhao2Id, safraId, fazendaId, nome: "T-15", areaHa: 120.0, cultura: "Milho", safra: "2025/26", solo: "Argiloso", coordenadas: "", observacoes: "" }
     ],
 
-    produtos: produtosBase.map(p => ({ ...p, id: uid("prd"), safraId })),
+    produtos: [],  // Cadastre seus produtos na página Produtos
 
-    estoque: produtosBase.map(p => ({
-      id: uid("stk"),
-      safraId,
-      produtoId: p.id,
-      deposito: "Central",
-      lote: "",
-      validade: "",
-      qtd: 0,
-      unidade: p.unidade,
-      obs: "Estoque inicial"
-    })),
+    estoque: [],  // Estoque começa vazio
 
     equipe: [
       { id: opId, safraId, nome: "Operador 1", funcao: "Tratorista", telefone: "", nr: "", obs: "" }
@@ -261,31 +215,7 @@ function seedDB() {
       }
     ],
 
-    aplicacoes: [
-      {
-        id: uid("apl"),
-        safraId,
-        data: nowISO(),
-        fazendaId,
-        talhaoId,
-        areaHaAplicada: 25,
-        cultura: "Soja",
-        alvo: "Plantas daninhas",
-        operacao: "Pulverização terrestre",
-        maquinaId: maqId,
-        operadorId: opId,
-        condicoes: { vento: 8, temp: 31, umidade: 60 },
-        caldaLHa: 120,
-        velocidadeKmH: 14,
-        bico: "Leque 11002",
-        pressaoBar: 3,
-        produtos: [
-          { produtoId: "prod1", produtoNome: "Ativm", dosePorHa: 2.0, unidade: "L/ha", precoUnit: 85.90 }
-        ],
-        custoTotal: 4295.00,
-        obs: "Aplicação padrão (demo)."
-      }
-    ],
+    aplicacoes: [],
 
     colheitas: [
       {
@@ -322,7 +252,7 @@ function getDB() {
   let db = Storage.load();
   if (!db) db = seedDB();
 
-  db.meta = db.meta || { createdAt: new Date().toISOString(), version: 7 };
+  db.meta = db.meta || { createdAt: new Date().toISOString(), version: 8 };
   db.session = db.session || {};
   db.safras = db.safras || [];
   db.parametros = db.parametros || { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75, pesoPadraoSaca: 60 };
@@ -370,7 +300,7 @@ function getSafraAtual() {
 /* ------------------ UI shell ------------------ */
 const PAGES = [
   { href: "index.html", label: "Dashboard", key: "dashboard", icon: "📊" },
-  { href: "opscenter.html", label: "Ops Center", key: "opscenter", icon: "🛰️" },
+  { href: "centralgestao.html", label: "Central de Gestão", key: "centralgestao", icon: "🛰️" },
   { href: "safras.html", label: "Safras", key: "safras", icon: "🌱" },
   { href: "fazendas.html", label: "Fazendas", key: "fazendas", icon: "🌾" },
   { href: "talhoes.html", label: "Talhões", key: "talhoes", icon: "🧭" },
@@ -1032,7 +962,7 @@ function pageDashboard() {
   };
 }
 
-function pageOpsCenter() {
+function pageCentralGestao() {
   const db = getDB();
   const fazendas = onlySafra(db.fazendas);
   const talhoes = onlySafra(db.talhoes);
@@ -1239,6 +1169,7 @@ function pageOpsCenter() {
             <th>Receita Estimada</th>
             <th>Receita Real</th>
             <th>Lucro Real</th>
+            <th class="noPrint">IA Manejo</th>
           </tr>
         </thead>
         <tbody>
@@ -1253,12 +1184,127 @@ function pageOpsCenter() {
               <td>${kbrl(t.receitaEstimada)}</td>
               <td>${t.colheitaRegistrada ? kbrl(t.receitaReal) : '-'}</td>
               <td class="${lucroClass}">${t.colheitaRegistrada ? kbrl(t.lucroReal) : '-'}</td>
+              <td class="noPrint"><button class="btn primary" style="font-size:11px; padding:6px 10px;" onclick="window.__sugerirManejo('${t.id}')">🤖 Sugerir</button></td>
             </tr>`;
           }).join('')}
         </tbody>
       </table>
     </div>
+
+    <!-- Seção IA Prescritiva -->
+    <div class="card" style="margin-top:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h3 style="margin:0;">🤖 IA Prescritiva — Assistente de Manejo</h3>
+      </div>
+      <div class="help" style="margin-bottom:15px;">
+        Selecione um talhão e clique em <b>"Sugerir Manejo"</b> para receber recomendações de manejo baseadas em IA, considerando o clima atual, previsão do tempo, histórico de aplicações e dados do talhão.
+      </div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <select class="select" id="selectTalhaoIA" style="max-width:300px;">
+          <option value="">Selecione um talhão...</option>
+          ${talhoes.map(t => '<option value="' + t.id + '">' + escapeHtml(t.nome) + ' (' + (t.cultura || '-') + ') — ' + num(t.areaHa, 1) + ' ha</option>').join('')}
+        </select>
+        <button class="btn primary" id="btnSugerirManejo" style="font-size:14px; padding:10px 20px;">
+          🤖 Sugerir Manejo
+        </button>
+      </div>
+      <div id="iaResultado" style="margin-top:20px;"></div>
+    </div>
+
+    <!-- Modal de configuração da API Key -->
+    <div class="card" style="margin-top:15px; background:#fffbeb; border:1px solid #fde68a;">
+      <h4 style="margin:0 0 10px 0; color:#92400e;">🔑 Configuração da IA</h4>
+      <div class="help" style="margin-bottom:10px;">Para usar a IA Prescritiva, informe sua chave da API OpenAI. A chave é armazenada apenas localmente no seu navegador.</div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <input class="input" id="inputApiKey" type="password" placeholder="sk-..." style="max-width:400px;" value="">
+        <button class="btn" id="btnSalvarKey">Salvar Chave</button>
+      </div>
+      <div style="margin-top:8px; font-size:12px; color:#64748b;" id="statusKey"></div>
+    </div>
   `;
+
+  // Carregar API key salva
+  const savedKey = localStorage.getItem("agro_pro_openai_key") || "";
+  if (savedKey) {
+    document.getElementById("inputApiKey").value = savedKey;
+    document.getElementById("statusKey").innerHTML = '✅ Chave configurada';
+    window.__OPENAI_KEY = savedKey;
+  }
+
+  document.getElementById("btnSalvarKey").addEventListener("click", () => {
+    const key = document.getElementById("inputApiKey").value.trim();
+    if (!key) {
+      toast("Erro", "Informe uma chave válida.");
+      return;
+    }
+    localStorage.setItem("agro_pro_openai_key", key);
+    window.__OPENAI_KEY = key;
+    document.getElementById("statusKey").innerHTML = '✅ Chave salva com sucesso!';
+    toast("Chave salva", "API Key configurada.");
+  });
+
+  // Botão sugerir manejo (dropdown)
+  document.getElementById("btnSugerirManejo").addEventListener("click", async () => {
+    const talhaoId = document.getElementById("selectTalhaoIA").value;
+    if (!talhaoId) {
+      toast("Selecione", "Escolha um talhão para análise.");
+      return;
+    }
+    await executarAnaliseIA(talhaoId);
+  });
+
+  // Botão sugerir manejo (inline na tabela)
+  window.__sugerirManejo = async (talhaoId) => {
+    document.getElementById("selectTalhaoIA").value = talhaoId;
+    await executarAnaliseIA(talhaoId);
+    // Scroll até o resultado
+    document.getElementById("iaResultado").scrollIntoView({ behavior: 'smooth' });
+  };
+
+  async function executarAnaliseIA(talhaoId) {
+    if (!window.__OPENAI_KEY) {
+      toast("Erro", "Configure sua chave da API OpenAI primeiro.");
+      document.getElementById("inputApiKey").focus();
+      return;
+    }
+
+    const resultado = document.getElementById("iaResultado");
+    resultado.innerHTML = '<div style="text-align:center; padding:30px;"><div style="font-size:24px;">🤖</div><div style="margin-top:10px; color:#64748b;">Analisando dados e gerando recomendações...<br>Isso pode levar alguns segundos.</div></div>';
+
+    const resp = await gerarRecomendacaoIA(talhaoId);
+    
+    if (resp.ok) {
+      // Converter markdown simples para HTML
+      let html = resp.texto
+        .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+        .replace(/\*(.+?)\*/g, '<i>$1</i>')
+        .replace(/^### (.+)$/gm, '<h4 style="color:#3b82f6; margin:15px 0 8px;">$1</h4>')
+        .replace(/^## (.+)$/gm, '<h3 style="color:#1e40af; margin:20px 0 10px;">$1</h3>')
+        .replace(/^# (.+)$/gm, '<h2 style="color:#0f172a; margin:20px 0 10px;">$1</h2>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/\n/g, '<br>');
+
+      resultado.innerHTML = `
+        <div style="background: linear-gradient(135deg, #0f172a, #1e293b); border-radius:12px; padding:20px; color:white;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="margin:0; color:#60a5fa;">🤖 Recomendação de Manejo — ${escapeHtml(resp.talhao)} (${escapeHtml(resp.cultura || '-')})</h3>
+            <span style="font-size:11px; color:#94a3b8;">${new Date().toLocaleString('pt-BR')}</span>
+          </div>
+          <div style="line-height:1.8; font-size:14px;">${html}</div>
+          <div style="margin-top:15px; padding-top:15px; border-top:1px solid #334155; font-size:11px; color:#94a3b8;">
+            ⚠️ Esta é uma recomendação gerada por IA e deve ser validada por um agrônomo responsável. Não substitui a receita agronômica.
+          </div>
+        </div>
+      `;
+    } else {
+      resultado.innerHTML = `
+        <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:15px; color:#991b1b;">
+          <b>Erro:</b> ${escapeHtml(resp.msg)}<br>
+          <small>Verifique se a chave da API está correta e se há créditos disponíveis.</small>
+        </div>
+      `;
+    }
+  }
 }
 
 function pageFazendas() {
@@ -1270,6 +1316,8 @@ function pageFazendas() {
       { key: "cidade", label: "Cidade", type: "text" },
       { key: "uf", label: "UF", type: "text" },
       { key: "areaHa", label: "Área total (ha)", type: "number" },
+      { key: "latitude", label: "Latitude", type: "text", placeholder: "Ex: -12.5489" },
+      { key: "longitude", label: "Longitude", type: "text", placeholder: "Ex: -55.7256" },
       { key: "observacoes", label: "Observações", type: "textarea", full: true }
     ],
     columns: [
@@ -1277,6 +1325,8 @@ function pageFazendas() {
       { key: "cidade", label: "Cidade" },
       { key: "uf", label: "UF" },
       { key: "areaHa", label: "Área (ha)" },
+      { key: "latitude", label: "Lat." },
+      { key: "longitude", label: "Lon." },
       { key: "observacoes", label: "Obs." }
     ]
   });
@@ -2049,7 +2099,10 @@ function pageClima() {
   const talhoes = onlySafra(db.talhoes);
   const clima = onlySafra(db.clima || []).sort((a, b) => b.data.localeCompare(a.data));
 
-  setTopActions(`<button class="btn" id="btnExportCSV">📥 Exportar CSV</button>`);
+  setTopActions(`
+    <button class="btn primary" id="btnImportClima">🌤️ Importar Clima Real</button>
+    <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
+  `);
 
   const totalChuva = clima.reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
   const diasComChuva = clima.filter(c => c.chuvaMm > 0).length;
@@ -2301,6 +2354,36 @@ function pageClima() {
     }));
     downloadText(`clima-${nowISO()}.csv`, toCSV(dados));
     toast("Exportado", "CSV baixado");
+  });
+
+  // Botão importar clima real via Open-Meteo
+  document.getElementById("btnImportClima").addEventListener("click", async () => {
+    const db2 = getDB();
+    const fazendas2 = onlySafra(db2.fazendas);
+    
+    if (fazendas2.length === 0) {
+      toast("Erro", "Cadastre pelo menos uma fazenda primeiro.");
+      return;
+    }
+
+    let totalImportados = 0;
+    for (const faz of fazendas2) {
+      if (!faz.latitude || !faz.longitude) {
+        toast("Aviso", `Fazenda "${faz.nome}" sem coordenadas. Cadastre latitude/longitude.`);
+        continue;
+      }
+      const resultado = await importarClimaAutomatico(faz.id);
+      if (resultado.ok) {
+        totalImportados += resultado.importados;
+      }
+    }
+
+    if (totalImportados > 0) {
+      toast("Clima importado!", `${totalImportados} registros importados dos últimos 7 dias.`);
+      pageClima();
+    } else {
+      toast("Atualizado", "Nenhum registro novo para importar (dados já existem).");
+    }
   });
 }
 
@@ -4907,11 +4990,238 @@ function pageInsumosBase() {
 }
 
 
+
+// ============================================================================
+// INTEGRAÇÃO OPEN-METEO — CLIMA REAL
+// ============================================================================
+
+async function buscarClimaOpenMeteo(latitude, longitude) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,relative_humidity_2m_mean,wind_speed_10m_max&timezone=America/Sao_Paulo&past_days=7&forecast_days=7`;
+  
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("Erro na API Open-Meteo");
+    const data = await resp.json();
+    return data;
+  } catch (e) {
+    console.error("Erro ao buscar clima:", e);
+    return null;
+  }
+}
+
+async function importarClimaAutomatico(fazendaId) {
+  const db = getDB();
+  const fazenda = db.fazendas.find(f => f.id === fazendaId);
+  if (!fazenda || !fazenda.latitude || !fazenda.longitude) {
+    toast("Erro", "Cadastre latitude e longitude na fazenda primeiro.");
+    return { ok: false, msg: "Sem coordenadas" };
+  }
+
+  const lat = parseFloat(fazenda.latitude);
+  const lon = parseFloat(fazenda.longitude);
+  if (isNaN(lat) || isNaN(lon)) {
+    toast("Erro", "Latitude ou longitude inválida.");
+    return { ok: false, msg: "Coordenadas inválidas" };
+  }
+
+  toast("Buscando...", "Consultando dados climáticos via Open-Meteo...");
+  const dados = await buscarClimaOpenMeteo(lat, lon);
+  if (!dados || !dados.daily) {
+    toast("Erro", "Não foi possível obter dados climáticos.");
+    return { ok: false, msg: "API indisponível" };
+  }
+
+  const daily = dados.daily;
+  const db2 = getDB();
+  let importados = 0;
+  const climaExistente = new Set((db2.clima || []).map(c => `${c.fazendaId}_${c.data}`));
+
+  for (let i = 0; i < daily.time.length; i++) {
+    const dataStr = daily.time[i];
+    const chave = `${fazendaId}_${dataStr}`;
+    
+    // Não importar se já existe registro para essa fazenda nessa data
+    if (climaExistente.has(chave)) continue;
+    
+    // Só importar dados passados (não previsão futura)
+    if (new Date(dataStr) > new Date()) continue;
+
+    db2.clima = db2.clima || [];
+    db2.clima.push({
+      id: uid("cli"),
+      safraId: getSafraId(),
+      data: dataStr,
+      fazendaId: fazendaId,
+      talhaoId: "",
+      chuvaMm: Number(daily.precipitation_sum[i] || 0),
+      tempMin: Number(daily.temperature_2m_min[i] || 0),
+      tempMax: Number(daily.temperature_2m_max[i] || 0),
+      umidade: Number(daily.relative_humidity_2m_mean?.[i] || 0),
+      vento: Number(daily.wind_speed_10m_max?.[i] || 0),
+      obs: "Importado automaticamente via Open-Meteo"
+    });
+    importados++;
+  }
+
+  setDB(db2);
+  return { ok: true, importados, previsao: daily };
+}
+
+async function buscarPrevisaoClima(fazendaId) {
+  const db = getDB();
+  const fazenda = db.fazendas.find(f => f.id === fazendaId);
+  if (!fazenda || !fazenda.latitude || !fazenda.longitude) {
+    return null;
+  }
+
+  const lat = parseFloat(fazenda.latitude);
+  const lon = parseFloat(fazenda.longitude);
+  if (isNaN(lat) || isNaN(lon)) return null;
+
+  const dados = await buscarClimaOpenMeteo(lat, lon);
+  if (!dados || !dados.daily) return null;
+
+  const daily = dados.daily;
+  const hoje = new Date().toISOString().substring(0, 10);
+  const previsao = [];
+
+  for (let i = 0; i < daily.time.length; i++) {
+    if (daily.time[i] >= hoje) {
+      previsao.push({
+        data: daily.time[i],
+        tempMin: daily.temperature_2m_min[i],
+        tempMax: daily.temperature_2m_max[i],
+        chuva: daily.precipitation_sum[i],
+        umidade: daily.relative_humidity_2m_mean?.[i] || 0,
+        vento: daily.wind_speed_10m_max?.[i] || 0
+      });
+    }
+  }
+  return previsao;
+}
+
+
+
+// ============================================================================
+// IA PRESCRITIVA — GPT-4.1-MINI
+// ============================================================================
+
+async function gerarRecomendacaoIA(talhaoId) {
+  const db = getDB();
+  const talhao = db.talhoes.find(t => t.id === talhaoId);
+  if (!talhao) return { ok: false, msg: "Talhão não encontrado" };
+
+  const fazenda = db.fazendas.find(f => f.id === talhao.fazendaId);
+  const aplicacoes = onlySafra(db.aplicacoes || []).filter(a => a.talhaoId === talhaoId);
+  const climaRecente = onlySafra(db.clima || [])
+    .filter(c => c.fazendaId === talhao.fazendaId)
+    .sort((a, b) => b.data.localeCompare(a.data))
+    .slice(0, 7);
+  const pragas = onlySafra(db.pragas || []);
+  const colheitas = onlySafra(db.colheitas || []).filter(c => c.talhaoId === talhaoId);
+  const insumosBase = onlySafra(db.insumosBase || []).filter(i => i.talhaoId === talhaoId);
+  const manutencoes = onlySafra(db.manutencoes || []);
+
+  // Buscar previsão do tempo se possível
+  let previsao = [];
+  if (fazenda && fazenda.latitude && fazenda.longitude) {
+    previsao = await buscarPrevisaoClima(fazenda.id) || [];
+  }
+
+  // Montar contexto para a IA
+  const ultimasAplicacoes = aplicacoes.slice(0, 5).map(a => 
+    `${a.data}: ${a.operacao || 'Aplicação'} - ${(a.produtos || []).map(p => p.produtoNome).join(', ')} - Alvo: ${a.alvo || 'N/I'}`
+  ).join('\n');
+
+  const climaStr = climaRecente.map(c => 
+    `${c.data}: Chuva ${c.chuvaMm}mm, Temp ${c.tempMin}-${c.tempMax}°C, Umid ${c.umidade}%, Vento ${c.vento}km/h`
+  ).join('\n');
+
+  const previsaoStr = previsao.slice(0, 7).map(p => 
+    `${p.data}: Chuva prev. ${p.chuva}mm, Temp ${p.tempMin}-${p.tempMax}°C, Umid ${p.umidade}%, Vento ${p.vento}km/h`
+  ).join('\n');
+
+  const insumosStr = insumosBase.map(i => 
+    `${i.data}: ${i.tipoInsumo} - ${(i.produtos || []).map(p => p.nome).join(', ')}`
+  ).join('\n');
+
+  const prompt = `Você é um agrônomo especialista em agricultura tropical brasileira. Analise os dados abaixo e forneça recomendações de manejo para este talhão.
+
+DADOS DO TALHÃO:
+- Nome: ${talhao.nome}
+- Fazenda: ${fazenda?.nome || 'N/I'} (${fazenda?.cidade || ''}-${fazenda?.uf || ''})
+- Cultura: ${talhao.cultura || 'N/I'}
+- Área: ${talhao.areaHa || 0} ha
+- Solo: ${talhao.solo || 'N/I'}
+
+CLIMA DOS ÚLTIMOS 7 DIAS:
+${climaStr || 'Sem dados de clima registrados'}
+
+PREVISÃO DO TEMPO (PRÓXIMOS 7 DIAS):
+${previsaoStr || 'Sem previsão disponível (cadastre lat/lon na fazenda)'}
+
+ÚLTIMAS APLICAÇÕES:
+${ultimasAplicacoes || 'Nenhuma aplicação registrada'}
+
+INSUMOS DE BASE APLICADOS:
+${insumosStr || 'Nenhum insumo de base registrado'}
+
+COLHEITAS: ${colheitas.length > 0 ? colheitas.map(c => `${c.dataColheita}: ${c.producaoTotal} ${c.unidade}`).join(', ') : 'Nenhuma colheita registrada'}
+
+Com base nesses dados, forneça:
+
+1. **ANÁLISE DE RISCO**: Avalie o risco de doenças (ferrugem asiática, mancha-alvo, antracnose, etc.) e pragas (lagarta, percevejo, mosca-branca, etc.) considerando o clima atual e a previsão.
+
+2. **RECOMENDAÇÃO DE MANEJO**: Sugira ações específicas para os próximos 7-14 dias, incluindo:
+   - Necessidade de aplicação de fungicida/inseticida/herbicida
+   - Princípios ativos recomendados
+   - Janela ideal de pulverização (considerando chuva e vento)
+   - Dose sugerida por hectare
+
+3. **ALERTAS**: Destaque qualquer situação crítica que exija atenção imediata.
+
+4. **OBSERVAÇÕES GERAIS**: Dicas de manejo considerando o estágio provável da cultura e as condições climáticas.
+
+Responda de forma objetiva e prática, como um consultor agronômico falaria com o produtor. Use linguagem clara e direta.`;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + window.__OPENAI_KEY
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        messages: [
+          { role: "system", content: "Você é um agrônomo consultor especialista em agricultura tropical brasileira, com foco em soja, milho e algodão. Responda sempre em português brasileiro." },
+          { role: "user", content: prompt }
+        ],
+        max_tokens: 2000,
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const texto = data.choices?.[0]?.message?.content || "Sem resposta da IA.";
+    return { ok: true, texto, talhao: talhao.nome, cultura: talhao.cultura };
+  } catch (e) {
+    console.error("Erro IA:", e);
+    return { ok: false, msg: "Erro ao consultar IA: " + e.message };
+  }
+}
+
+
 function boot() {
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
   const titles = {
     dashboard: ["Dashboard", "Visão geral da safra atual"],
-    opscenter: ["Ops Center", "Alertas e custos por talhão"],
+    centralgestao: ["Central de Gestão", "Alertas, custos e IA prescritiva"],
     safras: ["Safras", "Gerenciar safras"],
     fazendas: ["Fazendas", "Unidades produtivas da safra"],
     talhoes: ["Talhões", "Áreas de cultivo da safra"],
@@ -4933,7 +5243,7 @@ function boot() {
   renderShell(pageKey, t, s);
 
   if (pageKey === "dashboard") pageDashboard();
-  else if (pageKey === "opscenter") pageOpsCenter();
+  else if (pageKey === "centralgestao") pageCentralGestao();
   else if (pageKey === "safras") pageSafras();
   else if (pageKey === "fazendas") pageFazendas();
   else if (pageKey === "talhoes") pageTalhoes();
