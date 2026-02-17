@@ -2,7 +2,7 @@
    AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL COM COLHEITAS
    ============================================================ */
 
-let fazendaAtual = null;  // Filtro global de fazenda
+let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;  // Filtro global de fazenda (persistido)
 
 const Storage = {
   key: "agro_pro_v10",
@@ -401,8 +401,15 @@ function renderShell(pageKey, title, subtitle) {
 
   document.getElementById("fazendaSelect").addEventListener("change", (e) => {
     fazendaAtual = e.target.value || null;
+    // Persistir filtro no localStorage para funcionar entre páginas
+    if (fazendaAtual) {
+      localStorage.setItem("agro_fazenda_filtro", fazendaAtual);
+    } else {
+      localStorage.removeItem("agro_fazenda_filtro");
+    }
     toast("Fazenda filtrada", fazendaAtual ? "Mostrando dados da fazenda selecionada" : "Mostrando todas as fazendas");
-    render();
+    // Recarregar a página para aplicar o filtro em todos os componentes
+    setTimeout(() => location.reload(), 300);
   });
 
   document.getElementById("btnBackup").addEventListener("click", () => {
@@ -1798,7 +1805,8 @@ function pageTalhoes() {
 
   function render() {
     const db2 = getDB();
-    const rows = onlySafra(db2.talhoes || []);
+    let rows = onlySafra(db2.talhoes || []);
+    if (fazendaAtual) rows = rows.filter(t => t.fazendaId === fazendaAtual);
     const tb = document.getElementById("tbody");
     tb.innerHTML = rows.slice().reverse().map(t => {
       const faz = findNameById(onlySafra(db2.fazendas), t.fazendaId);
@@ -2872,7 +2880,12 @@ function pageColheitas() {
   // ==================== RENDERIZAR TABELA ====================
   function renderTabela() {
     const db2 = getDB();
-    const rows = onlySafra(db2.colheitas || []).sort((a, b) => (b.dataColheita || "").localeCompare(a.dataColheita || ""));
+    let rows = onlySafra(db2.colheitas || []).sort((a, b) => (b.dataColheita || "").localeCompare(a.dataColheita || ""));
+    // Filtrar colheitas pelos talhões da fazenda selecionada
+    if (fazendaAtual) {
+      const talhoesFazenda = onlySafra(db2.talhoes || []).filter(t => t.fazendaId === fazendaAtual).map(t => t.id);
+      rows = rows.filter(c => talhoesFazenda.includes(c.talhaoId));
+    }
     const tb = document.getElementById("tbodyColheitas");
     tb.innerHTML = rows.map(c => {
       const talhao = findNameById(talhoes, c.talhaoId);
@@ -3248,7 +3261,12 @@ function pageAplicacoes() {
 
   function render() {
     const db2 = getDB();
-    const rows = onlySafra(db2.aplicacoes || []);
+    let rows = onlySafra(db2.aplicacoes || []);
+    // Filtrar aplicações pelos talhões da fazenda selecionada
+    if (fazendaAtual) {
+      const talhoesFazenda = onlySafra(db2.talhoes || []).filter(t => t.fazendaId === fazendaAtual).map(t => t.id);
+      rows = rows.filter(a => talhoesFazenda.includes(a.talhaoId));
+    }
     const tb = document.getElementById("tbody");
     tb.innerHTML = rows.slice().reverse().map(a => {
       const tal = findNameById(talhoes, a.talhaoId);
@@ -4554,6 +4572,7 @@ function pageManutencao() {
     const db2 = getDB();
     let rows = onlySafra(db2.manutencoes || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
     if (filtroMaqId) rows = rows.filter(m => m.maquinaId === filtroMaqId);
+    // Filtrar manutenções (não depende de talhão, mas pode filtrar por fazenda se necessário)
 
     const tb = document.getElementById("tbodyManut");
     tb.innerHTML = rows.map(m => {
@@ -4994,7 +5013,12 @@ function pageInsumosBase() {
   // Renderizar tabela
   function renderTabela() {
     const db2 = getDB();
-    const rows = onlySafra(db2.insumosBase || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+    let rows = onlySafra(db2.insumosBase || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+    // Filtrar insumos base pelos talhões da fazenda selecionada
+    if (fazendaAtual) {
+      const talhoesFazenda = onlySafra(db2.talhoes || []).filter(t => t.fazendaId === fazendaAtual).map(t => t.id);
+      rows = rows.filter(i => talhoesFazenda.includes(i.talhaoId));
+    }
     const tb = document.getElementById("tbodyInsumos");
     tb.innerHTML = rows.map(i => {
       const talhao = findNameById(talhoes, i.talhaoId);
