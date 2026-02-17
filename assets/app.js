@@ -1,7 +1,6 @@
 /* ============================================================
    AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL COM COLHEITAS
    ============================================================ */
-
 const Storage = {
   key: "agro_pro_v7",
   load() {
@@ -309,7 +308,10 @@ function seedDB() {
       { id: uid("lem"), safraId, data: "2026-03-01", mensagem: "Aplicar fungicida no talhão T-12", tipo: "aplicacao", concluido: false }
     ],
 
-    pragas: pragasBase.map(p => ({ ...p, id: uid("praga"), safraId }))
+    pragas: pragasBase.map(p => ({ ...p, id: uid("praga"), safraId })),
+
+    manutencoes: [],
+    insumosBase: []
   };
 
   Storage.save(db);
@@ -338,6 +340,8 @@ function getDB() {
   db.colheitas = db.colheitas || [];
   db.lembretes = db.lembretes || [];
   db.pragas = db.pragas || [];
+  db.manutencoes = db.manutencoes || [];
+  db.insumosBase = db.insumosBase || [];
 
   db.clima.forEach(c => { if (c.talhaoId == null) c.talhaoId = ""; });
 
@@ -372,10 +376,12 @@ const PAGES = [
   { href: "talhoes.html", label: "Talhões", key: "talhoes", icon: "🧭" },
   { href: "produtos.html", label: "Produtos", key: "produtos", icon: "🧪" },
   { href: "estoque.html", label: "Estoque", key: "estoque", icon: "📦" },
+  { href: "insumosbase.html", label: "Insumos Base", key: "insumosbase", icon: "🌱" },
   { href: "aplicacoes.html", label: "Aplicações", key: "aplicacoes", icon: "🚜" },
   { href: "combustivel.html", label: "Combustível", key: "combustivel", icon: "⛽" },
   { href: "clima.html", label: "Clima/Chuva", key: "clima", icon: "🌧️" },
   { href: "colheitas.html", label: "Colheitas", key: "colheitas", icon: "🌾" },
+  { href: "manutencao.html", label: "Manutenção", key: "manutencao", icon: "🔧" },
   { href: "equipe.html", label: "Equipe", key: "equipe", icon: "👷" },
   { href: "maquinas.html", label: "Máquinas", key: "maquinas", icon: "🛠️" },
   { href: "relatorios.html", label: "Relatórios", key: "relatorios", icon: "🧾" },
@@ -569,6 +575,11 @@ function calcCustosPorTalhao(db) {
   const fazendas = onlySafra(db.fazendas);
   const apl = onlySafra(db.aplicacoes || []);
   const cmb = onlySafra(db.combustivel || []);
+  const inb = onlySafra(db.insumosBase || []);
+  const col = onlySafra(db.colheitas || []);
+  const manut = onlySafra(db.manutencoes || []);
+  const areaTotal = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
+  const custoManutTotal = manut.reduce((s, m) => s + Number(m.custoTotal || 0), 0);
 
   const map = new Map();
   for (const t of talhoes) map.set(t.id, { custo: 0, last: "", ops: 0 });
@@ -589,6 +600,38 @@ function calcCustosPorTalhao(db) {
     rec.ops += 1;
     if ((c.data || "") > (rec.last || "")) rec.last = c.data || "";
     map.set(c.talhaoId, rec);
+  }
+
+  // Insumos Base por talhão
+  for (const i of inb) {
+    if (!i.talhaoId) continue;
+    const rec = map.get(i.talhaoId) || { custo: 0, last: "", ops: 0 };
+    rec.custo += Number(i.custoTotal || 0);
+    rec.ops += 1;
+    if ((i.data || "") > (rec.last || "")) rec.last = i.data || "";
+    map.set(i.talhaoId, rec);
+  }
+
+  // Frete por talhão (da colheita)
+  for (const c of col) {
+    if (!c.talhaoId) continue;
+    let frete = 0;
+    if (c.frete1) frete += Number(c.frete1.custoFrete || 0);
+    if (c.frete2) frete += Number(c.frete2.custoFrete || 0);
+    if (frete > 0) {
+      const rec = map.get(c.talhaoId) || { custo: 0, last: "", ops: 0 };
+      rec.custo += frete;
+      map.set(c.talhaoId, rec);
+    }
+  }
+
+  // Manutenção: rateio proporcional à área
+  for (const t of talhoes) {
+    if (areaTotal > 0 && custoManutTotal > 0) {
+      const rec = map.get(t.id) || { custo: 0, last: "", ops: 0 };
+      rec.custo += custoManutTotal * (Number(t.areaHa || 0) / areaTotal);
+      map.set(t.id, rec);
+    }
   }
 
   return talhoes.map(t => {
@@ -2262,22 +2305,43 @@ function pageClima() {
 }
 
 // ============================================================================
-// NOVA PÁGINA: COLHEITAS
+// PÁGINA COLHEITAS — ATUALIZADA COM FRETE DUPLO E 2 ARMAZÉNS
 // ============================================================================
 
 function pageColheitas() {
   const db = getDB();
   const talhoes = onlySafra(db.talhoes);
+  const fazendas = onlySafra(db.fazendas);
   const maquinas = onlySafra(db.maquinas);
-  const colheitas = onlySafra(db.colheitas || []).sort((a, b) => b.dataColheita.localeCompare(a.dataColheita));
+  const colheitas = onlySafra(db.colheitas || []).sort((a, b) => (b.dataColheita || "").localeCompare(a.dataColheita || ""));
 
   setTopActions(`
     <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
   `);
 
+  // ==================== CÁLCULOS ====================
+  const producaoTotalKg = colheitas.reduce((s, c) => s + Number(c.producaoTotal || 0), 0);
+  const custoFreteTotal = colheitas.reduce((s, c) => {
+    let frete = 0;
+    if (c.frete1) frete += Number(c.frete1.custoFrete || 0);
+    if (c.frete2) frete += Number(c.frete2.custoFrete || 0);
+    return s + frete;
+  }, 0);
+  const toneladas = producaoTotalKg / 1000;
+  const custoFretePorTon = toneladas > 0 ? custoFreteTotal / toneladas : 0;
+
+  // Custo de frete por talhão
+  const fretePorTalhao = new Map();
+  colheitas.forEach(c => {
+    let frete = 0;
+    if (c.frete1) frete += Number(c.frete1.custoFrete || 0);
+    if (c.frete2) frete += Number(c.frete2.custoFrete || 0);
+    const atual = fretePorTalhao.get(c.talhaoId) || 0;
+    fretePorTalhao.set(c.talhaoId, atual + frete);
+  });
+
   const content = document.getElementById("content");
 
-  // Para simplificar, usaremos um modal para registrar colheitas (pode ser expandido depois)
   content.innerHTML = `
     <style>
       .colheita-form {
@@ -2307,28 +2371,120 @@ function pageColheitas() {
         padding: 8px;
         cursor: pointer;
       }
+      .colheita-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .colheita-kpi-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        border-left: 4px solid #f59e0b;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      }
+      .colheita-kpi-card h3 {
+        margin: 0 0 10px 0;
+        color: #f59e0b;
+        font-size: 16px;
+      }
+      .colheita-kpi-valor {
+        font-size: 32px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .colheita-kpi-label {
+        color: #475569;
+        font-size: 12px;
+        margin-top: 5px;
+      }
+      .frete-section {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 10px;
+        padding: 16px;
+        margin-top: 10px;
+      }
+      .frete-section h4 {
+        margin: 0 0 12px 0;
+        color: #b45309;
+      }
+      .frete-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .frete-box {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 14px;
+      }
+      .frete-box h5 {
+        margin: 0 0 10px 0;
+        color: #92400e;
+        font-size: 14px;
+      }
+      .frete-resumo {
+        background: linear-gradient(135deg, #78350f, #451a03);
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 12px;
+        color: white;
+      }
+      .frete-resumo .valor { font-size: 24px; font-weight: bold; color: #fbbf24; }
+      @media (max-width: 768px) {
+        .frete-grid { grid-template-columns: 1fr; }
+      }
     </style>
 
+    <!-- KPIs -->
+    <div class="colheita-kpi-grid">
+      <div class="colheita-kpi-card">
+        <h3>🌾 Produção Total</h3>
+        <div class="colheita-kpi-valor">${num(producaoTotalKg, 0)} kg</div>
+        <div class="colheita-kpi-label">${num(toneladas, 2)} toneladas</div>
+      </div>
+      <div class="colheita-kpi-card">
+        <h3>📋 Colheitas</h3>
+        <div class="colheita-kpi-valor">${colheitas.length}</div>
+        <div class="colheita-kpi-label">registros</div>
+      </div>
+      <div class="colheita-kpi-card">
+        <h3>🚛 Custo Total Frete</h3>
+        <div class="colheita-kpi-valor">${kbrl(custoFreteTotal)}</div>
+        <div class="colheita-kpi-label">${kbrl(custoFretePorTon)}/ton</div>
+      </div>
+      <div class="colheita-kpi-card">
+        <h3>🏢 Entregas</h3>
+        <div class="colheita-kpi-valor">${colheitas.filter(c => c.frete1?.armazem || c.frete2?.armazem).length}</div>
+        <div class="colheita-kpi-label">colheitas com frete</div>
+      </div>
+    </div>
+
+    <!-- Formulário de Colheita -->
     <div class="colheita-form">
       <h3>🌾 Registrar Colheita</h3>
       <form id="frmColheita" class="formGrid">
-        <div><small>Data</small><input class="input" name="dataColheita" type="date" value="${nowISO()}" required></div>
-        <div><small>Talhão</small>
+        <div><small>📅 Data</small><input class="input" name="dataColheita" type="date" value="${nowISO()}" required></div>
+        <div><small>🧭 Talhão</small>
           <select class="select" name="talhaoId" required>
             <option value="">Selecione...</option>
-            ${talhoes.map(t => `<option value="${t.id}">${escapeHtml(t.nome)} (${t.cultura || 'Sem cultura'})</option>`).join('')}
+            ${talhoes.map(t => `<option value="${t.id}">${escapeHtml(t.nome)} (${t.cultura || 'Sem cultura'}) — ${num(t.areaHa,1)} ha</option>`).join('')}
           </select>
         </div>
-        <div><small>Produção Total</small><input class="input" name="producaoTotal" type="number" step="0.01" required></div>
-        <div><small>Unidade</small>
+        <div><small>📦 Produção Total</small><input class="input" name="producaoTotal" type="number" step="0.01" required placeholder="Quantidade"></div>
+        <div><small>📏 Unidade</small>
           <select class="select" name="unidade">
             <option value="kg">kg</option>
             <option value="sc">sacas</option>
           </select>
         </div>
-        <div><small>Umidade (%)</small><input class="input" name="umidade" type="number" step="0.1" placeholder="Opcional"></div>
-        <div class="full"><small>Observações</small><textarea class="textarea" name="obs"></textarea></div>
+        <div><small>💧 Umidade (%)</small><input class="input" name="umidade" type="number" step="0.1" placeholder="Opcional"></div>
+        <div><small>📝 Observações</small><input class="input" name="obs" placeholder="Opcional"></div>
 
+        <!-- Máquinas -->
         <div class="full">
           <h4 style="margin-bottom:10px;">🚜 Máquinas utilizadas (opcional)</h4>
           <div id="maquinas-container">
@@ -2341,15 +2497,95 @@ function pageColheitas() {
               <button type="button" class="btn-remove" onclick="removerLinhaMaquina(this)">✕</button>
             </div>
           </div>
-          <button type="button" class="btn primary" id="btnAdicionarMaquina" style="margin-top:10px;">+ Adicionar máquina</button>
+          <button type="button" class="btn primary" id="btnAdicionarMaquina" style="margin-top:10px; font-size:12px;">+ Adicionar máquina</button>
+        </div>
+
+        <!-- ========== SEÇÃO DE FRETE ========== -->
+        <div class="full">
+          <div class="frete-section">
+            <h4>🚛 Frete e Entrega em Armazéns</h4>
+            <div class="help" style="margin-bottom:12px;">Configure até 2 fretes para armazéns diferentes. Informe a quantidade entregue (em toneladas) e o preço por tonelada de cada frete.</div>
+
+            <div class="frete-grid">
+              <!-- FRETE 1 -->
+              <div class="frete-box">
+                <h5>🚛 Frete 1 — Armazém 1</h5>
+                <div style="display:grid; gap:8px;">
+                  <div><small>🏢 Nome do Armazém 1</small><input class="input" name="frete1_armazem" placeholder="Ex: Armazém Cargill"></div>
+                  <div><small>📍 Cidade/Local</small><input class="input" name="frete1_cidade" placeholder="Ex: Sorriso - MT"></div>
+                  <div><small>🚛 Transportadora</small><input class="input" name="frete1_transportadora" placeholder="Ex: Transp. Norte"></div>
+                  <div><small>📦 Quantidade entregue (ton)</small><input class="input" name="frete1_toneladas" type="number" step="0.01" placeholder="0" onchange="window.__calcularFretes()"></div>
+                  <div><small>💰 Preço por tonelada (R$)</small><input class="input" name="frete1_precoTon" type="number" step="0.01" placeholder="0.00" onchange="window.__calcularFretes()"></div>
+                  <div style="text-align:right; font-weight:bold; color:#b45309;">
+                    Custo Frete 1: <span id="custoFrete1">R$ 0,00</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- FRETE 2 -->
+              <div class="frete-box">
+                <h5>🚛 Frete 2 — Armazém 2</h5>
+                <div style="display:grid; gap:8px;">
+                  <div><small>🏢 Nome do Armazém 2</small><input class="input" name="frete2_armazem" placeholder="Ex: Armazém Bunge"></div>
+                  <div><small>📍 Cidade/Local</small><input class="input" name="frete2_cidade" placeholder="Ex: Lucas do Rio Verde - MT"></div>
+                  <div><small>🚛 Transportadora</small><input class="input" name="frete2_transportadora" placeholder="Ex: Transp. Sul"></div>
+                  <div><small>📦 Quantidade entregue (ton)</small><input class="input" name="frete2_toneladas" type="number" step="0.01" placeholder="0" onchange="window.__calcularFretes()"></div>
+                  <div><small>💰 Preço por tonelada (R$)</small><input class="input" name="frete2_precoTon" type="number" step="0.01" placeholder="0.00" onchange="window.__calcularFretes()"></div>
+                  <div style="text-align:right; font-weight:bold; color:#b45309;">
+                    Custo Frete 2: <span id="custoFrete2">R$ 0,00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Resumo de frete -->
+            <div class="frete-resumo">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                  <div style="font-size:12px; opacity:0.7;">CUSTO TOTAL DE FRETE</div>
+                  <div class="valor" id="custoFreteTotal">R$ 0,00</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:12px; opacity:0.7;">TOTAL ENTREGUE</div>
+                  <div class="valor" id="totalEntregue">0 ton</div>
+                </div>
+              </div>
+              <div style="margin-top:8px; font-size:11px; opacity:0.6;" id="detalheFretes">Preencha os dados de frete acima</div>
+            </div>
+          </div>
         </div>
 
         <div class="full row" style="justify-content:flex-end; margin-top:20px;">
-          <button class="btn primary" type="submit">Salvar Colheita</button>
+          <button class="btn primary" type="submit" style="font-size:16px; padding:12px 24px;">✅ Salvar Colheita</button>
         </div>
       </form>
     </div>
 
+    <!-- Custo de frete por talhão -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3>🚛 Custo de Frete por Talhão</h3>
+      <div class="tableWrap">
+        <table>
+          <thead><tr><th>Talhão</th><th>Fazenda</th><th>Cultura</th><th>Área (ha)</th><th>Custo Frete</th><th>Frete/ha</th></tr></thead>
+          <tbody>
+            ${talhoes.map(t => {
+              const frete = fretePorTalhao.get(t.id) || 0;
+              const freteHa = Number(t.areaHa || 0) > 0 ? frete / t.areaHa : 0;
+              return `<tr>
+                <td><b>${escapeHtml(t.nome)}</b></td>
+                <td>${escapeHtml(findNameById(fazendas, t.fazendaId))}</td>
+                <td>${escapeHtml(t.cultura || '-')}</td>
+                <td>${num(t.areaHa, 1)}</td>
+                <td><b>${kbrl(frete)}</b></td>
+                <td>${kbrl(freteHa)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tabela de colheitas -->
     <div class="tableWrap">
       <h3>📋 Colheitas Registradas</h3>
       <table>
@@ -2360,7 +2596,9 @@ function pageColheitas() {
             <th>Produção</th>
             <th>Unidade</th>
             <th>Umidade</th>
-            <th>Máquinas</th>
+            <th>Frete 1</th>
+            <th>Frete 2</th>
+            <th>Custo Frete Total</th>
             <th class="noPrint">Ações</th>
           </tr>
         </thead>
@@ -2369,7 +2607,37 @@ function pageColheitas() {
     </div>
   `;
 
-  // Gerenciar linhas de máquinas
+  // ==================== CÁLCULO DE FRETES ====================
+  window.__calcularFretes = () => {
+    const ton1 = Number(document.querySelector('input[name="frete1_toneladas"]').value) || 0;
+    const preco1 = Number(document.querySelector('input[name="frete1_precoTon"]').value) || 0;
+    const custo1 = ton1 * preco1;
+
+    const ton2 = Number(document.querySelector('input[name="frete2_toneladas"]').value) || 0;
+    const preco2 = Number(document.querySelector('input[name="frete2_precoTon"]').value) || 0;
+    const custo2 = ton2 * preco2;
+
+    const total = custo1 + custo2;
+    const totalTon = ton1 + ton2;
+
+    document.getElementById("custoFrete1").innerText = kbrl(custo1);
+    document.getElementById("custoFrete2").innerText = kbrl(custo2);
+    document.getElementById("custoFreteTotal").innerText = kbrl(total);
+    document.getElementById("totalEntregue").innerText = `${num(totalTon, 2)} ton`;
+
+    let detalhes = [];
+    if (ton1 > 0) {
+      const arm1 = document.querySelector('input[name="frete1_armazem"]').value || "Armazém 1";
+      detalhes.push(`${arm1}: ${num(ton1, 2)} ton × ${kbrl(preco1)}/ton = ${kbrl(custo1)}`);
+    }
+    if (ton2 > 0) {
+      const arm2 = document.querySelector('input[name="frete2_armazem"]').value || "Armazém 2";
+      detalhes.push(`${arm2}: ${num(ton2, 2)} ton × ${kbrl(preco2)}/ton = ${kbrl(custo2)}`);
+    }
+    document.getElementById("detalheFretes").innerHTML = detalhes.length > 0 ? detalhes.join(' | ') : 'Preencha os dados de frete acima';
+  };
+
+  // ==================== MÁQUINAS ====================
   let maquinaCount = 1;
   document.getElementById("btnAdicionarMaquina").addEventListener("click", () => {
     const container = document.getElementById("maquinas-container");
@@ -2395,17 +2663,27 @@ function pageColheitas() {
     botao.closest('.maquina-linha').remove();
   };
 
-  // Renderizar tabela de colheitas
+  // ==================== RENDERIZAR TABELA ====================
   function renderTabela() {
     const db2 = getDB();
-    const rows = onlySafra(db2.colheitas || []).sort((a, b) => b.dataColheita.localeCompare(a.dataColheita));
+    const rows = onlySafra(db2.colheitas || []).sort((a, b) => (b.dataColheita || "").localeCompare(a.dataColheita || ""));
     const tb = document.getElementById("tbodyColheitas");
     tb.innerHTML = rows.map(c => {
       const talhao = findNameById(talhoes, c.talhaoId);
       const maquinasStr = (c.maquinas || []).map(m => {
         const maq = maquinas.find(q => q.id === m.maquinaId);
         return maq ? `${maq.nome}: ${num(m.quantidade, 0)}` : '';
-      }).filter(s => s).join('<br>');
+      }).filter(s => s).join(', ');
+
+      const f1 = c.frete1 || {};
+      const f2 = c.frete2 || {};
+      const custoF1 = Number(f1.custoFrete || 0);
+      const custoF2 = Number(f2.custoFrete || 0);
+      const custoFreteCol = custoF1 + custoF2;
+
+      const frete1Str = f1.armazem ? `${escapeHtml(f1.armazem)}<br>${num(f1.toneladas || 0, 2)} ton × ${kbrl(f1.precoTon || 0)}<br><b>${kbrl(custoF1)}</b>` : '-';
+      const frete2Str = f2.armazem ? `${escapeHtml(f2.armazem)}<br>${num(f2.toneladas || 0, 2)} ton × ${kbrl(f2.precoTon || 0)}<br><b>${kbrl(custoF2)}</b>` : '-';
+
       return `
         <tr>
           <td>${c.dataColheita}</td>
@@ -2413,25 +2691,28 @@ function pageColheitas() {
           <td>${num(c.producaoTotal, 0)}</td>
           <td>${c.unidade}</td>
           <td>${c.umidade ? c.umidade + '%' : '-'}</td>
-          <td>${maquinasStr || '-'}</td>
+          <td style="font-size:12px;">${frete1Str}</td>
+          <td style="font-size:12px;">${frete2Str}</td>
+          <td><b style="color:#b45309;">${kbrl(custoFreteCol)}</b></td>
           <td class="noPrint">
             <button class="btn danger" onclick="window.__delColheita('${c.id}')">Excluir</button>
           </td>
         </tr>
       `;
-    }).join('') || '<tr><td colspan="7">Nenhuma colheita registrada</td></tr>';
+    }).join('') || '<tr><td colspan="9">Nenhuma colheita registrada</td></tr>';
   }
 
+  // ==================== EXCLUIR ====================
   window.__delColheita = (id) => {
     if (!confirm("Excluir este registro de colheita?")) return;
     const db2 = getDB();
-    db2.colheitas = db2.colheitas.filter(x => x.id !== id);
+    db2.colheitas = (db2.colheitas || []).filter(x => x.id !== id);
     setDB(db2);
     toast("Excluído", "Registro removido");
-    renderTabela();
+    pageColheitas();
   };
 
-  // Submit do formulário
+  // ==================== SUBMIT ====================
   document.getElementById("frmColheita").addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -2454,6 +2735,22 @@ function pageColheitas() {
       }
     }
 
+    // Coletar dados de frete 1
+    const frete1_armazem = fd.get("frete1_armazem") || "";
+    const frete1_cidade = fd.get("frete1_cidade") || "";
+    const frete1_transportadora = fd.get("frete1_transportadora") || "";
+    const frete1_toneladas = Number(fd.get("frete1_toneladas") || 0);
+    const frete1_precoTon = Number(fd.get("frete1_precoTon") || 0);
+    const frete1_custo = frete1_toneladas * frete1_precoTon;
+
+    // Coletar dados de frete 2
+    const frete2_armazem = fd.get("frete2_armazem") || "";
+    const frete2_cidade = fd.get("frete2_cidade") || "";
+    const frete2_transportadora = fd.get("frete2_transportadora") || "";
+    const frete2_toneladas = Number(fd.get("frete2_toneladas") || 0);
+    const frete2_precoTon = Number(fd.get("frete2_precoTon") || 0);
+    const frete2_custo = frete2_toneladas * frete2_precoTon;
+
     const obj = {
       id: uid("col"),
       safraId: getSafraId(),
@@ -2463,7 +2760,25 @@ function pageColheitas() {
       unidade: fd.get("unidade") || "kg",
       umidade: fd.get("umidade") ? Number(fd.get("umidade")) : null,
       observacoes: fd.get("obs") || "",
-      maquinas: maquinasArray
+      maquinas: maquinasArray,
+      // Frete 1
+      frete1: frete1_armazem || frete1_toneladas > 0 ? {
+        armazem: frete1_armazem,
+        cidade: frete1_cidade,
+        transportadora: frete1_transportadora,
+        toneladas: frete1_toneladas,
+        precoTon: frete1_precoTon,
+        custoFrete: frete1_custo
+      } : null,
+      // Frete 2
+      frete2: frete2_armazem || frete2_toneladas > 0 ? {
+        armazem: frete2_armazem,
+        cidade: frete2_cidade,
+        transportadora: frete2_transportadora,
+        toneladas: frete2_toneladas,
+        precoTon: frete2_precoTon,
+        custoFrete: frete2_custo
+      } : null
     };
 
     const db2 = getDB();
@@ -2471,29 +2786,35 @@ function pageColheitas() {
     db2.colheitas.push(obj);
     setDB(db2);
 
-    // Limpar formulário
-    e.target.reset();
-    document.querySelectorAll('.maquina-linha').forEach((linha, idx) => {
-      if (idx > 0) linha.remove();
-      else {
-        linha.querySelector('select').value = '';
-        linha.querySelector('input').value = '';
-      }
-    });
-    maquinaCount = 1;
-    toast("Colheita registrada", "Dados salvos com sucesso");
-    renderTabela();
+    toast("Colheita registrada", `Produção: ${num(producaoTotal, 0)} ${obj.unidade}${(frete1_custo + frete2_custo) > 0 ? ` | Frete: ${kbrl(frete1_custo + frete2_custo)}` : ''}`);
+    pageColheitas();
   });
 
+  // ==================== EXPORT CSV ====================
   document.getElementById("btnExportCSV").addEventListener("click", () => {
     const dados = colheitas.map(c => {
       const talhao = findNameById(talhoes, c.talhaoId);
+      const f1 = c.frete1 || {};
+      const f2 = c.frete2 || {};
       return {
         Data: c.dataColheita,
         Talhão: talhao,
         Produção: c.producaoTotal,
         Unidade: c.unidade,
         Umidade: c.umidade || '',
+        Frete1_Armazém: f1.armazem || '',
+        Frete1_Cidade: f1.cidade || '',
+        Frete1_Transportadora: f1.transportadora || '',
+        Frete1_Toneladas: f1.toneladas || 0,
+        Frete1_Preço_Ton: f1.precoTon || 0,
+        Frete1_Custo: f1.custoFrete || 0,
+        Frete2_Armazém: f2.armazem || '',
+        Frete2_Cidade: f2.cidade || '',
+        Frete2_Transportadora: f2.transportadora || '',
+        Frete2_Toneladas: f2.toneladas || 0,
+        Frete2_Preço_Ton: f2.precoTon || 0,
+        Frete2_Custo: f2.custoFrete || 0,
+        Custo_Frete_Total: (f1.custoFrete || 0) + (f2.custoFrete || 0),
         Observações: c.observacoes
       };
     });
@@ -2503,6 +2824,8 @@ function pageColheitas() {
 
   renderTabela();
 }
+
+
 
 function pageEquipe() {
   crudPage({
@@ -2829,11 +3152,7 @@ function pageAplicacoes() {
   render();
 }
 
-function pageRelatorios() {
-  // Similar à versão anterior, mas agora com dados de colheita
-  // Vou manter simplificado para não estender demais, mas você pode expandir
-  toast("Relatórios", "Módulo em desenvolvimento");
-}
+// pageRelatorios stub removido - função real abaixo
 
 function pageConfiguracoes() {
   const db = getDB();
@@ -2950,7 +3269,7 @@ function pageConfiguracoes() {
     if (!confirm("⚠️ Isso vai APAGAR todas as fazendas, talhões, produtos, estoque, aplicações, colheitas, etc. Deseja continuar?")) return;
     const db2 = getDB();
     const safraAtualId = getSafraId();
-    db2.fazendas = []; db2.talhoes = []; db2.produtos = []; db2.estoque = []; db2.equipe = []; db2.maquinas = []; db2.clima = []; db2.dieselEntradas = []; db2.dieselEstoque = []; db2.combustivel = []; db2.aplicacoes = []; db2.lembretes = []; db2.pragas = []; db2.colheitas = [];
+    db2.fazendas = []; db2.talhoes = []; db2.produtos = []; db2.estoque = []; db2.equipe = []; db2.maquinas = []; db2.clima = []; db2.dieselEntradas = []; db2.dieselEstoque = []; db2.combustivel = []; db2.aplicacoes = []; db2.lembretes = []; db2.pragas = []; db2.colheitas = []; db2.manutencoes = []; db2.insumosBase = [];
     db2.dieselEstoque.push({ id: uid("dsl"), safraId: safraAtualId, deposito: "Tanque Principal", litros: 0, precoVigente: 0, obs: "Estoque zerado" });
     setDB(db2);
     toast("Dados zerados", "Todos os registros foram removidos.");
@@ -2966,6 +3285,10 @@ function pageConfiguracoes() {
   });
 }
 
+// ============================================================================
+// PÁGINA RELATÓRIOS — ATUALIZADA COM MANUTENÇÃO, INSUMOS BASE E FRETE
+// ============================================================================
+
 function pageRelatorios() {
   const db = getDB();
   const safra = getSafraAtual();
@@ -2976,6 +3299,9 @@ function pageRelatorios() {
   const combustivel = onlySafra(db.combustivel);
   const colheitas = onlySafra(db.colheitas);
   const produtos = onlySafra(db.produtos);
+  const manutencoes = onlySafra(db.manutencoes || []);
+  const insumosBase = onlySafra(db.insumosBase || []);
+  const maquinas = onlySafra(db.maquinas);
   const params = db.parametros || { 
     precoSoja: 120, 
     precoMilho: 60, 
@@ -2999,7 +3325,15 @@ function pageRelatorios() {
   const areaTotal = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
   const custoAplicacoes = aplicacoes.reduce((s, a) => s + Number(a.custoTotal || 0), 0);
   const custoCombustivel = combustivel.reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
-  const custoTotal = custoAplicacoes + custoCombustivel;
+  const custoManutencao = manutencoes.reduce((s, m) => s + Number(m.custoTotal || 0), 0);
+  const custoInsumosBase = insumosBase.reduce((s, i) => s + Number(i.custoTotal || 0), 0);
+  const custoFrete = colheitas.reduce((s, c) => {
+    let frete = 0;
+    if (c.frete1) frete += Number(c.frete1.custoFrete || 0);
+    if (c.frete2) frete += Number(c.frete2.custoFrete || 0);
+    return s + frete;
+  }, 0);
+  const custoTotal = custoAplicacoes + custoCombustivel + custoManutencao + custoInsumosBase + custoFrete;
   const custoPorHa = areaTotal > 0 ? custoTotal / areaTotal : 0;
 
   // Produção e receita real
@@ -3020,7 +3354,7 @@ function pageRelatorios() {
     }
   });
 
-  // Receita estimada total (baseada na produtividade configurada)
+  // Receita estimada total
   const produtividadeMedia = {
     soja: (params.produtividadeMinSoja + params.produtividadeMaxSoja) / 2,
     milho: (params.produtividadeMinMilho + params.produtividadeMaxMilho) / 2,
@@ -3054,10 +3388,10 @@ function pageRelatorios() {
 
   // ==================== DADOS DE COMBUSTÍVEL ====================
 
-  const totalDieselComprado = (db.dieselEntradas || []).reduce((s, e) => s + Number(e.litros || 0), 0);
+  const totalDieselComprado = (onlySafra(db.dieselEntradas || [])).reduce((s, e) => s + Number(e.litros || 0), 0);
   const totalDieselConsumido = combustivel.reduce((s, c) => s + Number(c.litros || 0), 0);
   const dieselPorHa = areaTotal > 0 ? totalDieselConsumido / areaTotal : 0;
-  const mediaPrecoDiesel = (db.dieselEntradas || []).reduce((s, e) => s + Number(e.precoLitro || 0), 0) / ((db.dieselEntradas || []).length || 1);
+  const mediaPrecoDiesel = (onlySafra(db.dieselEntradas || [])).reduce((s, e) => s + Number(e.precoLitro || 0), 0) / ((onlySafra(db.dieselEntradas || [])).length || 1);
 
   // ==================== DADOS DE APLICAÇÕES ====================
 
@@ -3074,12 +3408,61 @@ function pageRelatorios() {
   });
   const topProdutos = Object.entries(usoProdutos).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
+  // ==================== DADOS DE MANUTENÇÃO ====================
+
+  const totalManutencoes = manutencoes.length;
+  const manutPreventivas = manutencoes.filter(m => m.tipoManutencao === "Preventiva").length;
+  const manutCorretivas = manutencoes.filter(m => m.tipoManutencao === "Corretiva").length;
+  const manutPreditivas = manutencoes.filter(m => m.tipoManutencao === "Preditiva").length;
+  const manutCustoPorHa = areaTotal > 0 ? custoManutencao / areaTotal : 0;
+
+  // Custo manutenção por máquina
+  const custoManutPorMaquina = new Map();
+  manutencoes.forEach(m => {
+    const atual = custoManutPorMaquina.get(m.maquinaId) || { custo: 0, qtd: 0 };
+    atual.custo += Number(m.custoTotal || 0);
+    atual.qtd += 1;
+    custoManutPorMaquina.set(m.maquinaId, atual);
+  });
+
+  // ==================== DADOS DE INSUMOS BASE ====================
+
+  const totalInsumosBase = insumosBase.length;
+  const insumoCustoPorHa = areaTotal > 0 ? custoInsumosBase / areaTotal : 0;
+
+  // Custo insumos base por tipo
+  const custoInsumoPorTipo = {};
+  insumosBase.forEach(i => {
+    const tipo = i.tipoInsumo || "Outros";
+    custoInsumoPorTipo[tipo] = (custoInsumoPorTipo[tipo] || 0) + Number(i.custoTotal || 0);
+  });
+
+  // ==================== DADOS DE FRETE ====================
+
+  const toneladasTotal = colheitas.reduce((s, c) => {
+    let ton = 0;
+    if (c.frete1) ton += Number(c.frete1.toneladas || 0);
+    if (c.frete2) ton += Number(c.frete2.toneladas || 0);
+    return s + ton;
+  }, 0);
+  const fretePorTon = toneladasTotal > 0 ? custoFrete / toneladasTotal : 0;
+  const fretePorHa = areaTotal > 0 ? custoFrete / areaTotal : 0;
+
   // ==================== DADOS POR TALHÃO (DETALHADO) ====================
 
   const dadosTalhoes = talhoes.map(t => {
     const custoApl = aplicacoes.filter(a => a.talhaoId === t.id).reduce((s, a) => s + Number(a.custoTotal || 0), 0);
     const custoComb = combustivel.filter(c => c.talhaoId === t.id).reduce((s, c) => s + (Number(c.litros || 0) * Number(c.precoLitro || 0)), 0);
-    const custo = custoApl + custoComb;
+    const custoInsumo = insumosBase.filter(i => i.talhaoId === t.id).reduce((s, i) => s + Number(i.custoTotal || 0), 0);
+    const custoFreteT = colheitas.filter(c => c.talhaoId === t.id).reduce((s, c) => {
+      let f = 0;
+      if (c.frete1) f += Number(c.frete1.custoFrete || 0);
+      if (c.frete2) f += Number(c.frete2.custoFrete || 0);
+      return s + f;
+    }, 0);
+    // Manutenção: rateio proporcional à área (não é por talhão diretamente)
+    const custoManutRateio = areaTotal > 0 ? custoManutencao * (Number(t.areaHa || 0) / areaTotal) : 0;
+    const custo = custoApl + custoComb + custoInsumo + custoFreteT + custoManutRateio;
     const colheita = colheitaMap.get(t.id);
     const producaoKg = colheita ? colheita.producaoTotal : 0;
     const cultura = t.cultura?.toLowerCase() || '';
@@ -3104,6 +3487,9 @@ function pageRelatorios() {
       custo,
       custoApl,
       custoComb,
+      custoInsumo,
+      custoFreteT,
+      custoManutRateio,
       producaoKg,
       receitaEstimada,
       receitaReal,
@@ -3139,8 +3525,7 @@ function pageRelatorios() {
   const maxCusto = Math.max(...custoPorMes, 1);
   const maxConsumo = Math.max(...consumoDieselPorMes, 1);
 
-  // ==================== COMPARATIVO COM SAFRAS PASSADAS (SIMULADO) ====================
-
+  // Comparativo com safras passadas (simulado)
   const safrasPassadas = [
     { nome: '2024/25', custo: custoTotal * 0.85, receita: receitaRealTotal * 0.8, area: areaTotal * 0.93 },
     { nome: '2023/24', custo: custoTotal * 0.72, receita: receitaRealTotal * 0.65, area: areaTotal * 0.88 },
@@ -3210,6 +3595,15 @@ function pageRelatorios() {
         border-bottom: 2px solid #3b82f6;
         padding-bottom: 5px;
       }
+      .composicao-custo {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+      @media (max-width: 768px) {
+        .composicao-custo { grid-template-columns: 1fr; }
+      }
     </style>
 
     <!-- ========== CABEÇALHO ========== -->
@@ -3240,6 +3634,33 @@ function pageRelatorios() {
       </div>
     </div>
 
+    <!-- ========== COMPOSIÇÃO DE CUSTOS (NOVO) ========== -->
+    <div class="secao-titulo">💰 Composição de Custos da Safra</div>
+    <div class="composicao-custo">
+      <div class="card">
+        <h4>📊 Custos por Categoria</h4>
+        <table style="width:100%;">
+          <tr><td><b>Aplicações (defensivos)</b></td><td style="text-align:right">${kbrl(custoAplicacoes)}</td><td style="text-align:right; color:#64748b;">${custoTotal > 0 ? num((custoAplicacoes/custoTotal)*100, 1) : 0}%</td></tr>
+          <tr><td><b>Insumos Base (adubação)</b></td><td style="text-align:right">${kbrl(custoInsumosBase)}</td><td style="text-align:right; color:#64748b;">${custoTotal > 0 ? num((custoInsumosBase/custoTotal)*100, 1) : 0}%</td></tr>
+          <tr><td><b>Combustível</b></td><td style="text-align:right">${kbrl(custoCombustivel)}</td><td style="text-align:right; color:#64748b;">${custoTotal > 0 ? num((custoCombustivel/custoTotal)*100, 1) : 0}%</td></tr>
+          <tr><td><b>Manutenção</b></td><td style="text-align:right">${kbrl(custoManutencao)}</td><td style="text-align:right; color:#64748b;">${custoTotal > 0 ? num((custoManutencao/custoTotal)*100, 1) : 0}%</td></tr>
+          <tr><td><b>Frete</b></td><td style="text-align:right">${kbrl(custoFrete)}</td><td style="text-align:right; color:#64748b;">${custoTotal > 0 ? num((custoFrete/custoTotal)*100, 1) : 0}%</td></tr>
+          <tr style="border-top:2px solid #e2e8f0; font-weight:bold;"><td><b>TOTAL</b></td><td style="text-align:right"><b>${kbrl(custoTotal)}</b></td><td style="text-align:right">100%</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h4>📏 Custos por Hectare</h4>
+        <table style="width:100%;">
+          <tr><td>Aplicações/ha</td><td style="text-align:right">${kbrl(areaTotal > 0 ? custoAplicacoes/areaTotal : 0)}</td></tr>
+          <tr><td>Insumos Base/ha</td><td style="text-align:right">${kbrl(areaTotal > 0 ? custoInsumosBase/areaTotal : 0)}</td></tr>
+          <tr><td>Combustível/ha</td><td style="text-align:right">${kbrl(areaTotal > 0 ? custoCombustivel/areaTotal : 0)}</td></tr>
+          <tr><td>Manutenção/ha</td><td style="text-align:right">${kbrl(manutCustoPorHa)}</td></tr>
+          <tr><td>Frete/ha</td><td style="text-align:right">${kbrl(fretePorHa)}</td></tr>
+          <tr style="border-top:2px solid #e2e8f0;"><td><b>TOTAL/ha</b></td><td style="text-align:right"><b>${kbrl(custoPorHa)}</b></td></tr>
+        </table>
+      </div>
+    </div>
+
     <!-- ========== COMPARATIVO RECEITA ========== -->
     <div class="card" style="margin-bottom:20px;">
       <h3>📈 Comparativo Receita</h3>
@@ -3253,9 +3674,19 @@ function pageRelatorios() {
           <td style="text-align:right">${kbrl(receitaRealTotal)}</td>
         </tr>
         <tr>
-          <td><b>Diferença:</b></td>
-          <td style="text-align:right ${receitaRealTotal - receitaEstimadaTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">
-            ${kbrl(receitaRealTotal - receitaEstimadaTotal)}
+          <td><b>Custo total (com manutenção + insumos + frete):</b></td>
+          <td style="text-align:right">${kbrl(custoTotal)}</td>
+        </tr>
+        <tr style="border-top:2px solid #e2e8f0;">
+          <td><b>Lucro real:</b></td>
+          <td style="text-align:right"><b class="${lucroRealTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">${kbrl(lucroRealTotal)}</b></td>
+        </tr>
+        <tr>
+          <td><b>Diferença (real vs estimado):</b></td>
+          <td style="text-align:right">
+            <span class="${(lucroRealTotal - lucroEstimadoTotal) >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">
+              ${kbrl(lucroRealTotal - lucroEstimadoTotal)}
+            </span>
           </td>
         </tr>
       </table>
@@ -3332,6 +3763,77 @@ function pageRelatorios() {
       </div>
     </div>
 
+    <!-- ========== SEÇÃO MANUTENÇÃO (NOVO) ========== -->
+    <div class="secao-titulo">🔧 Resumo de Manutenção</div>
+    <div class="relatorio-kpi-grid" style="margin-bottom:20px;">
+      <div class="relatorio-kpi-card">
+        <h3>🔧 Total Manutenções</h3>
+        <div class="relatorio-kpi-valor">${totalManutencoes}</div>
+        <div class="relatorio-kpi-label">P: ${manutPreventivas} | C: ${manutCorretivas} | Pd: ${manutPreditivas}</div>
+      </div>
+      <div class="relatorio-kpi-card">
+        <h3>💰 Custo Total</h3>
+        <div class="relatorio-kpi-valor">${kbrl(custoManutencao)}</div>
+        <div class="relatorio-kpi-label">${kbrl(manutCustoPorHa)}/ha</div>
+      </div>
+    </div>
+    ${maquinas.length > 0 ? `
+    <div class="card" style="margin-bottom:20px;">
+      <h4>🚜 Custo de Manutenção por Máquina</h4>
+      <table style="width:100%;">
+        <thead><tr><th>Máquina</th><th>Manutenções</th><th>Custo Total</th></tr></thead>
+        <tbody>
+          ${maquinas.map(maq => {
+            const info = custoManutPorMaquina.get(maq.id) || { custo: 0, qtd: 0 };
+            return `<tr><td><b>${escapeHtml(maq.nome)}</b></td><td>${info.qtd}</td><td>${kbrl(info.custo)}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    ` : ''}
+
+    <!-- ========== SEÇÃO INSUMOS BASE (NOVO) ========== -->
+    <div class="secao-titulo">🌱 Resumo de Insumos Base</div>
+    <div class="relatorio-kpi-grid" style="margin-bottom:20px;">
+      <div class="relatorio-kpi-card">
+        <h3>🌱 Total Lançamentos</h3>
+        <div class="relatorio-kpi-valor">${totalInsumosBase}</div>
+      </div>
+      <div class="relatorio-kpi-card">
+        <h3>💰 Custo Total</h3>
+        <div class="relatorio-kpi-valor">${kbrl(custoInsumosBase)}</div>
+        <div class="relatorio-kpi-label">${kbrl(insumoCustoPorHa)}/ha</div>
+      </div>
+    </div>
+    ${Object.keys(custoInsumoPorTipo).length > 0 ? `
+    <div class="card" style="margin-bottom:20px;">
+      <h4>📊 Custo por Tipo de Insumo</h4>
+      <table style="width:100%;">
+        <thead><tr><th>Tipo</th><th>Custo Total</th><th>%</th></tr></thead>
+        <tbody>
+          ${Object.entries(custoInsumoPorTipo).sort((a, b) => b[1] - a[1]).map(([tipo, custo]) => `
+            <tr><td><b>${escapeHtml(tipo)}</b></td><td>${kbrl(custo)}</td><td>${custoInsumosBase > 0 ? num((custo/custoInsumosBase)*100, 1) : 0}%</td></tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    ` : ''}
+
+    <!-- ========== SEÇÃO FRETE (NOVO) ========== -->
+    <div class="secao-titulo">🚛 Resumo de Frete</div>
+    <div class="relatorio-kpi-grid" style="margin-bottom:20px;">
+      <div class="relatorio-kpi-card">
+        <h3>🚛 Custo Total Frete</h3>
+        <div class="relatorio-kpi-valor">${kbrl(custoFrete)}</div>
+        <div class="relatorio-kpi-label">${kbrl(fretePorHa)}/ha</div>
+      </div>
+      <div class="relatorio-kpi-card">
+        <h3>📦 Total Entregue</h3>
+        <div class="relatorio-kpi-valor">${num(toneladasTotal, 2)} ton</div>
+        <div class="relatorio-kpi-label">${kbrl(fretePorTon)}/ton</div>
+      </div>
+    </div>
+
     <!-- ========== SEÇÃO APLICAÇÕES ========== -->
     <div class="secao-titulo">🧪 Resumo de Aplicações</div>
     <div class="relatorio-kpi-grid" style="margin-bottom:20px;">
@@ -3350,6 +3852,7 @@ function pageRelatorios() {
     </div>
 
     <!-- Top 5 produtos mais usados -->
+    ${topProdutos.length > 0 ? `
     <div class="card" style="margin-bottom:20px;">
       <h4>🧪 Top 5 Produtos Mais Utilizados</h4>
       <table style="width:100%;">
@@ -3367,42 +3870,10 @@ function pageRelatorios() {
         </tbody>
       </table>
     </div>
-
-    <!-- ========== ÚLTIMAS APLICAÇÕES ========== -->
-    <div class="card" style="margin-bottom:20px;">
-      <h4>📋 Últimas 10 Aplicações</h4>
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Talhão</th>
-              <th>Área</th>
-              <th>Produtos</th>
-              <th>Custo</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${aplicacoes.slice().reverse().slice(0, 10).map(a => {
-              const talhao = findNameById(talhoes, a.talhaoId);
-              const produtosList = (a.produtos || []).map(p => p.produtoNome).join(', ');
-              return `
-                <tr>
-                  <td>${a.data}</td>
-                  <td><b>${escapeHtml(talhao)}</b></td>
-                  <td>${num(a.areaHaAplicada, 1)} ha</td>
-                  <td>${escapeHtml(produtosList)}</td>
-                  <td>${kbrl(a.custoTotal)}</td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    ` : ''}
 
     <!-- ========== DETALHAMENTO POR TALHÃO ========== -->
-    <div class="secao-titulo">🌱 Detalhamento por Talhão</div>
+    <div class="secao-titulo">🌱 Detalhamento por Talhão (Custo Completo)</div>
     <div class="tableWrap" style="margin-bottom:30px;">
       <table>
         <thead>
@@ -3411,12 +3882,15 @@ function pageRelatorios() {
             <th>Fazenda</th>
             <th>Cultura</th>
             <th>Área (ha)</th>
-            <th>Custo Apl.</th>
-            <th>Custo Comb.</th>
+            <th>Apl.</th>
+            <th>Insumos</th>
+            <th>Comb.</th>
+            <th>Manut.</th>
+            <th>Frete</th>
             <th>Custo Total</th>
-            <th>Produção (kg)</th>
-            <th>Receita Est.</th>
-            <th>Receita Real</th>
+            <th>Prod. (kg)</th>
+            <th>Rec. Est.</th>
+            <th>Rec. Real</th>
             <th>Lucro Real</th>
           </tr>
         </thead>
@@ -3429,8 +3903,11 @@ function pageRelatorios() {
               <td>${escapeHtml(d.cultura)}</td>
               <td>${num(d.area, 1)}</td>
               <td>${kbrl(d.custoApl)}</td>
+              <td>${kbrl(d.custoInsumo)}</td>
               <td>${kbrl(d.custoComb)}</td>
-              <td>${kbrl(d.custo)}</td>
+              <td>${kbrl(d.custoManutRateio)}</td>
+              <td>${kbrl(d.custoFreteT)}</td>
+              <td><b>${kbrl(d.custo)}</b></td>
               <td>${d.temColheita ? num(d.producaoKg, 0) : '-'}</td>
               <td>${kbrl(d.receitaEstimada)}</td>
               <td>${d.temColheita ? kbrl(d.receitaReal) : '-'}</td>
@@ -3457,8 +3934,8 @@ function pageRelatorios() {
         </thead>
         <tbody>
           ${safrasPassadas.map(s => {
-            const custoHaPassado = s.custo / s.area;
-            const variacao = ((custoPorHa - custoHaPassado) / custoHaPassado) * 100;
+            const custoHaPassado = s.area > 0 ? s.custo / s.area : 0;
+            const variacao = custoHaPassado > 0 ? ((custoPorHa - custoHaPassado) / custoHaPassado) * 100 : 0;
             return `<tr>
               <td><b>${s.nome}</b></td>
               <td>${num(s.area, 0)} ha</td>
@@ -3486,14 +3963,16 @@ function pageRelatorios() {
   document.getElementById("btnPrint").addEventListener("click", () => window.print());
 
   document.getElementById("btnExportCSV").addEventListener("click", () => {
-    // Exportar dados consolidados (pode ser expandido)
     const dados = dadosTalhoes.map(d => ({
       Talhão: d.talhao,
       Fazenda: d.fazenda,
       Cultura: d.cultura,
       Área_ha: d.area,
       Custo_Aplicações_R$: d.custoApl,
+      Custo_Insumos_Base_R$: d.custoInsumo,
       Custo_Combustível_R$: d.custoComb,
+      Custo_Manutenção_R$: d.custoManutRateio,
+      Custo_Frete_R$: d.custoFreteT,
       Custo_Total_R$: d.custo,
       Produção_kg: d.producaoKg,
       Receita_Estimada_R$: d.receitaEstimada,
@@ -3505,6 +3984,929 @@ function pageRelatorios() {
   });
 }
 
+
+
+
+// ============================================================================
+// NOVA PÁGINA: MANUTENÇÃO DE MÁQUINAS
+// ============================================================================
+
+function pageManutencao() {
+  const db = getDB();
+  const maquinas = onlySafra(db.maquinas);
+  const talhoes = onlySafra(db.talhoes);
+  const manutencoes = onlySafra(db.manutencoes || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+
+  setTopActions(`
+    <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
+  `);
+
+  // ==================== CÁLCULOS ====================
+  const areaTotal = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
+  const custoTotalManut = manutencoes.reduce((s, m) => s + Number(m.custoTotal || 0), 0);
+  const custoPorHa = areaTotal > 0 ? custoTotalManut / areaTotal : 0;
+  const totalPreventivas = manutencoes.filter(m => m.tipoManutencao === "Preventiva").length;
+  const totalCorretivas = manutencoes.filter(m => m.tipoManutencao === "Corretiva").length;
+  const totalPreditivas = manutencoes.filter(m => m.tipoManutencao === "Preditiva").length;
+
+  // Alertas de manutenção vencida por horímetro
+  const alertasVencidas = [];
+  maquinas.forEach(maq => {
+    const ultimaManut = manutencoes
+      .filter(m => m.maquinaId === maq.id && m.tipoManutencao === "Preventiva")
+      .sort((a, b) => (b.data || "").localeCompare(a.data || ""))[0];
+
+    if (ultimaManut) {
+      const horimetroAtual = Number(maq.horimetro || 0);
+      const horimetroUltima = Number(ultimaManut.horimetroAtual || 0);
+      const intervalo = Number(ultimaManut.intervaloHoras || 500);
+      const proximaEm = horimetroUltima + intervalo;
+
+      if (horimetroAtual >= proximaEm) {
+        alertasVencidas.push({
+          maquina: maq.nome,
+          maquinaId: maq.id,
+          horimetroAtual,
+          proximaEm,
+          excedido: horimetroAtual - proximaEm,
+          ultimaData: ultimaManut.data
+        });
+      }
+    } else if (Number(maq.horimetro || 0) > 0) {
+      alertasVencidas.push({
+        maquina: maq.nome,
+        maquinaId: maq.id,
+        horimetroAtual: Number(maq.horimetro || 0),
+        proximaEm: 0,
+        excedido: 0,
+        ultimaData: "Nunca"
+      });
+    }
+  });
+
+  // Custos por máquina
+  const custosPorMaquina = new Map();
+  manutencoes.forEach(m => {
+    const atual = custosPorMaquina.get(m.maquinaId) || { custo: 0, qtd: 0 };
+    atual.custo += Number(m.custoTotal || 0);
+    atual.qtd += 1;
+    custosPorMaquina.set(m.maquinaId, atual);
+  });
+
+  // Custos por mês
+  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const custoPorMes = new Array(12).fill(0);
+  manutencoes.forEach(m => {
+    if (m.data) {
+      const mes = parseInt(m.data.substring(5, 7)) - 1;
+      custoPorMes[mes] += Number(m.custoTotal || 0);
+    }
+  });
+  const maxCustoMes = Math.max(...custoPorMes, 1);
+
+  function optionList(arr) {
+    return arr.map(o => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join("");
+  }
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <style>
+      .manut-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .manut-kpi-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        border-left: 4px solid #3b82f6;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      }
+      .manut-kpi-card h3 {
+        margin: 0 0 10px 0;
+        color: #3b82f6;
+        font-size: 16px;
+      }
+      .manut-kpi-valor {
+        font-size: 32px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .manut-kpi-label {
+        color: #475569;
+        font-size: 12px;
+        margin-top: 5px;
+      }
+      .alerta-vencida {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-left: 4px solid #ef4444;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+      }
+      .alerta-vencida b { color: #b91c1c; }
+      .peca-linha {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 0.3fr;
+        gap: 10px;
+        margin-bottom: 8px;
+        align-items: center;
+      }
+      .grafico-barras {
+        display: flex; align-items: flex-end; gap: 8px; height: 150px; margin: 15px 0;
+      }
+      .barra {
+        flex: 1; background: #f97316; border-radius: 4px 4px 0 0; min-height: 20px;
+        transition: height 0.3s;
+      }
+      .barra-label { text-align: center; font-size: 10px; color: #475569; margin-top: 5px; }
+      .filtro-maquina { margin-bottom: 15px; }
+    </style>
+
+    <!-- KPIs -->
+    <div class="manut-kpi-grid">
+      <div class="manut-kpi-card">
+        <h3>🔧 Total Manutenções</h3>
+        <div class="manut-kpi-valor">${manutencoes.length}</div>
+        <div class="manut-kpi-label">P: ${totalPreventivas} | C: ${totalCorretivas} | Pd: ${totalPreditivas}</div>
+      </div>
+      <div class="manut-kpi-card">
+        <h3>💰 Custo Total</h3>
+        <div class="manut-kpi-valor">${kbrl(custoTotalManut)}</div>
+        <div class="manut-kpi-label">em manutenções</div>
+      </div>
+      <div class="manut-kpi-card">
+        <h3>📏 Custo/ha</h3>
+        <div class="manut-kpi-valor">${kbrl(custoPorHa)}</div>
+        <div class="manut-kpi-label">sobre ${num(areaTotal, 1)} ha</div>
+      </div>
+      <div class="manut-kpi-card">
+        <h3>⚠️ Vencidas</h3>
+        <div class="manut-kpi-valor" style="color: ${alertasVencidas.length > 0 ? '#ef4444' : '#059669'}">${alertasVencidas.length}</div>
+        <div class="manut-kpi-label">máquinas com manutenção vencida</div>
+      </div>
+    </div>
+
+    <!-- Alertas de manutenção vencida -->
+    ${alertasVencidas.length > 0 ? `
+      <div class="card" style="margin-bottom:20px;">
+        <h3>⚠️ Alertas de Manutenção Vencida</h3>
+        ${alertasVencidas.map(a => `
+          <div class="alerta-vencida">
+            <b>🚜 ${escapeHtml(a.maquina)}</b> — Horímetro atual: <b>${num(a.horimetroAtual, 0)}h</b>
+            ${a.proximaEm > 0 ? `| Próxima prevista em: ${num(a.proximaEm, 0)}h | Excedido: <b style="color:#ef4444">${num(a.excedido, 0)}h</b>` : '| <b>Nenhuma manutenção preventiva registrada</b>'}
+            | Última: ${a.ultimaData}
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    <!-- Gráfico mensal -->
+    <div class="card" style="margin-bottom:20px;">
+      <h4>📊 Custo de Manutenção por Mês</h4>
+      <div class="grafico-barras">
+        ${meses.map((mes, i) => {
+          const altura = (custoPorMes[i] / maxCustoMes) * 130;
+          return `<div style="flex:1;text-align:center;"><div class="barra" style="height:${altura}px;"></div><div class="barra-label">${mes}</div><div style="font-size:9px;color:#475569;">${kbrl(custoPorMes[i])}</div></div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Formulário -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3>🔧 Registrar Manutenção</h3>
+      <div class="help">Registre manutenções preventivas, corretivas ou preditivas.</div>
+      <div class="hr"></div>
+      <form id="frmManut" class="formGrid">
+        <div><small>📅 Data</small><input class="input" name="data" type="date" value="${nowISO()}" required></div>
+        <div><small>🚜 Máquina</small>
+          <select class="select" name="maquinaId" required>
+            <option value="">Selecione...</option>
+            ${optionList(maquinas)}
+          </select>
+        </div>
+        <div><small>🔧 Tipo de Manutenção</small>
+          <select class="select" name="tipoManutencao" required>
+            <option value="Preventiva">Preventiva</option>
+            <option value="Corretiva">Corretiva</option>
+            <option value="Preditiva">Preditiva</option>
+          </select>
+        </div>
+        <div><small>📊 Horímetro Atual</small><input class="input" name="horimetroAtual" type="number" step="0.1" placeholder="Horas atuais"></div>
+        <div><small>⏱️ Intervalo Próxima (horas)</small><input class="input" name="intervaloHoras" type="number" step="1" placeholder="Ex: 500" value="500"></div>
+        <div><small>📅 Próxima Manutenção (data)</small><input class="input" name="proximaData" type="date"></div>
+        <div><small>👤 Mecânico/Responsável</small><input class="input" name="mecanico" type="text" placeholder="Nome do mecânico"></div>
+        <div><small>🏢 Oficina/Local</small><input class="input" name="oficina" type="text" placeholder="Oficina ou local"></div>
+        <div><small>📋 Serviço Realizado</small><input class="input" name="servico" type="text" placeholder="Descrição do serviço"></div>
+        <div><small>⏱️ Tempo de Parada (horas)</small><input class="input" name="tempoParada" type="number" step="0.5" placeholder="Horas parada"></div>
+
+        <div class="full">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h4 style="margin:0;">🔩 Peças Trocadas</h4>
+            <button type="button" class="btn primary" id="btnAdicionarPeca" style="font-size:12px;">+ Adicionar peça</button>
+          </div>
+          <div id="pecas-container">
+            <div class="peca-linha">
+              <input class="input" name="pecaNome[]" placeholder="Nome da peça">
+              <input class="input" name="pecaQtd[]" type="number" step="1" placeholder="Qtd" value="1">
+              <input class="input" name="pecaPreco[]" type="number" step="0.01" placeholder="Preço unit.">
+              <button type="button" class="btn danger" style="padding:6px;" onclick="window.__removerPeca(this)">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <div><small>💰 Custo Mão de Obra (R$)</small><input class="input" name="custoMaoObra" type="number" step="0.01" placeholder="0.00"></div>
+        <div><small>💰 Outros Custos (R$)</small><input class="input" name="outrosCustos" type="number" step="0.01" placeholder="0.00"></div>
+        <div class="full"><small>📝 Observações</small><textarea class="textarea" name="obs"></textarea></div>
+
+        <div class="full" style="margin-top:15px;">
+          <div style="background: linear-gradient(135deg, #1a2a3a, #0f1a24); padding:20px; border-radius:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h4 style="margin:0; color:#888;">💵 CUSTO TOTAL DA MANUTENÇÃO</h4>
+                <div style="font-size:32px; font-weight:bold; color:#f97316;" id="custoManutDisplay">R$ 0,00</div>
+              </div>
+              <button class="btn primary" type="submit" style="font-size:16px; padding:12px 24px;">✅ Salvar Manutenção</button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Custo por máquina -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3>🚜 Custo de Manutenção por Máquina</h3>
+      <div class="tableWrap">
+        <table>
+          <thead><tr><th>Máquina</th><th>Manutenções</th><th>Custo Total</th><th>Custo/ha</th><th>Horímetro Atual</th></tr></thead>
+          <tbody>
+            ${maquinas.map(maq => {
+              const info = custosPorMaquina.get(maq.id) || { custo: 0, qtd: 0 };
+              const custoHaMaq = areaTotal > 0 ? info.custo / areaTotal : 0;
+              return `<tr>
+                <td><b>${escapeHtml(maq.nome)}</b></td>
+                <td>${info.qtd}</td>
+                <td>${kbrl(info.custo)}</td>
+                <td>${kbrl(custoHaMaq)}</td>
+                <td>${num(maq.horimetro || 0, 0)}h</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Filtro e histórico -->
+    <div class="card">
+      <h3>📋 Histórico de Manutenções</h3>
+      <div class="filtro-maquina">
+        <small>Filtrar por máquina:</small>
+        <select class="select" id="filtroMaquina" style="max-width:300px;">
+          <option value="">Todas as máquinas</option>
+          ${optionList(maquinas)}
+        </select>
+      </div>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Máquina</th>
+              <th>Tipo</th>
+              <th>Serviço</th>
+              <th>Peças</th>
+              <th>Horímetro</th>
+              <th>Custo Total</th>
+              <th class="noPrint">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyManut"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // Adicionar peça
+  document.getElementById("btnAdicionarPeca").addEventListener("click", () => {
+    const container = document.getElementById("pecas-container");
+    const novaLinha = document.createElement("div");
+    novaLinha.className = "peca-linha";
+    novaLinha.innerHTML = `
+      <input class="input" name="pecaNome[]" placeholder="Nome da peça">
+      <input class="input" name="pecaQtd[]" type="number" step="1" placeholder="Qtd" value="1">
+      <input class="input" name="pecaPreco[]" type="number" step="0.01" placeholder="Preço unit.">
+      <button type="button" class="btn danger" style="padding:6px;" onclick="window.__removerPeca(this)">✕</button>
+    `;
+    container.appendChild(novaLinha);
+    calcularCustoManut();
+  });
+
+  window.__removerPeca = (btn) => {
+    if (document.querySelectorAll('.peca-linha').length <= 1) return;
+    btn.closest('.peca-linha').remove();
+    calcularCustoManut();
+  };
+
+  // Calcular custo total
+  function calcularCustoManut() {
+    let custoPecas = 0;
+    const linhas = document.querySelectorAll('.peca-linha');
+    linhas.forEach(linha => {
+      const qtd = Number(linha.querySelector('input[name="pecaQtd[]"]').value) || 0;
+      const preco = Number(linha.querySelector('input[name="pecaPreco[]"]').value) || 0;
+      custoPecas += qtd * preco;
+    });
+    const maoObra = Number(document.querySelector('input[name="custoMaoObra"]').value) || 0;
+    const outros = Number(document.querySelector('input[name="outrosCustos"]').value) || 0;
+    const total = custoPecas + maoObra + outros;
+    document.getElementById("custoManutDisplay").innerText = kbrl(total);
+    return total;
+  }
+
+  // Listeners para recalcular
+  document.querySelectorAll('input[name="pecaQtd[]"], input[name="pecaPreco[]"], input[name="custoMaoObra"], input[name="outrosCustos"]').forEach(el => {
+    el.addEventListener("input", calcularCustoManut);
+  });
+
+  // Observar novas peças
+  const observer = new MutationObserver(() => {
+    document.querySelectorAll('input[name="pecaQtd[]"], input[name="pecaPreco[]"]').forEach(el => {
+      el.removeEventListener("input", calcularCustoManut);
+      el.addEventListener("input", calcularCustoManut);
+    });
+  });
+  observer.observe(document.getElementById("pecas-container"), { childList: true });
+
+  // Renderizar tabela
+  function renderTabela(filtroMaqId = "") {
+    const db2 = getDB();
+    let rows = onlySafra(db2.manutencoes || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+    if (filtroMaqId) rows = rows.filter(m => m.maquinaId === filtroMaqId);
+
+    const tb = document.getElementById("tbodyManut");
+    tb.innerHTML = rows.map(m => {
+      const maq = maquinas.find(q => q.id === m.maquinaId);
+      const pecasStr = (m.pecas || []).map(p => `${p.nome} (${p.qtd}x)`).join(', ');
+      const tipoCor = m.tipoManutencao === 'Corretiva' ? '#ef4444' : m.tipoManutencao === 'Preditiva' ? '#8b5cf6' : '#059669';
+      return `<tr>
+        <td>${m.data}</td>
+        <td><b>${escapeHtml(maq?.nome || '-')}</b></td>
+        <td><span style="color:${tipoCor}; font-weight:600;">${escapeHtml(m.tipoManutencao)}</span></td>
+        <td>${escapeHtml(clampStr(m.servico || '-', 40))}</td>
+        <td>${escapeHtml(clampStr(pecasStr || '-', 40))}</td>
+        <td>${num(m.horimetroAtual || 0, 0)}h</td>
+        <td><b>${kbrl(m.custoTotal)}</b></td>
+        <td class="noPrint"><button class="btn danger" onclick="window.__delManut('${m.id}')">Excluir</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="8">Nenhuma manutenção registrada.</td></tr>';
+  }
+
+  // Filtro
+  document.getElementById("filtroMaquina").addEventListener("change", (e) => {
+    renderTabela(e.target.value);
+  });
+
+  // Excluir
+  window.__delManut = (id) => {
+    if (!confirm("Excluir esta manutenção?")) return;
+    const db2 = getDB();
+    db2.manutencoes = (db2.manutencoes || []).filter(x => x.id !== id);
+    setDB(db2);
+    toast("Excluído", "Manutenção removida.");
+    pageManutencao();
+  };
+
+  // Submit
+  document.getElementById("frmManut").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const maquinaId = fd.get("maquinaId");
+    if (!maquinaId) { alert("Selecione uma máquina"); return; }
+
+    // Coletar peças
+    const pecasNomes = fd.getAll("pecaNome[]");
+    const pecasQtds = fd.getAll("pecaQtd[]");
+    const pecasPrecos = fd.getAll("pecaPreco[]");
+    const pecas = [];
+    let custoPecas = 0;
+    for (let i = 0; i < pecasNomes.length; i++) {
+      if (pecasNomes[i]) {
+        const qtd = Number(pecasQtds[i]) || 0;
+        const preco = Number(pecasPrecos[i]) || 0;
+        pecas.push({ nome: pecasNomes[i], qtd, preco });
+        custoPecas += qtd * preco;
+      }
+    }
+
+    const custoMaoObra = Number(fd.get("custoMaoObra") || 0);
+    const outrosCustos = Number(fd.get("outrosCustos") || 0);
+    const custoTotal = custoPecas + custoMaoObra + outrosCustos;
+
+    const obj = {
+      id: uid("man"),
+      safraId: getSafraId(),
+      data: fd.get("data") || nowISO(),
+      maquinaId,
+      tipoManutencao: fd.get("tipoManutencao"),
+      horimetroAtual: Number(fd.get("horimetroAtual") || 0),
+      intervaloHoras: Number(fd.get("intervaloHoras") || 500),
+      proximaData: fd.get("proximaData") || "",
+      mecanico: fd.get("mecanico") || "",
+      oficina: fd.get("oficina") || "",
+      servico: fd.get("servico") || "",
+      tempoParada: Number(fd.get("tempoParada") || 0),
+      pecas,
+      custoPecas,
+      custoMaoObra,
+      outrosCustos,
+      custoTotal,
+      obs: fd.get("obs") || ""
+    };
+
+    const db2 = getDB();
+    db2.manutencoes = db2.manutencoes || [];
+    db2.manutencoes.push(obj);
+
+    // Atualizar horímetro da máquina
+    if (obj.horimetroAtual > 0) {
+      const maq = db2.maquinas.find(m => m.id === maquinaId);
+      if (maq && obj.horimetroAtual > Number(maq.horimetro || 0)) {
+        maq.horimetro = obj.horimetroAtual;
+      }
+    }
+
+    setDB(db2);
+    toast("Manutenção registrada", `Custo: ${kbrl(custoTotal)}`);
+    pageManutencao();
+  });
+
+  // Export CSV
+  document.getElementById("btnExportCSV").addEventListener("click", () => {
+    const dados = manutencoes.map(m => {
+      const maq = maquinas.find(q => q.id === m.maquinaId);
+      return {
+        Data: m.data,
+        Máquina: maq?.nome || '-',
+        Tipo: m.tipoManutencao,
+        Serviço: m.servico,
+        Mecânico: m.mecanico,
+        Oficina: m.oficina,
+        Horímetro: m.horimetroAtual,
+        Peças: (m.pecas || []).map(p => `${p.nome}(${p.qtd}x)`).join('; '),
+        Custo_Peças: m.custoPecas,
+        Custo_MãoObra: m.custoMaoObra,
+        Outros_Custos: m.outrosCustos,
+        Custo_Total: m.custoTotal,
+        Tempo_Parada_h: m.tempoParada,
+        Observações: m.obs
+      };
+    });
+    downloadText(`manutencoes-${nowISO()}.csv`, toCSV(dados));
+    toast("Exportado", "CSV baixado.");
+  });
+
+  renderTabela();
+}
+
+// ============================================================================
+// NOVA PÁGINA: INSUMOS BASE (ADUBAÇÃO POR TALHÃO)
+// ============================================================================
+
+function pageInsumosBase() {
+  const db = getDB();
+  const talhoes = onlySafra(db.talhoes);
+  const fazendas = onlySafra(db.fazendas);
+  const produtos = onlySafra(db.produtos);
+  const insumosBase = onlySafra(db.insumosBase || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+
+  setTopActions(`
+    <button class="btn" id="btnExportCSV">📥 Exportar CSV</button>
+  `);
+
+  // ==================== CÁLCULOS ====================
+  const areaTotal = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
+  const custoTotalInsumos = insumosBase.reduce((s, i) => s + Number(i.custoTotal || 0), 0);
+  const custoPorHa = areaTotal > 0 ? custoTotalInsumos / areaTotal : 0;
+
+  // Custo por talhão
+  const custosPorTalhao = new Map();
+  insumosBase.forEach(i => {
+    const atual = custosPorTalhao.get(i.talhaoId) || { custo: 0, qtd: 0 };
+    atual.custo += Number(i.custoTotal || 0);
+    atual.qtd += 1;
+    custosPorTalhao.set(i.talhaoId, atual);
+  });
+
+  // Custo por tipo de insumo
+  const custosPorTipo = {};
+  insumosBase.forEach(i => {
+    const tipo = i.tipoInsumo || "Outros";
+    custosPorTipo[tipo] = (custosPorTipo[tipo] || 0) + Number(i.custoTotal || 0);
+  });
+
+  function optionList(arr) {
+    return arr.map(o => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join("");
+  }
+
+  function produtoOptions() {
+    return produtos.map(p => `<option value="${p.id}" data-preco="${p.preco || 0}" data-unidade="${p.unidade}">${escapeHtml(p.nome)} — ${escapeHtml(p.tipo)} (R$ ${p.preco || 0}/${p.unidade})</option>`).join("");
+  }
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <style>
+      .insumo-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+      .insumo-kpi-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        border-left: 4px solid #10b981;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      }
+      .insumo-kpi-card h3 {
+        margin: 0 0 10px 0;
+        color: #10b981;
+        font-size: 16px;
+      }
+      .insumo-kpi-valor {
+        font-size: 32px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .insumo-kpi-label {
+        color: #475569;
+        font-size: 12px;
+        margin-top: 5px;
+      }
+      .insumo-linha {
+        display: grid;
+        grid-template-columns: 3fr 1fr 1fr 1fr 0.3fr;
+        gap: 10px;
+        margin-bottom: 8px;
+        align-items: center;
+      }
+    </style>
+
+    <!-- KPIs -->
+    <div class="insumo-kpi-grid">
+      <div class="insumo-kpi-card">
+        <h3>🌱 Total Lançamentos</h3>
+        <div class="insumo-kpi-valor">${insumosBase.length}</div>
+        <div class="insumo-kpi-label">registros de insumos base</div>
+      </div>
+      <div class="insumo-kpi-card">
+        <h3>💰 Custo Total</h3>
+        <div class="insumo-kpi-valor">${kbrl(custoTotalInsumos)}</div>
+        <div class="insumo-kpi-label">em insumos base</div>
+      </div>
+      <div class="insumo-kpi-card">
+        <h3>📏 Custo/ha</h3>
+        <div class="insumo-kpi-valor">${kbrl(custoPorHa)}</div>
+        <div class="insumo-kpi-label">sobre ${num(areaTotal, 1)} ha</div>
+      </div>
+      <div class="insumo-kpi-card">
+        <h3>🧭 Talhões Atendidos</h3>
+        <div class="insumo-kpi-valor">${custosPorTalhao.size}</div>
+        <div class="insumo-kpi-label">de ${talhoes.length} talhões</div>
+      </div>
+    </div>
+
+    <!-- Formulário -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3>🌱 Lançar Insumo Base por Talhão</h3>
+      <div class="help">Registre adubação, calcário, gesso, sementes e outros insumos de base aplicados por talhão. O custo será somado ao custo total do talhão.</div>
+      <div class="hr"></div>
+      <form id="frmInsumoBase" class="formGrid">
+        <div><small>📅 Data</small><input class="input" name="data" type="date" value="${nowISO()}" required></div>
+        <div><small>🧭 Talhão</small>
+          <select class="select" name="talhaoId" required>
+            <option value="">Selecione...</option>
+            ${talhoes.map(t => `<option value="${t.id}">${escapeHtml(t.nome)} (${t.cultura || '-'}) — ${num(t.areaHa,1)} ha</option>`).join('')}
+          </select>
+        </div>
+        <div><small>📦 Tipo de Insumo</small>
+          <select class="select" name="tipoInsumo" required>
+            <option value="Adubo">Adubo</option>
+            <option value="Calcário">Calcário</option>
+            <option value="Gesso">Gesso</option>
+            <option value="Semente">Semente</option>
+            <option value="Tratamento de Semente">Tratamento de Semente</option>
+            <option value="Inoculante">Inoculante</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+        <div><small>📋 Operação</small><input class="input" name="operacao" placeholder="Ex: Adubação de base, Calagem..."></div>
+
+        <div class="full">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h4 style="margin:0;">🧪 Produtos/Insumos Utilizados</h4>
+            <button type="button" class="btn primary" id="btnAdicionarInsumo" style="font-size:12px;">+ Adicionar produto</button>
+          </div>
+          <div class="help">Selecione o produto do cadastro ou digite manualmente. Informe a dose por hectare.</div>
+          <div class="hr"></div>
+          <div id="insumos-container">
+            <div class="insumo-linha">
+              <select class="select" name="produtoId[]" onchange="window.__atualizarInsumo(this, 0)">
+                <option value="">Selecione um produto...</option>
+                <option value="__manual">Digitar manualmente...</option>
+                ${produtoOptions()}
+              </select>
+              <input class="input" name="doseHa[]" type="number" step="0.01" placeholder="Dose/ha" onchange="window.__calcularCustoInsumos()">
+              <input class="input" name="precoManual[]" type="number" step="0.01" placeholder="Preço unit." onchange="window.__calcularCustoInsumos()">
+              <span class="badge" id="custoInsumo-0" style="background:#2a2a30; color:#10b981; padding:8px; text-align:center; font-weight:bold;">R$ 0,00</span>
+              <button type="button" class="btn danger" style="padding:6px;" onclick="window.__removerInsumo(this)">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="full"><small>📝 Observações</small><textarea class="textarea" name="obs"></textarea></div>
+
+        <div class="full" style="margin-top:15px;">
+          <div style="background: linear-gradient(135deg, #064e3b, #0f1a24); padding:20px; border-radius:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h4 style="margin:0; color:#888;">💵 CUSTO TOTAL DO LANÇAMENTO</h4>
+                <div style="font-size:32px; font-weight:bold; color:#10b981;" id="custoInsumoDisplay">R$ 0,00</div>
+                <div style="font-size:12px; color:#888; margin-top:5px;" id="detalheInsumo">Nenhum produto selecionado</div>
+              </div>
+              <button class="btn primary" type="submit" style="font-size:16px; padding:12px 24px;">✅ Salvar Lançamento</button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Custo por talhão -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3>🧭 Custo de Insumos Base por Talhão</h3>
+      <div class="tableWrap">
+        <table>
+          <thead><tr><th>Talhão</th><th>Fazenda</th><th>Cultura</th><th>Área (ha)</th><th>Lançamentos</th><th>Custo Total</th><th>Custo/ha</th></tr></thead>
+          <tbody>
+            ${talhoes.map(t => {
+              const info = custosPorTalhao.get(t.id) || { custo: 0, qtd: 0 };
+              const custoHaTal = Number(t.areaHa || 0) > 0 ? info.custo / t.areaHa : 0;
+              return `<tr>
+                <td><b>${escapeHtml(t.nome)}</b></td>
+                <td>${escapeHtml(findNameById(fazendas, t.fazendaId))}</td>
+                <td>${escapeHtml(t.cultura || '-')}</td>
+                <td>${num(t.areaHa, 1)}</td>
+                <td>${info.qtd}</td>
+                <td><b>${kbrl(info.custo)}</b></td>
+                <td>${kbrl(custoHaTal)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Custo por tipo -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3>📊 Custo por Tipo de Insumo</h3>
+      <div class="tableWrap">
+        <table>
+          <thead><tr><th>Tipo</th><th>Custo Total</th><th>% do Total</th></tr></thead>
+          <tbody>
+            ${Object.entries(custosPorTipo).sort((a, b) => b[1] - a[1]).map(([tipo, custo]) => `
+              <tr>
+                <td><b>${escapeHtml(tipo)}</b></td>
+                <td>${kbrl(custo)}</td>
+                <td>${custoTotalInsumos > 0 ? num((custo / custoTotalInsumos) * 100, 1) : 0}%</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Histórico -->
+    <div class="card">
+      <h3>📋 Histórico de Lançamentos</h3>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Talhão</th>
+              <th>Tipo</th>
+              <th>Produtos</th>
+              <th>Custo Total</th>
+              <th class="noPrint">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyInsumos"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  let insumoCount = 1;
+
+  // Adicionar linha de insumo
+  document.getElementById("btnAdicionarInsumo").addEventListener("click", () => {
+    const container = document.getElementById("insumos-container");
+    const novaLinha = document.createElement("div");
+    novaLinha.className = "insumo-linha";
+    novaLinha.innerHTML = `
+      <select class="select" name="produtoId[]" onchange="window.__atualizarInsumo(this, ${insumoCount})">
+        <option value="">Selecione um produto...</option>
+        <option value="__manual">Digitar manualmente...</option>
+        ${produtoOptions()}
+      </select>
+      <input class="input" name="doseHa[]" type="number" step="0.01" placeholder="Dose/ha" onchange="window.__calcularCustoInsumos()">
+      <input class="input" name="precoManual[]" type="number" step="0.01" placeholder="Preço unit." onchange="window.__calcularCustoInsumos()">
+      <span class="badge" id="custoInsumo-${insumoCount}" style="background:#2a2a30; color:#10b981; padding:8px; text-align:center; font-weight:bold;">R$ 0,00</span>
+      <button type="button" class="btn danger" style="padding:6px;" onclick="window.__removerInsumo(this)">✕</button>
+    `;
+    container.appendChild(novaLinha);
+    insumoCount++;
+  });
+
+  window.__removerInsumo = (btn) => {
+    if (document.querySelectorAll('.insumo-linha').length <= 1) return;
+    btn.closest('.insumo-linha').remove();
+    window.__calcularCustoInsumos();
+  };
+
+  window.__atualizarInsumo = (select, index) => {
+    const opt = select.options[select.selectedIndex];
+    const precoInput = select.closest('.insumo-linha').querySelector('input[name="precoManual[]"]');
+    if (select.value && select.value !== "__manual") {
+      precoInput.value = opt.dataset.preco || 0;
+    } else {
+      precoInput.value = "";
+    }
+    window.__calcularCustoInsumos();
+  };
+
+  window.__calcularCustoInsumos = () => {
+    const talhaoId = document.querySelector('select[name="talhaoId"]').value;
+    const talhao = talhoes.find(t => t.id === talhaoId);
+    const area = talhao ? Number(talhao.areaHa || 0) : 0;
+
+    let total = 0;
+    let detalhes = [];
+    const linhas = document.querySelectorAll('.insumo-linha');
+
+    linhas.forEach((linha, idx) => {
+      const select = linha.querySelector('select[name="produtoId[]"]');
+      const dose = Number(linha.querySelector('input[name="doseHa[]"]').value) || 0;
+      const preco = Number(linha.querySelector('input[name="precoManual[]"]').value) || 0;
+
+      if (dose > 0 && preco > 0 && area > 0) {
+        const custoLinha = preco * dose * area;
+        total += custoLinha;
+        const custoEl = linha.querySelector(`#custoInsumo-${idx}`);
+        if (custoEl) custoEl.innerText = kbrl(custoLinha);
+
+        const nome = select.value === "__manual" ? "Manual" : (select.options[select.selectedIndex]?.text?.split(' — ')[0] || "Produto");
+        detalhes.push(`${nome}: ${num(dose, 2)} × ${num(area, 1)} ha = ${kbrl(custoLinha)}`);
+      }
+    });
+
+    document.getElementById("custoInsumoDisplay").innerText = kbrl(total);
+    document.getElementById("detalheInsumo").innerHTML = detalhes.length > 0 ? detalhes.join('<br>') : 'Nenhum produto selecionado';
+    return total;
+  };
+
+  // Recalcular ao trocar talhão
+  document.querySelector('select[name="talhaoId"]').addEventListener("change", window.__calcularCustoInsumos);
+
+  // Renderizar tabela
+  function renderTabela() {
+    const db2 = getDB();
+    const rows = onlySafra(db2.insumosBase || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+    const tb = document.getElementById("tbodyInsumos");
+    tb.innerHTML = rows.map(i => {
+      const talhao = findNameById(talhoes, i.talhaoId);
+      const produtosStr = (i.produtos || []).map(p => p.nome).join(', ');
+      return `<tr>
+        <td>${i.data}</td>
+        <td><b>${escapeHtml(talhao)}</b></td>
+        <td>${escapeHtml(i.tipoInsumo)}</td>
+        <td>${escapeHtml(clampStr(produtosStr || '-', 50))}</td>
+        <td><b>${kbrl(i.custoTotal)}</b></td>
+        <td class="noPrint"><button class="btn danger" onclick="window.__delInsumoBase('${i.id}')">Excluir</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6">Nenhum lançamento registrado.</td></tr>';
+  }
+
+  window.__delInsumoBase = (id) => {
+    if (!confirm("Excluir este lançamento?")) return;
+    const db2 = getDB();
+    db2.insumosBase = (db2.insumosBase || []).filter(x => x.id !== id);
+    setDB(db2);
+    toast("Excluído", "Lançamento removido.");
+    pageInsumosBase();
+  };
+
+  // Submit
+  document.getElementById("frmInsumoBase").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const talhaoId = fd.get("talhaoId");
+    if (!talhaoId) { alert("Selecione um talhão"); return; }
+
+    const talhao = talhoes.find(t => t.id === talhaoId);
+    const area = talhao ? Number(talhao.areaHa || 0) : 0;
+
+    // Coletar produtos
+    const produtoIds = fd.getAll("produtoId[]");
+    const doses = fd.getAll("doseHa[]");
+    const precos = fd.getAll("precoManual[]");
+    const produtosArray = [];
+    let custoTotal = 0;
+
+    for (let i = 0; i < produtoIds.length; i++) {
+      const dose = Number(doses[i]) || 0;
+      const preco = Number(precos[i]) || 0;
+      if (dose > 0 && preco > 0) {
+        let nome = "Manual";
+        let unidade = "un";
+        if (produtoIds[i] && produtoIds[i] !== "__manual") {
+          const prod = produtos.find(p => p.id === produtoIds[i]);
+          if (prod) { nome = prod.nome; unidade = prod.unidade; }
+        }
+        const custoLinha = preco * dose * area;
+        custoTotal += custoLinha;
+        produtosArray.push({
+          produtoId: produtoIds[i] !== "__manual" ? produtoIds[i] : "",
+          nome,
+          doseHa: dose,
+          preco,
+          unidade,
+          custoLinha
+        });
+      }
+    }
+
+    if (produtosArray.length === 0) {
+      alert("Adicione pelo menos um produto com dose e preço válidos");
+      return;
+    }
+
+    const obj = {
+      id: uid("inb"),
+      safraId: getSafraId(),
+      data: fd.get("data") || nowISO(),
+      talhaoId,
+      tipoInsumo: fd.get("tipoInsumo"),
+      operacao: fd.get("operacao") || "",
+      produtos: produtosArray,
+      custoTotal,
+      areaHa: area,
+      obs: fd.get("obs") || ""
+    };
+
+    const db2 = getDB();
+    db2.insumosBase = db2.insumosBase || [];
+    db2.insumosBase.push(obj);
+
+    // Baixa no estoque para produtos do cadastro
+    for (const p of produtosArray) {
+      if (p.produtoId) {
+        const qtd = p.doseHa * area;
+        baixaEstoqueProdutoPorId(db2, p.produtoId, qtd, p.unidade);
+      }
+    }
+
+    setDB(db2);
+    toast("Insumo Base registrado", `Custo: ${kbrl(custoTotal)}`);
+    pageInsumosBase();
+  });
+
+  // Export CSV
+  document.getElementById("btnExportCSV").addEventListener("click", () => {
+    const dados = insumosBase.map(i => {
+      const talhao = findNameById(talhoes, i.talhaoId);
+      return {
+        Data: i.data,
+        Talhão: talhao,
+        Tipo: i.tipoInsumo,
+        Operação: i.operacao,
+        Produtos: (i.produtos || []).map(p => p.nome).join('; '),
+        Área_ha: i.areaHa,
+        Custo_Total: i.custoTotal,
+        Observações: i.obs
+      };
+    });
+    downloadText(`insumos-base-${nowISO()}.csv`, toCSV(dados));
+    toast("Exportado", "CSV baixado.");
+  });
+
+  renderTabela();
+}
+
+
 function boot() {
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
   const titles = {
@@ -3515,10 +4917,12 @@ function boot() {
     talhoes: ["Talhões", "Áreas de cultivo da safra"],
     produtos: ["Produtos", "Insumos da safra"],
     estoque: ["Estoque", "Controle de insumos da safra"],
+    insumosbase: ["Insumos Base", "Adubação e insumos de base por talhão"],
     aplicacoes: ["Aplicações", "Operações da safra"],
     combustivel: ["Combustível", "Entradas e saídas de diesel"],
     clima: ["Clima/Chuva", "Registros climáticos da safra"],
-    colheitas: ["Colheitas", "Produção real da safra"],
+    colheitas: ["Colheitas", "Produção real e frete da safra"],
+    manutencao: ["Manutenção", "Manutenção de máquinas e equipamentos"],
     equipe: ["Equipe", "Colaboradores da safra"],
     maquinas: ["Máquinas", "Equipamentos da safra"],
     relatorios: ["Relatórios", "Exportação de dados da safra"],
@@ -3535,10 +4939,12 @@ function boot() {
   else if (pageKey === "talhoes") pageTalhoes();
   else if (pageKey === "produtos") pageProdutos();
   else if (pageKey === "estoque") pageEstoque();
+  else if (pageKey === "insumosbase") pageInsumosBase();
   else if (pageKey === "aplicacoes") pageAplicacoes();
   else if (pageKey === "combustivel") pageCombustivel();
   else if (pageKey === "clima") pageClima();
   else if (pageKey === "colheitas") pageColheitas();
+  else if (pageKey === "manutencao") pageManutencao();
   else if (pageKey === "equipe") pageEquipe();
   else if (pageKey === "maquinas") pageMaquinas();
   else if (pageKey === "relatorios") pageRelatorios();
