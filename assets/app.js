@@ -1,6 +1,7 @@
 /* ============================================================
    AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL COM COLHEITAS
    ============================================================ */
+
 let planoAtual = localStorage.getItem("agro_plano") || "Master";
 let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;  // Filtro global de fazenda (persistido)
 
