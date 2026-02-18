@@ -1,7 +1,6 @@
 /* ============================================================
    AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL COM COLHEITAS
    ============================================================ */
-
 let planoAtual = localStorage.getItem("agro_plano") || "Master";
 let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;  // Filtro global de fazenda (persistido)
 
@@ -5726,6 +5725,10 @@ function boot() {
     copilot: ["Agro-Copilot", "Assistente de IA para sua fazenda"],
     ajuda: ["Ajuda & Suporte", "Centro de Ajuda e Documentação"]
   };
+
+  // Carregar chave de IA globalmente (antes de qualquer pagina)
+  const savedApiKey = localStorage.getItem("agro_pro_openai_key") || "";
+  if (savedApiKey) { window.__OPENAI_KEY = savedApiKey; }
 
   const [t, s] = titles[pageKey] || ["Agro Pro", ""];
   renderShell(pageKey, t, s);
