@@ -5384,7 +5384,7 @@ Responda de forma objetiva e prática, como um consultor agronômico falaria com
         "Authorization": "Bearer " + window.__OPENAI_KEY
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: "Você é um agrônomo consultor especialista em agricultura tropical brasileira, com foco em soja, milho e algodão. Responda sempre em português brasileiro." },
           { role: "user", content: prompt }
@@ -5604,7 +5604,7 @@ async function callIA(question, context) {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + window.__OPENAI_KEY },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: "Você é o Agro-Copilot, um assistente inteligente do sistema Agro Pro. Você tem acesso aos dados da fazenda e ajuda o produtor com análises e recomendações. Seja prático e direto. " + context },
           { role: "user", content: question }
