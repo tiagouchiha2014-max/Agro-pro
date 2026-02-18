@@ -1,7 +1,7 @@
 /* ============================================================
    AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL COM COLHEITAS
    ============================================================ */
-
+let planoAtual = localStorage.getItem("agro_plano") || "Master";
 let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;  // Filtro global de fazenda (persistido)
 
 const Storage = {
@@ -302,6 +302,7 @@ function getSafraAtual() {
 /* ------------------ UI shell ------------------ */
 const PAGES = [
   { href: "index.html", label: "Dashboard", key: "dashboard", icon: "📊" },
+  { href: "copilot.html", label: "Agro-Copilot (IA)", key: "copilot", icon: "🤖" },
   { href: "centralgestao.html", label: "Central de Gestão", key: "centralgestao", icon: "🛰️" },
   { href: "safras.html", label: "Safras", key: "safras", icon: "🌱" },
   { href: "fazendas.html", label: "Fazendas", key: "fazendas", icon: "🌾" },
@@ -317,8 +318,10 @@ const PAGES = [
   { href: "equipe.html", label: "Equipe", key: "equipe", icon: "👷" },
   { href: "maquinas.html", label: "Máquinas", key: "maquinas", icon: "🛠️" },
   { href: "relatorios.html", label: "Relatórios", key: "relatorios", icon: "🧾" },
-  { href: "configuracoes.html", label: "Configurações", key: "config", icon: "⚙️" }
+  { href: "configuracoes.html", label: "Configurações", key: "config", icon: "⚙️" },
+  { href: "ajuda.html", label: "Ajuda & Suporte", key: "ajuda", icon: "❓" }
 ];
+
 
 function renderShell(pageKey, title, subtitle) {
   const db = getDB();
@@ -338,18 +341,19 @@ function renderShell(pageKey, title, subtitle) {
   const root = document.getElementById("app");
   root.innerHTML = `
     <div class="app">
-      <aside class="sidebar">
+      <button class="menu-toggle noPrint" id="menuToggle">☰</button>
+      <aside class="sidebar" id="sidebar">
         <div class="brand">
           <div class="logo"></div>
           <div>
-            <h1>Agro Pro</h1>
-            <p>Controle por Safras</p>
+            <h1>Agro Pro <span class="plan-badge plan-${planoAtual.toLowerCase()}">${planoAtual}</span></h1>
+            <p>Gestão Agrícola Inteligente</p>
           </div>
         </div>
 
         <div class="tenant">
           <div class="row">
-            <span class="badge"><span class="dot"></span> Ambiente Offline</span>
+            <span class="badge"><span class="dot"></span> ${planoAtual}</span>
             <button class="btn noPrint" id="btnBackup">Backup</button>
           </div>
           <div class="hr"></div>
@@ -366,32 +370,37 @@ function renderShell(pageKey, title, subtitle) {
           <div style="margin-top:10px" class="row">
             <button class="btn primary" id="btnNovaSafra">+ Nova safra</button>
           </div>
-          
-          <div style="margin-top:10px" class="help">
-            Trocar de safra ou fazenda filtra todos os dados.
-          </div>
         </div>
 
         <nav class="nav">${nav}</nav>
 
-        <div style="margin-top:14px" class="help">
-          <b>Dica:</b> Registre a produção real em Colheitas para comparar com estimativas.
+        <div style="margin: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 12px;">
+           <b>Plano ${planoAtual}</b><br>
+           <a href="configuracoes.html" style="color: #4ade80; text-decoration: none;">Fazer Upgrade →</a>
         </div>
       </aside>
 
       <main class="main">
         <div class="topbar">
-          <div class="title">
-            <h2>${escapeHtml(title)}</h2>
-            <p>${escapeHtml(subtitle || (safra ? `Safra: ${safra.nome}` : "Selecione uma safra"))}</p>
+          <div style="display:flex; align-items:center; gap:15px;">
+            <button class="menu-toggle noPrint" id="menuToggleMain">☰</button>
+            <div class="title">
+              <h2>${escapeHtml(title)}</h2>
+              <p>${escapeHtml(subtitle || (safra ? `Safra: ${safra.nome}` : "Selecione uma safra"))}</p>
+            </div>
           </div>
           <div class="actions noPrint" id="topActions"></div>
         </div>
 
-        <div id="content"></div>
+        <div id="content" class="content"></div>
       </main>
     </div>
   `;
+
+  // Listeners Mobile
+  const toggle = () => document.getElementById("sidebar").classList.toggle("active");
+  document.getElementById("menuToggleMain")?.addEventListener("click", toggle);
+  if(document.getElementById("menuToggle")) document.getElementById("menuToggle").addEventListener("click", toggle);
 
   document.getElementById("safraSelect").addEventListener("change", (e) => {
     setSafraId(e.target.value);
@@ -401,21 +410,10 @@ function renderShell(pageKey, title, subtitle) {
 
   document.getElementById("fazendaSelect").addEventListener("change", (e) => {
     fazendaAtual = e.target.value || null;
-    // Persistir filtro no localStorage para funcionar entre páginas
-    if (fazendaAtual) {
-      localStorage.setItem("agro_fazenda_filtro", fazendaAtual);
-    } else {
-      localStorage.removeItem("agro_fazenda_filtro");
-    }
-    toast("Fazenda filtrada", fazendaAtual ? "Mostrando dados da fazenda selecionada" : "Mostrando todas as fazendas");
-    // Recarregar a página para aplicar o filtro em todos os componentes
+    if (fazendaAtual) localStorage.setItem("agro_fazenda_filtro", fazendaAtual);
+    else localStorage.removeItem("agro_fazenda_filtro");
+    toast("Fazenda filtrada", "Recarregando...");
     setTimeout(() => location.reload(), 300);
-  });
-
-  document.getElementById("btnBackup").addEventListener("click", () => {
-    const db2 = getDB();
-    downloadText(`agro-pro-backup-${nowISO()}.json`, JSON.stringify(db2, null, 2));
-    toast("Backup gerado", "Arquivo .json baixado.");
   });
 
   document.getElementById("btnNovaSafra").addEventListener("click", () => {
@@ -649,7 +647,33 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
   const content = document.getElementById("content");
 
   const formHtml = `
-    <div class="card">
+    
+      <div class="card">
+        <h3>💎 Planos e Assinatura</h3>
+        <p>Seu plano atual: <b>${planoAtual}</b></p>
+        <div class="grid">
+          <div class="card" style="border: ${planoAtual==='Básico'?'2px solid #4CAF50':''}">
+            <h4>Básico</h4>
+            <p>R$ 290/mês</p>
+            <small>2 fazendas, 10 talhões/fazenda</small><br>
+            <button class="btn" onclick="setPlano('Básico')">Selecionar</button>
+          </div>
+          <div class="card" style="border: ${planoAtual==='Pro'?'2px solid #4CAF50':''}">
+            <h4>Pro</h4>
+            <p>R$ 450/mês</p>
+            <small>4 fazendas, 15 talhões/fazenda, IA</small><br>
+            <button class="btn" onclick="setPlano('Pro')">Selecionar</button>
+          </div>
+          <div class="card" style="border: ${planoAtual==='Master'?'2px solid #4CAF50':''}">
+            <h4>Master</h4>
+            <p>R$ 790/mês</p>
+            <small>5 fazendas, Talhões ilimitados, IA Ilimitada</small><br>
+            <button class="btn" onclick="setPlano('Master')">Selecionar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
       <h3>Novo registro</h3>
       <div class="help">${escapeHtml(subtitle || "")}</div>
       <div class="hr"></div>
@@ -1864,7 +1888,14 @@ function pageTalhoes() {
     };
     const db2 = getDB();
     db2.talhoes = db2.talhoes || [];
+    
+    const limitesT = { 'Básico': 10, 'Pro': 15, 'Master': 9999 };
+    if (db2.talhoes.filter(t => t.fazendaId === obj.fazendaId).length >= limitesT[planoAtual]) {
+      alert(`Limite de ${limitesT[planoAtual]} talhões por fazenda atingido para o plano ${planoAtual}.`);
+      return;
+    }
     db2.talhoes.push(obj);
+
     setDB(db2);
     e.target.reset();
     toast("Salvo", "Talhão adicionado.");
@@ -3379,6 +3410,7 @@ function pageAplicacoes() {
 
 // pageRelatorios stub removido - função real abaixo
 
+window.setPlano = (p) => { localStorage.setItem("agro_plano", p); location.reload(); };
 function pageConfiguracoes() {
   const db = getDB();
   const params = db.parametros || { 
@@ -5432,7 +5464,248 @@ async function buscarPrecoGraos(cultura, latitude, longitude) {
   return { ok: true, cultura, regiao: regiaoMaisProxima.nome, preco, moeda: "R$/sc" };
 }
 
+
+function pageAjuda() {
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="section">
+      <div class="card">
+        <h2>❓ Ajuda & Suporte</h2>
+        <p>Bem-vindo ao centro de ajuda do Agro Pro. Aqui você encontra orientações sobre como utilizar a plataforma e avisos importantes.</p>
+        
+        <div class="hr"></div>
+        
+        <h3>📖 Guia Rápido</h3>
+        <div class="grid">
+          <div class="card" style="border-left: 4px solid #4CAF50;">
+            <h4>Lançar Aplicações</h4>
+            <p>Vá em <b>Aplicações</b>, selecione o talhão, os produtos e a dose. O sistema calcula o custo e dá baixa no estoque automaticamente.</p>
+          </div>
+          <div class="card" style="border-left: 4px solid #2196F3;">
+            <h4>Controle de Clima</h4>
+            <p>Na página <b>Clima</b>, você pode ver a previsão real ou registrar manualmente a chuva observada em cada talhão.</p>
+          </div>
+          <div class="card" style="border-left: 4px solid #FF9800;">
+            <h4>Gestão de Planos</h4>
+            <p>O limite de fazendas e talhões depende do seu plano. Verifique em <b>Configurações</b> para fazer o upgrade.</p>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div style="background: #fff4e5; padding: 20px; border-radius: 8px; border-left: 6px solid #ff9800; margin-top: 20px;">
+          <h3>⚖️ Termos e Avisos Jurídicos (IA)</h3>
+          <p>O <b>Agro-Copilot</b> e a <b>IA Validadora</b> são ferramentas de auxílio à decisão baseadas em modelos de inteligência artificial generativa.</p>
+          <ul>
+            <li>As recomendações são sugestões estatísticas e não substituem o diagnóstico de campo.</li>
+            <li><b>AVISO OBRIGATÓRIO:</b> Sempre consulte um Engenheiro Agrônomo responsável antes de qualquer aplicação ou manejo.</li>
+            <li>O Agro Pro não se responsabiliza por perdas de safra ou danos causados por decisões baseadas exclusivamente na IA.</li>
+            <li>Os dados climáticos são providos pela Open-Meteo e podem apresentar variações em relação à realidade local.</li>
+          </ul>
+        </div>
+
+        <div class="hr"></div>
+        
+        <h3>📞 Suporte Técnico</h3>
+        <p>Dúvidas ou problemas? Entre em contato pelo e-mail: <b>suporte@agropro.com.br</b></p>
+      </div>
+    </div>
+  `;
+}
+
+
+function pageCopilot() {
+  if (planoAtual === "Básico") {
+    document.getElementById("content").innerHTML = `
+      <div class="card" style="text-align:center; padding: 50px;">
+        <h2>🤖 Agro-Copilot (IA)</h2>
+        <p>A IA Avançada está disponível apenas nos planos <b>PRO</b> e <b>MASTER</b>.</p>
+        <button class="btn primary" onclick="location.href='configuracoes.html'">Fazer Upgrade Agora</button>
+      </div>
+    `;
+    return;
+  }
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="section">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h2>🤖 Agro-Copilot</h2>
+            <p>Converse com seus dados. Pergunte sobre custos, clima, estoque ou recomendações.</p>
+          </div>
+          <div class="plan-badge plan-${planoAtual.toLowerCase()}">Uso Ilimitado</div>
+        </div>
+        
+        <div class="chat-container">
+          <div class="chat-messages" id="chatMsgs">
+            <div class="msg bot">Olá! Sou seu assistente Agro Pro. Como posso ajudar você hoje? Você pode perguntar sobre seus talhões, custos ou pedir recomendações de manejo.</div>
+          </div>
+          <form class="chat-input" id="chatFrm">
+            <input type="text" class="input" id="chatInp" placeholder="Digite sua pergunta aqui..." style="flex:1" required>
+            <button class="btn primary" type="submit">Enviar</button>
+          </form>
+        </div>
+        
+        <p style="font-size:11px; color:#888; margin-top:10px;">⚠️ As respostas são geradas por IA e devem ser validadas por um profissional. <a href="ajuda.html">Saiba mais</a>.</p>
+      </div>
+    </div>
+  `;
+
+  const chatMsgs = document.getElementById("chatMsgs");
+  const chatFrm = document.getElementById("chatFrm");
+
+  chatFrm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const q = document.getElementById("chatInp").value;
+    if (!q) return;
+
+    // Adicionar msg do usuário
+    const uEl = document.createElement("div");
+    uEl.className = "msg user";
+    uEl.innerText = q;
+    chatMsgs.appendChild(uEl);
+    chatMsgs.scrollTop = chatMsgs.scrollHeight;
+    document.getElementById("chatInp").value = "";
+
+    // Msg de carregando
+    const bEl = document.createElement("div");
+    bEl.className = "msg bot";
+    bEl.innerText = "...";
+    chatMsgs.appendChild(bEl);
+    chatMsgs.scrollTop = chatMsgs.scrollHeight;
+
+    // Chamar IA
+    const db = getDB();
+    const context = `
+      CONTEXTO DO SISTEMA AGRO PRO:
+      Fazendas: ${db.fazendas.length}, Talhões: ${db.talhoes.length}, Safra: ${getSafraAtual()?.nome}
+      Resumo Financeiro: Receita Total ${brl(onlySafra(db.colheitas).reduce((s,c)=>s+c.producaoTotal*130,0))} (est.)
+      Estoque: ${db.estoque.length} itens.
+    `;
+    
+    // Simulação ou chamada real se houver chave
+    if (!window.__OPENAI_KEY) {
+      setTimeout(() => {
+        bEl.innerText = "Chave da API não configurada. Por favor, configure sua chave nas Configurações para usar o Agro-Copilot.";
+      }, 1000);
+      return;
+    }
+
+    const res = await callIA(q, context);
+    bEl.innerText = res;
+    chatMsgs.scrollTop = chatMsgs.scrollHeight;
+  });
+}
+
+async function callIA(question, context) {
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + window.__OPENAI_KEY },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Você é o Agro-Copilot, um assistente inteligente do sistema Agro Pro. Você tem acesso aos dados da fazenda e ajuda o produtor com análises e recomendações. Seja prático e direto. " + context },
+          { role: "user", content: question }
+        ]
+      })
+    });
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (e) {
+    return "Erro ao conectar com a IA: " + e.message;
+  }
+}
+
 function boot() {
+  if (!document.getElementById("globalStyles")) {
+    const s = document.createElement("style");
+    s.id = "globalStyles";
+    s.innerHTML = `
+    <style>
+      :root {
+        --primary: #2e7d32;
+        --primary-dark: #1b5e20;
+        --bg: #f8fafc;
+        --sidebar-bg: #1e293b;
+        --text: #334155;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; }
+      
+      .app { display: flex; min-height: 100vh; }
+      
+      /* Sidebar Responsiva */
+      .sidebar { 
+        width: 260px; background: var(--sidebar-bg); color: white; display: flex; flex-direction: column; 
+        transition: transform 0.3s ease; z-index: 1000;
+      }
+      .sidebar.hidden { transform: translateX(-260px); position: absolute; height: 100%; }
+      
+      .brand { padding: 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+      .logo { width: 32px; height: 32px; background: #4ade80; border-radius: 8px; }
+      .brand h1 { font-size: 18px; margin: 0; }
+      .brand p { font-size: 11px; margin: 0; opacity: 0.6; }
+      
+      .nav { flex: 1; padding: 10px; overflow-y: auto; }
+      .nav a { 
+        display: flex; align-items: center; gap: 10px; padding: 10px 15px; color: #cbd5e1; 
+        text-decoration: none; border-radius: 8px; font-size: 14px; margin-bottom: 2px;
+      }
+      .nav a:hover { background: rgba(255,255,255,0.05); color: white; }
+      .nav a.active { background: var(--primary); color: white; font-weight: 600; }
+      
+      .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+      .topbar { 
+        background: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center;
+        border-bottom: 1px solid #e2e8f0; sticky; top: 0; z-index: 100;
+      }
+      .topbar h2 { margin: 0; font-size: 20px; color: #0f172a; }
+      
+      .content { padding: 25px; max-width: 1400px; margin: 0 auto; width: 100%; }
+      
+      /* Mobile Menu Button */
+      .menu-toggle { display: none; background: none; border: none; font-size: 24px; cursor: pointer; padding: 5px; }
+      
+      /* Cards e Layout */
+      .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; border: 1px solid #e2e8f0; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+      
+      /* Tabelas Responsivas */
+      @media (max-width: 768px) {
+        .app { flex-direction: column; }
+        .sidebar { width: 100%; height: auto; position: fixed; top: 0; left: 0; bottom: 0; transform: translateX(-100%); }
+        .sidebar.active { transform: translateX(0); }
+        .menu-toggle { display: block; }
+        .topbar { padding: 15px; }
+        .content { padding: 15px; }
+        
+        .tableWrap { border: none; }
+        table, thead, tbody, th, td, tr { display: block; }
+        thead tr { position: absolute; top: -9999px; left: -9999px; }
+        tr { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 10px; background: white; padding: 10px; }
+        td { border: none; position: relative; padding-left: 50%; text-align: right; min-height: 30px; display: flex; align-items: center; justify-content: flex-end; }
+        td:before { content: attr(data-label); position: absolute; left: 10px; width: 45%; padding-right: 10px; white-space: nowrap; text-align: left; font-weight: bold; color: #64748b; }
+      }
+      
+      /* IA Chat Styles */
+      .chat-container { height: 500px; display: flex; flex-direction: column; background: #f1f5f9; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+      .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+      .msg { max-width: 80%; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+      .msg.user { align-self: flex-end; background: var(--primary); color: white; border-bottom-right-radius: 2px; }
+      .msg.bot { align-self: flex-start; background: white; color: var(--text); border-bottom-left-radius: 2px; border: 1px solid #e2e8f0; }
+      .chat-input { padding: 15px; background: white; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; }
+      
+      .plan-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
+      .plan-basic { background: #e2e8f0; color: #475569; }
+      .plan-pro { background: #dcfce7; color: #166534; }
+      .plan-master { background: #fef9c3; color: #854d0e; }
+    </style>
+`;
+    document.head.appendChild(s);
+  }
   const pageKey = document.body.getAttribute("data-page") || "dashboard";
   const titles = {
     dashboard: ["Dashboard", "Visão geral da safra atual"],
@@ -5473,6 +5746,8 @@ function boot() {
   else if (pageKey === "equipe") pageEquipe();
   else if (pageKey === "maquinas") pageMaquinas();
   else if (pageKey === "relatorios") pageRelatorios();
+  else if (pageKey === "copilot") pageCopilot();
+  else if (pageKey === "ajuda") pageAjuda();
   else if (pageKey === "config") pageConfiguracoes();
 
   toast("Agro Pro", "Sistema carregado.");
