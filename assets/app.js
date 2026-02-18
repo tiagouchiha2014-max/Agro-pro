@@ -647,32 +647,6 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
   const content = document.getElementById("content");
 
   const formHtml = `
-    
-      <div class="card">
-        <h3>💎 Planos e Assinatura</h3>
-        <p>Seu plano atual: <b>${planoAtual}</b></p>
-        <div class="grid">
-          <div class="card" style="border: ${planoAtual==='Básico'?'2px solid #4CAF50':''}">
-            <h4>Básico</h4>
-            <p>R$ 290/mês</p>
-            <small>2 fazendas, 10 talhões/fazenda</small><br>
-            <button class="btn" onclick="setPlano('Básico')">Selecionar</button>
-          </div>
-          <div class="card" style="border: ${planoAtual==='Pro'?'2px solid #4CAF50':''}">
-            <h4>Pro</h4>
-            <p>R$ 450/mês</p>
-            <small>4 fazendas, 15 talhões/fazenda, IA</small><br>
-            <button class="btn" onclick="setPlano('Pro')">Selecionar</button>
-          </div>
-          <div class="card" style="border: ${planoAtual==='Master'?'2px solid #4CAF50':''}">
-            <h4>Master</h4>
-            <p>R$ 790/mês</p>
-            <small>5 fazendas, Talhões ilimitados, IA Ilimitada</small><br>
-            <button class="btn" onclick="setPlano('Master')">Selecionar</button>
-          </div>
-        </div>
-      </div>
-
       <div class="card">
       <h3>Novo registro</h3>
       <div class="help">${escapeHtml(subtitle || "")}</div>
@@ -1278,37 +1252,11 @@ function pageCentralGestao() {
       <div id="iaResultado" style="margin-top:20px;"></div>
     </div>
 
-    <!-- Modal de configuração da API Key -->
-    <div class="card" style="margin-top:15px; background:#fffbeb; border:1px solid #fde68a;">
-      <h4 style="margin:0 0 10px 0; color:#92400e;">🔑 Configuração da IA</h4>
-      <div class="help" style="margin-bottom:10px;">Para usar a IA Prescritiva, informe sua chave da API OpenAI. A chave é armazenada apenas localmente no seu navegador.</div>
-      <div style="display:flex; gap:10px; align-items:center;">
-        <input class="input" id="inputApiKey" type="password" placeholder="sk-..." style="max-width:400px;" value="">
-        <button class="btn" id="btnSalvarKey">Salvar Chave</button>
-      </div>
-      <div style="margin-top:8px; font-size:12px; color:#64748b;" id="statusKey"></div>
-    </div>
   `;
 
-  // Carregar API key salva
+  // Carregar API key salva (global)
   const savedKey = localStorage.getItem("agro_pro_openai_key") || "";
-  if (savedKey) {
-    document.getElementById("inputApiKey").value = savedKey;
-    document.getElementById("statusKey").innerHTML = '✅ Chave configurada';
-    window.__OPENAI_KEY = savedKey;
-  }
-
-  document.getElementById("btnSalvarKey").addEventListener("click", () => {
-    const key = document.getElementById("inputApiKey").value.trim();
-    if (!key) {
-      toast("Erro", "Informe uma chave válida.");
-      return;
-    }
-    localStorage.setItem("agro_pro_openai_key", key);
-    window.__OPENAI_KEY = key;
-    document.getElementById("statusKey").innerHTML = '✅ Chave salva com sucesso!';
-    toast("Chave salva", "API Key configurada.");
-  });
+  if (savedKey) { window.__OPENAI_KEY = savedKey; }
 
   // Botão buscar cotação de grãos
   document.getElementById("btnBuscarPreco").addEventListener("click", async () => {
@@ -1377,8 +1325,8 @@ function pageCentralGestao() {
 
   async function executarAnaliseIA(talhaoId) {
     if (!window.__OPENAI_KEY) {
-      toast("Erro", "Configure sua chave da API OpenAI primeiro.");
-      document.getElementById("inputApiKey").focus();
+      toast("Erro", "Configure sua chave da API OpenAI em Configurações.");
+      if (confirm("Deseja ir para Configurações para configurar a chave?")) { location.href = "configuracoes.html"; }
       return;
     }
 
@@ -3450,6 +3398,41 @@ function pageConfiguracoes() {
 
     <div class="config-section">
       <div class="config-card">
+        <h3>💎 Planos e Assinatura</h3>
+        <p>Seu plano atual: <b>${planoAtual}</b></p>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-top:15px;">
+          <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Básico'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
+            <h4 style="margin:0 0 5px 0;">Básico</h4>
+            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 290<small>/mês</small></p>
+            <small>2 fazendas, 10 talhões/fazenda</small><br>
+            <button class="btn" style="margin-top:10px;" onclick="setPlano('Básico')">Selecionar</button>
+          </div>
+          <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Pro'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
+            <h4 style="margin:0 0 5px 0;">Pro</h4>
+            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 450<small>/mês</small></p>
+            <small>4 fazendas, 15 talhões/fazenda, IA</small><br>
+            <button class="btn" style="margin-top:10px;" onclick="setPlano('Pro')">Selecionar</button>
+          </div>
+          <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Master'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
+            <h4 style="margin:0 0 5px 0;">Master</h4>
+            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 790<small>/mês</small></p>
+            <small>5 fazendas, Talhões ilimitados, IA Ilimitada</small><br>
+            <button class="btn" style="margin-top:10px;" onclick="setPlano('Master')">Selecionar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-card">
+        <h3>🔑 Configuração da IA (API Key)</h3>
+        <p style="color:#64748b; font-size:13px;">Para usar o Agro-Copilot e a IA Prescritiva, informe sua chave da API OpenAI. A chave é armazenada apenas localmente no seu navegador.</p>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
+          <input class="input" id="inputApiKeyConfig" type="password" placeholder="sk-..." style="max-width:400px;" value="">
+          <button class="btn primary" id="btnSalvarKeyConfig">Salvar Chave</button>
+        </div>
+        <div style="margin-top:8px; font-size:12px; color:#64748b;" id="statusKeyConfig"></div>
+      </div>
+
+      <div class="config-card">
         <h3>⚙️ Parâmetros de Mercado</h3>
         <form id="frmParams" class="formGrid">
           <div><small>Preço da saca de soja (R$)</small><input class="input" name="precoSoja" value="${params.precoSoja}"></div>
@@ -3539,6 +3522,22 @@ function pageConfiguracoes() {
     seedDB();
     toast("Demonstração restaurada", "Banco de dados recriado.");
     setTimeout(() => location.reload(), 200);
+  });
+
+  // Listeners da API Key na Configuração
+  const savedKeyConfig = localStorage.getItem("agro_pro_openai_key") || "";
+  if (savedKeyConfig) {
+    document.getElementById("inputApiKeyConfig").value = savedKeyConfig;
+    document.getElementById("statusKeyConfig").innerHTML = '✅ Chave configurada';
+    window.__OPENAI_KEY = savedKeyConfig;
+  }
+  document.getElementById("btnSalvarKeyConfig").addEventListener("click", () => {
+    const key = document.getElementById("inputApiKeyConfig").value.trim();
+    if (!key) { toast("Erro", "Informe uma chave válida."); return; }
+    localStorage.setItem("agro_pro_openai_key", key);
+    window.__OPENAI_KEY = key;
+    document.getElementById("statusKeyConfig").innerHTML = '✅ Chave salva com sucesso!';
+    toast("Chave salva", "API Key configurada.");
   });
 }
 
@@ -5624,7 +5623,6 @@ function boot() {
     const s = document.createElement("style");
     s.id = "globalStyles";
     s.innerHTML = `
-    <style>
       :root {
         --primary: #2e7d32;
         --primary-dark: #1b5e20;
@@ -5702,7 +5700,6 @@ function boot() {
       .plan-basic { background: #e2e8f0; color: #475569; }
       .plan-pro { background: #dcfce7; color: #166534; }
       .plan-master { background: #fef9c3; color: #854d0e; }
-    </style>
 `;
     document.head.appendChild(s);
   }
@@ -5724,7 +5721,9 @@ function boot() {
     equipe: ["Equipe", "Colaboradores da safra"],
     maquinas: ["Máquinas", "Equipamentos da safra"],
     relatorios: ["Relatórios", "Exportação de dados da safra"],
-    config: ["Configurações", "Parâmetros e backup"]
+    config: ["Configurações", "Parâmetros e backup"],
+    copilot: ["Agro-Copilot", "Assistente de IA para sua fazenda"],
+    ajuda: ["Ajuda & Suporte", "Centro de Ajuda e Documentação"]
   };
 
   const [t, s] = titles[pageKey] || ["Agro Pro", ""];
