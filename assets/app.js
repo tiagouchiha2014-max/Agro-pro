@@ -185,6 +185,98 @@ function renderTrialBanner() {
   `;
 }
 
+// ============================================================
+// CLOUD SYNC — BACKUP AUTOMÁTICO NA NUVEM (SUPABASE)
+// ============================================================
+
+let _syncTimer = null;
+let _syncPending = false;
+
+// Salvar dados na nuvem (debounced — executa 3s após última alteração)
+function cloudSync() {
+  if (_syncTimer) clearTimeout(_syncTimer);
+  _syncPending = true;
+  _syncTimer = setTimeout(async () => {
+    try {
+      if (typeof supabase === 'undefined' || !supabase) { _syncPending = false; return; }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { _syncPending = false; return; }
+      
+      const db = Storage.load();
+      if (!db) { _syncPending = false; return; }
+      
+      // Upsert: insere se não existe, atualiza se já existe
+      const { error } = await supabase
+        .from('user_data_backup')
+        .upsert({
+          user_id: user.id,
+          data: db,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+      
+      if (error) {
+        console.warn('Cloud Sync: erro ao salvar:', error.message);
+      } else {
+        console.log('Cloud Sync: dados salvos na nuvem');
+      }
+    } catch (e) {
+      console.warn('Cloud Sync: falha silenciosa:', e.message);
+    }
+    _syncPending = false;
+  }, 3000); // 3 segundos de debounce
+}
+
+// Restaurar dados da nuvem (chamado no login)
+async function cloudRestore() {
+  try {
+    if (typeof supabase === 'undefined' || !supabase) return false;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    
+    const { data, error } = await supabase
+      .from('user_data_backup')
+      .select('data, updated_at')
+      .eq('user_id', user.id)
+      .single();
+    
+    if (error || !data) {
+      console.log('Cloud Sync: nenhum backup encontrado na nuvem');
+      return false;
+    }
+    
+    // Verificar se o backup na nuvem é mais recente que o local
+    const localDB = Storage.load();
+    const cloudDate = new Date(data.updated_at);
+    const localDate = localDB?.meta?.lastSync ? new Date(localDB.meta.lastSync) : new Date(0);
+    
+    if (!localDB || !localDB.fazendas || localDB.fazendas.length === 0) {
+      // Local está vazio ou é novo — restaurar da nuvem
+      console.log('Cloud Sync: restaurando dados da nuvem (local vazio)');
+      const cloudDB = data.data;
+      cloudDB.meta = cloudDB.meta || {};
+      cloudDB.meta.lastSync = new Date().toISOString();
+      Storage.save(cloudDB);
+      return true;
+    }
+    
+    if (cloudDate > localDate && data.data.fazendas && data.data.fazendas.length > 0) {
+      // Nuvem é mais recente e tem dados — restaurar
+      console.log('Cloud Sync: restaurando dados da nuvem (mais recente)');
+      const cloudDB = data.data;
+      cloudDB.meta = cloudDB.meta || {};
+      cloudDB.meta.lastSync = new Date().toISOString();
+      Storage.save(cloudDB);
+      return true;
+    }
+    
+    console.log('Cloud Sync: dados locais estão atualizados');
+    return false;
+  } catch (e) {
+    console.warn('Cloud Sync: erro ao restaurar:', e.message);
+    return false;
+  }
+}
+
 function pageTrialExpirado() {
   const root = document.getElementById("app");
   root.innerHTML = `
@@ -435,7 +527,14 @@ function getDB() {
   Storage.save(db);
   return db;
 }
-function setDB(db) { Storage.save(db); }
+function setDB(db) {
+  // Marcar timestamp de última alteração
+  db.meta = db.meta || {};
+  db.meta.lastSync = new Date().toISOString();
+  Storage.save(db);
+  // Disparar backup automático na nuvem (debounced)
+  cloudSync();
+}
 
 function getSafraId() {
   const db = getDB();
@@ -3430,9 +3529,20 @@ function pageEquipe() {
     ]
   });
 
-  // Se for admin, adicionar seção de Gerenciamento de Acessos
+  // Seção de Gerenciamento de Acessos (desabilitada até migração completa para Supabase)
   if (getUserRole() === 'admin') {
-    renderGerenciamentoAcessos();
+    const content = document.getElementById("content");
+    content.insertAdjacentHTML('beforeend', `
+      <div class="card" style="margin-top:25px; border: 2px dashed #94a3b8; opacity: 0.8;">
+        <div style="text-align:center; padding:20px;">
+          <div style="font-size:40px; margin-bottom:10px;">🔐</div>
+          <h3 style="margin:0 0 8px; color:#3b82f6;">Gerenciamento de Acessos</h3>
+          <p style="color:#64748b; font-size:14px; margin:0 0 5px;">Em breve: convide Gerentes e Funcionários para acessar o sistema com permissões limitadas.</p>
+          <p style="color:#94a3b8; font-size:12px; margin:0;">Cada perfil terá acesso personalizado — gerentes sem financeiro, funcionários com acesso restrito.</p>
+          <span style="display:inline-block; margin-top:12px; background:#dbeafe; color:#1e40af; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600;">EM BREVE</span>
+        </div>
+      </div>
+    `);
   }
 }
 
@@ -6312,6 +6422,15 @@ function boot() {
   }
   userSession = sessionRaw ? JSON.parse(sessionRaw) : null;
 
+  // === CLOUD SYNC: Restaurar dados da nuvem se local estiver vazio ===
+  // (executa de forma assíncrona, sem bloquear o carregamento)
+  cloudRestore().then(restored => {
+    if (restored) {
+      console.log('Cloud Sync: dados restaurados da nuvem! Recarregando...');
+      location.reload();
+    }
+  });
+
   // === CARREGAR ROLE DO USUÁRIO ===
   // Prioridade: 1) sessão com role, 2) localStorage agro_role, 3) default admin
   if (userSession?.user?.role) {
@@ -6395,6 +6514,9 @@ function boot() {
   else if (pageKey === "config") pageConfiguracoes();
 
   toast("Agro Pro", "Sistema carregado.");
+
+  // === CLOUD SYNC: Fazer backup inicial na nuvem ===
+  cloudSync();
 }
 
 document.addEventListener("DOMContentLoaded", boot);// ============================================================================
