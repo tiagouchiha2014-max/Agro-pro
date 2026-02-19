@@ -1,6 +1,4 @@
-/* ============================================================
-   AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL COM COLHEITAS
-   ============================================================ */
+
 let planoAtual = localStorage.getItem("agro_plano") || "Trial";
 let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;
 let userSession = null;
@@ -1188,12 +1186,11 @@ function pageLogin() {
     
     toast("Aguarde", "Autenticando...");
     
-    // Verificar se é uma conta de equipe (gerente/funcionário)
+    // 1. Verificar se é uma conta de equipe (gerente/funcionário)
     const teamAccounts = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
     const teamAccount = teamAccounts.find(c => c.email === email && c.senha === pass && c.ativo);
     
     if (teamAccount) {
-      // Login como membro da equipe
       localStorage.setItem("agro_session", JSON.stringify({ 
         user: { email: teamAccount.email, nome: teamAccount.nome, role: teamAccount.role } 
       }));
@@ -1203,35 +1200,100 @@ function pageLogin() {
       return;
     }
     
-    // Login como admin (dono da conta)
-    if (email && pass) {
-      localStorage.setItem("agro_session", JSON.stringify({ user: { email, role: 'admin' } }));
-      localStorage.setItem("agro_role", "admin");
-      // Se não tem trial nem plano, inicia trial
-      if (!localStorage.getItem("agro_trial") && !localStorage.getItem("agro_plano")) {
-        iniciarTrial(email, '');
+    // 2. Tentar autenticação no Supabase Real
+    if (typeof AuthService !== 'undefined' && typeof supabase !== 'undefined' && supabase) {
+      try {
+        const { data, error } = await AuthService.signIn(email, pass);
+        if (error) {
+          return toast("Erro", "E-mail ou senha incorretos. Se você é novo, use o 'Teste grátis'.");
+        }
+        
+        // Carregar perfil do banco
+        const profile = await AuthService.getUserProfile();
+        localStorage.setItem("agro_session", JSON.stringify({ 
+          user: { 
+            id: data.user.id, 
+            email: data.user.email, 
+            nome: profile?.full_name || email.split('@')[0], 
+            role: profile?.role || 'admin' 
+          } 
+        }));
+        localStorage.setItem("agro_role", profile?.role || "admin");
+        
+        // Sincronizar plano/trial se existir no banco
+        if (profile?.plan_type) localStorage.setItem("agro_plano", profile.plan_type);
+        if (profile?.trial_ends_at) {
+          const fim = new Date(profile.trial_ends_at);
+          const agora = new Date();
+          const dias = Math.ceil((fim - agora) / (1000 * 60 * 60 * 24));
+          localStorage.setItem("agro_trial", JSON.stringify({
+            dataFim: profile.trial_ends_at,
+            expirado: dias <= 0
+          }));
+        }
+
+        toast("Bem-vindo", "Login realizado com sucesso!");
+        setTimeout(() => location.reload(), 500);
+        return;
+      } catch (err) {
+        console.error("Erro no login Supabase:", err);
       }
-      location.reload();
     }
+
+    // 3. Fallback Offline (Apenas para contas já existentes no LocalStorage)
+    const savedSession = JSON.parse(localStorage.getItem("agro_session") || "null");
+    if (savedSession && savedSession.user?.email === email) {
+      localStorage.setItem("agro_role", savedSession.user.role || "admin");
+      toast("Sucesso", "Logado offline");
+      setTimeout(() => location.reload(), 300);
+      return;
+    }
+
+    // 4. Bloqueio para e-mails desconhecidos
+    toast("Aviso", "Usuário não encontrado. Clique em 'Teste grátis' para começar!");
   };
 
   // === CADASTRO (SIGNUP) ===
   document.getElementById("btnCadastrar").onclick = async () => {
-    const nome = document.getElementById("signName").value;
-    const email = document.getElementById("signEmail").value;
+    const nome = document.getElementById("signName").value.trim();
+    const email = document.getElementById("signEmail").value.trim();
     const pass = document.getElementById("signPass").value;
     if (!nome || !email || !pass) return toast("Erro", "Preencha todos os campos");
     if (pass.length < 6) return toast("Erro", "A senha deve ter no mínimo 6 caracteres");
     
     toast("Aguarde", "Criando sua conta...");
     
-    // Simulação de cadastro até configurar Supabase Real
-    // Iniciar Trial de 15 dias
+    // 1. Tentar cadastro no Supabase Real
+    if (typeof AuthService !== 'undefined' && typeof supabase !== 'undefined' && supabase) {
+      try {
+        const { data, error } = await AuthService.signUp(email, pass, nome);
+        if (error) {
+          if (error.message.includes("already registered")) {
+            return toast("Erro", "Este e-mail já possui conta. Faça login.");
+          }
+          return toast("Erro", "Falha ao criar conta: " + error.message);
+        }
+        
+        // Iniciar Trial no LocalStorage (o banco já inicia via Trigger SQL)
+        iniciarTrial(email, nome);
+        localStorage.setItem("agro_session", JSON.stringify({ 
+          user: { id: data.user.id, email, nome, role: 'admin' } 
+        }));
+        localStorage.setItem("agro_role", "admin");
+        
+        toast("Sucesso", "Conta criada! Você tem 15 dias de teste grátis.");
+        setTimeout(() => location.reload(), 1000);
+        return;
+      } catch (err) {
+        console.error("Erro no cadastro Supabase:", err);
+      }
+    }
+
+    // 2. Fallback Offline (Apenas se Supabase não estiver configurado)
     iniciarTrial(email, nome);
     localStorage.setItem("agro_session", JSON.stringify({ user: { email, nome, role: 'admin' } }));
     localStorage.setItem("agro_role", "admin");
-    
-    toast("Sucesso", "Conta criada! Você tem 15 dias de teste grátis.");
+    toast("Sucesso", "Conta criada (Modo Offline)");
     setTimeout(() => location.reload(), 800);
   };
 }
