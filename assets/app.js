@@ -342,36 +342,21 @@ function getProdutosBase() {
 
 function seedDB() {
   const safraId = uid("saf");
-  const safra2Id = uid("saf");
   const fazendaId = uid("faz");
   const talhaoId = uid("tal");
-  const talhao2Id = uid("tal");
-  const maqId = uid("maq");
-  const maq2Id = uid("maq");
-  const opId = uid("peq");
-
-  const pragasBase = getPragasBase();
 
   const db = {
-    meta: { createdAt: new Date().toISOString(), version: 9 },
+    meta: { createdAt: new Date().toISOString(), version: 10 },
     session: { safraId },
 
     safras: [
       {
         id: safraId,
-        nome: "Safra 2025/26",
-        dataInicio: "2025-09-01",
-        dataFim: "2026-08-31",
+        nome: "Safra " + (new Date().getFullYear()) + "/" + (new Date().getFullYear() + 1).toString().slice(-2),
+        dataInicio: new Date().getFullYear() + "-09-01",
+        dataFim: (new Date().getFullYear() + 1) + "-08-31",
         ativa: true,
-        observacoes: "Safra de verão - Soja/Milho"
-      },
-      {
-        id: safra2Id,
-        nome: "Safra 2024/25",
-        dataInicio: "2024-09-01",
-        dataFim: "2025-08-31",
-        ativa: false,
-        observacoes: "Safra anterior"
+        observacoes: "Safra inicial"
       }
     ],
 
@@ -385,88 +370,32 @@ function seedDB() {
       precoAlgodao: 150.00,
       produtividadeMinAlgodao: 250,
       produtividadeMaxAlgodao: 300,
-      pesoPadraoSaca: 60 // kg por saca (usado na conversão)
+      pesoPadraoSaca: 60
     },
 
+    // Iniciamos com uma fazenda de demonstração para o usuário conhecer o sistema
     fazendas: [
-      { id: fazendaId, safraId, nome: "Fazenda Horizonte", cidade: "Sorriso", uf: "MT", areaHa: 1450, latitude: "-12.5489", longitude: "-55.7256", observacoes: "Soja/Milho safrinha" }
+      { id: fazendaId, safraId, nome: "Fazenda de Demonstração", cidade: "Cidade", uf: "UF", areaHa: 100, latitude: "0", longitude: "0", observacoes: "Dados de exemplo para demonstração." }
     ],
 
     talhoes: [
-      { id: talhaoId, safraId, fazendaId, nome: "T-12", areaHa: 78.5, cultura: "Soja", safra: "2025/26", solo: "Argiloso", coordenadas: "", observacoes: "" },
-      { id: talhao2Id, safraId, fazendaId, nome: "T-15", areaHa: 120.0, cultura: "Milho", safra: "2025/26", solo: "Argiloso", coordenadas: "", observacoes: "" }
+      { id: talhaoId, safraId, fazendaId, nome: "Talhão Exemplo", areaHa: 50, cultura: "Soja", safra: "Atual", solo: "Argiloso", coordenadas: "", observacoes: "Talhão de demonstração" }
     ],
 
-    produtos: [],  // Cadastre seus produtos na página Produtos
-
-    estoque: [],  // Estoque começa vazio
-
-    equipe: [
-      { id: opId, safraId, nome: "Operador 1", funcao: "Tratorista", telefone: "", nr: "", obs: "" }
-    ],
-
-    maquinas: [
-      { id: maqId, safraId, nome: "Pulverizador Autopropelido", placa: "", horimetro: 0, capacidadeL: 3000, bicos: "", obs: "" },
-      { id: maq2Id, safraId, nome: "Colheitadeira John Deere S760", placa: "", horimetro: 0, capacidadeL: 12000, bicos: "", obs: "Colheitadeira" }
-    ],
-
-    clima: [
-      { id: uid("cli"), safraId, data: nowISO(), fazendaId, talhaoId, chuvaMm: 12, tempMin: 22, tempMax: 33, umidade: 68, vento: 9, obs: "Chuva isolada à tarde" },
-      { id: uid("cli"), safraId, data: "2026-02-10", fazendaId, talhaoId, chuvaMm: 0, tempMin: 24, tempMax: 35, umidade: 55, vento: 12, obs: "Dia seco" }
-    ],
-
-    dieselEntradas: [
-      { id: uid("de"), safraId, data: nowISO(), litros: 5000, precoLitro: 6.19, deposito: "Tanque Principal", obs: "Compra inicial" }
-    ],
-
+    produtos: [],
+    estoque: [],
+    equipe: [],
+    maquinas: [],
+    clima: [],
+    dieselEntradas: [],
     dieselEstoque: [
-      { id: uid("dsl"), safraId, deposito: "Tanque Principal", litros: 5000, precoVigente: 6.19, obs: "Estoque inicial" }
+      { id: uid("dsl"), safraId, deposito: "Tanque Principal", litros: 0, precoVigente: 0, obs: "Estoque inicial" }
     ],
-
-    combustivel: [
-      {
-        id: uid("cmb"),
-        safraId,
-        data: nowISO(),
-        tipo: "Diesel S10",
-        deposito: "Tanque Principal",
-        posto: "Posto Exemplo",
-        maquinaId: maqId,
-        operadorId: opId,
-        fazendaId,
-        talhaoId,
-        litros: 120,
-        precoLitro: 6.19,
-        kmOuHora: 0,
-        obs: "Abastecimento demo"
-      }
-    ],
-
+    combustivel: [],
     aplicacoes: [],
-
-    colheitas: [
-      {
-        id: uid("col"),
-        safraId,
-        talhaoId,
-        dataColheita: "2026-03-15",
-        producaoTotal: 5200,
-        unidade: "kg",
-        umidade: 13.5,
-        observacoes: "Colheita finalizada",
-        maquinas: [
-          { maquinaId: maq2Id, quantidade: 2800 },
-          { maquinaId: maqId, quantidade: 2400 }
-        ]
-      }
-    ],
-
-    lembretes: [
-      { id: uid("lem"), safraId, data: "2026-03-01", mensagem: "Aplicar fungicida no talhão T-12", tipo: "aplicacao", concluido: false }
-    ],
-
-    pragas: pragasBase.map(p => ({ ...p, id: uid("praga"), safraId })),
-
+    colheitas: [],
+    lembretes: [],
+    pragas: [],
     manutencoes: [],
     insumosBase: []
   };
@@ -474,6 +403,7 @@ function seedDB() {
   Storage.save(db);
   return db;
 }
+
 
 function getDB() {
   let db = Storage.load();
@@ -1192,7 +1122,12 @@ function pageLogin() {
     
     if (teamAccount) {
       localStorage.setItem("agro_session", JSON.stringify({ 
-        user: { email: teamAccount.email, nome: teamAccount.nome, role: teamAccount.role } 
+        user: { 
+          email: teamAccount.email, 
+          nome: teamAccount.nome, 
+          role: teamAccount.role,
+          owner_id: teamAccount.owner_id // Importante para o RLS do Supabase
+        } 
       }));
       localStorage.setItem("agro_role", teamAccount.role);
       toast("Bem-vindo", `Logado como ${teamAccount.role === 'gerente' ? 'Gerente' : 'Funcionário'}`);
@@ -3589,6 +3524,10 @@ function renderGerenciamentoAcessos() {
       return;
     }
 
+    // Pegar ID do admin atual da sessão
+    const session = JSON.parse(localStorage.getItem("agro_session") || "{}");
+    const owner_id = session.user?.id || null;
+
     contas.push({
       id: uid('acc'),
       nome,
@@ -3596,7 +3535,8 @@ function renderGerenciamentoAcessos() {
       role,
       senha: pass, // Em produção, usar hash via Supabase Auth
       criadoEm: nowISO(),
-      ativo: true
+      ativo: true,
+      owner_id: owner_id // Vincula o funcionário ao admin dono
     });
 
     localStorage.setItem("agro_team_accounts", JSON.stringify(contas));
