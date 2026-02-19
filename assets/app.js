@@ -537,6 +537,8 @@ function renderShell(pageKey, title, subtitle) {
            ${userRole !== 'admin' ? `<br><span style="color: #fbbf24;">Perfil: ${getRoleLabel()}</span>` : ''}<br>
            ${planoAtual === 'Trial' && trialInfo ? `<span style="color: #93c5fd;">${trialInfo.diasRestantes} dia${trialInfo.diasRestantes !== 1 ? 's' : ''} restante${trialInfo.diasRestantes !== 1 ? 's' : ''}</span><br>` : ''}
            ${userRole === 'admin' ? `<a href="configuracoes.html" style="color: #4ade80; text-decoration: none;">${planoAtual === 'Trial' ? 'Assinar plano' : 'Fazer Upgrade'} →</a>` : `<span style="color: #94a3b8;">Conta vinculada ao admin</span>`}
+           
+           <button id="btnSairSidebar" style="width: 100%; margin-top: 15px; padding: 8px; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 11px; transition: all 0.2s;">🚪 SAIR DA CONTA</button>
         </div>
       </aside>
 
@@ -594,6 +596,22 @@ function renderShell(pageKey, title, subtitle) {
     setSafraId(id);
     toast("Safra criada", "Nova safra ativada!");
     setTimeout(() => location.reload(), 200);
+  });
+
+  document.getElementById("btnSairSidebar")?.addEventListener("click", () => {
+    if (confirm("Deseja realmente sair da conta?")) {
+      // Limpar apenas dados da sessão atual, mas MANTER agro_team_accounts
+      localStorage.removeItem("agro_session");
+      localStorage.removeItem("agro_role");
+      localStorage.removeItem("agro_trial");
+      localStorage.removeItem("agro_plano");
+      // Importante: NÃO remover agro_team_accounts aqui, senão as contas de equipe somem!
+      toast("Saindo...", "Até logo!");
+      setTimeout(() => {
+        // Redirecionar para index.html para garantir que caia no login
+        window.location.href = "index.html";
+      }, 500);
+    }
   });
 }
 
@@ -1118,20 +1136,24 @@ function pageLogin() {
     
     // 1. Verificar se é uma conta de equipe (gerente/funcionário)
     const teamAccounts = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
-    const teamAccount = teamAccounts.find(c => c.email === email && c.senha === pass && c.ativo);
+    console.log("Verificando contas de equipe:", teamAccounts);
+    const teamAccount = teamAccounts.find(c => c.email.toLowerCase() === email.toLowerCase() && c.senha === pass && c.ativo);
     
     if (teamAccount) {
+      console.log("Conta de equipe encontrada:", teamAccount.role);
       localStorage.setItem("agro_session", JSON.stringify({ 
         user: { 
           email: teamAccount.email, 
           nome: teamAccount.nome, 
           role: teamAccount.role,
-          owner_id: teamAccount.owner_id // Importante para o RLS do Supabase
+          owner_id: teamAccount.owner_id 
         } 
       }));
       localStorage.setItem("agro_role", teamAccount.role);
-      toast("Bem-vindo", `Logado como ${teamAccount.role === 'gerente' ? 'Gerente' : 'Funcionário'}`);
-      setTimeout(() => location.reload(), 300);
+      toast("Bem-vindo", `Logado como ${teamAccount.role.charAt(0).toUpperCase() + teamAccount.role.slice(1)}`);
+      setTimeout(() => {
+        window.location.href = "index.html";
+      }, 300);
       return;
     }
     
