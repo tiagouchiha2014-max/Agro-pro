@@ -1,8 +1,235 @@
 /* ============================================================
    AGRO PRO — app.js (OFFLINE / MULTISAFRA) - VERSÃO FINAL COM COLHEITAS
    ============================================================ */
-let planoAtual = localStorage.getItem("agro_plano") || "Master";
-let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;  // Filtro global de fazenda (persistido)
+let planoAtual = localStorage.getItem("agro_plano") || "Trial";
+let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;
+let userSession = null;
+let userProfile = null;
+let trialInfo = null; // { diasRestantes, expirado, dataFim }
+let userRole = localStorage.getItem("agro_role") || "admin"; // admin, gerente, funcionario
+  // Filtro global de fazenda (persistido)
+
+// ============================================================
+// SISTEMA DE PERMISSÕES POR PERFIL (ROLES)
+// ============================================================
+
+const ROLE_PERMISSIONS = {
+  admin: {
+    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda'],
+    canCreate: true,
+    canDelete: true,
+    canSeeFinanceiro: true,
+    label: 'Administrador'
+  },
+  gerente: {
+    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda'],
+    canCreate: true,
+    canDelete: true,
+    canSeeFinanceiro: false,
+    label: 'Gerente'
+  },
+  funcionario: {
+    pages: ['dashboard','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','ajuda'],
+    canCreate: false, // default false, override por pagina
+    canDelete: false,
+    canSeeFinanceiro: false,
+    label: 'Funcion\u00e1rio',
+    // Permissões específicas por página para funcionário
+    pagePerms: {
+      dashboard:    { view: true, create: false, delete: false, simplified: true },
+      safras:       { view: true, create: false, delete: false },
+      fazendas:     { view: true, create: false, delete: false },
+      talhoes:      { view: true, create: false, delete: false },
+      produtos:     { view: true, create: false, delete: false },
+      estoque:      { view: true, create: true,  delete: false },  // Registrar, sem excluir
+      insumosbase:  { view: true, create: false, delete: false },
+      aplicacoes:   { view: true, create: true,  delete: true  },  // CRUD total
+      combustivel:  { view: true, create: true,  delete: false },  // Registrar abastecimento
+      clima:        { view: true, create: false, delete: false },
+      colheitas:    { view: true, create: false, delete: false },
+      manutencao:   { view: true, create: true,  delete: false },  // Registrar manutenção
+      equipe:       { view: true, create: false, delete: false },  // Apenas visualizar
+      maquinas:     { view: true, create: false, delete: false },
+      ajuda:        { view: true, create: false, delete: false }
+    }
+  }
+};
+
+function getUserRole() {
+  return userRole || 'admin';
+}
+
+function getRolePerms() {
+  return ROLE_PERMISSIONS[getUserRole()] || ROLE_PERMISSIONS.admin;
+}
+
+function canAccessPage(pageKey) {
+  const perms = getRolePerms();
+  return perms.pages.includes(pageKey);
+}
+
+function canCreateOnPage(pageKey) {
+  const role = getUserRole();
+  if (role === 'admin') return true;
+  if (role === 'gerente') return true;
+  if (role === 'funcionario') {
+    const pp = ROLE_PERMISSIONS.funcionario.pagePerms[pageKey];
+    return pp ? pp.create : false;
+  }
+  return true;
+}
+
+function canDeleteOnPage(pageKey) {
+  const role = getUserRole();
+  if (role === 'admin') return true;
+  if (role === 'gerente') return true;
+  if (role === 'funcionario') {
+    const pp = ROLE_PERMISSIONS.funcionario.pagePerms[pageKey];
+    return pp ? pp.delete : false;
+  }
+  return true;
+}
+
+function canSeeFinanceiro() {
+  return getRolePerms().canSeeFinanceiro;
+}
+
+function isSimplifiedDashboard() {
+  const role = getUserRole();
+  if (role === 'funcionario') return true;
+  return false;
+}
+
+function getRoleBadgeColor() {
+  const role = getUserRole();
+  if (role === 'admin') return 'background: #dcfce7; color: #166534;';
+  if (role === 'gerente') return 'background: #dbeafe; color: #1e40af;';
+  return 'background: #fef3c7; color: #92400e;';
+}
+
+function getRoleLabel() {
+  return getRolePerms().label;
+}
+
+// ============================================================
+// SISTEMA DE TRIAL — 15 DIAS GRÁTIS COM ACESSO PRO
+// ============================================================
+
+function getTrialInfo() {
+  const raw = localStorage.getItem("agro_trial");
+  if (!raw) return null;
+  try {
+    const trial = JSON.parse(raw);
+    const agora = new Date();
+    const fim = new Date(trial.trial_ends_at);
+    const diffMs = fim - agora;
+    const diasRestantes = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    const expirado = diasRestantes <= 0;
+    return { diasRestantes, expirado, dataFim: trial.trial_ends_at, dataInicio: trial.created_at };
+  } catch (e) {
+    return null;
+  }
+}
+
+function iniciarTrial(email, nome) {
+  const agora = new Date();
+  const fim = new Date(agora.getTime() + 15 * 24 * 60 * 60 * 1000);
+  const trialData = {
+    email: email,
+    nome: nome || '',
+    plan_type: 'trial',
+    trial_ends_at: fim.toISOString(),
+    created_at: agora.toISOString()
+  };
+  localStorage.setItem("agro_trial", JSON.stringify(trialData));
+  localStorage.setItem("agro_plano", "Trial");
+  planoAtual = "Trial";
+  return trialData;
+}
+
+function isTrialExpirado() {
+  const info = getTrialInfo();
+  if (!info) return false; // Sem trial = plano pago ou sem conta
+  return info.expirado;
+}
+
+function getPlanoEfetivo() {
+  // Trial = acesso Pro. Se expirado, bloqueia.
+  const plano = localStorage.getItem("agro_plano") || "Trial";
+  if (plano === "Trial") {
+    const info = getTrialInfo();
+    if (info && !info.expirado) return "Pro"; // Trial ativo = Pro
+    return "Expirado";
+  }
+  return plano;
+}
+
+function renderTrialBanner() {
+  const info = getTrialInfo();
+  if (!info) return ''; // Plano pago, sem banner
+  const plano = localStorage.getItem("agro_plano");
+  if (plano !== 'Trial') return ''; // Plano pago
+  
+  if (info.expirado) {
+    return `
+      <div id="trialBanner" style="background: linear-gradient(135deg, #dc2626, #991b1b); color: white; padding: 12px 20px; text-align: center; font-size: 14px; font-weight: 600; position: sticky; top: 0; z-index: 9999;">
+        ⚠️ Seu período de teste gratuito expirou! <a href="configuracoes.html" style="color: #fde68a; text-decoration: underline; margin-left: 10px;">Assinar agora →</a>
+      </div>
+    `;
+  }
+  
+  const cor = info.diasRestantes <= 3 ? '#f59e0b' : '#3b82f6';
+  return `
+    <div id="trialBanner" style="background: linear-gradient(135deg, ${cor}, ${cor}dd); color: white; padding: 10px 20px; text-align: center; font-size: 13px; font-weight: 500; position: sticky; top: 0; z-index: 9999;">
+      🎁 Período de teste: <b>${info.diasRestantes} dia${info.diasRestantes !== 1 ? 's' : ''} restante${info.diasRestantes !== 1 ? 's' : ''}</b> com acesso completo ao Plano Pro.
+      <a href="configuracoes.html" style="color: #fde68a; text-decoration: underline; margin-left: 10px;">Assinar plano →</a>
+    </div>
+  `;
+}
+
+function pageTrialExpirado() {
+  const root = document.getElementById("app");
+  root.innerHTML = `
+    <div style="min-height: 100vh; background: linear-gradient(135deg, #0f172a, #1e293b); display: flex; align-items: center; justify-content: center; padding: 20px;">
+      <div style="max-width: 600px; background: white; border-radius: 16px; padding: 40px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="font-size: 64px; margin-bottom: 20px;">⏰</div>
+        <h1 style="color: #1e293b; margin-bottom: 10px; font-size: 28px;">Período de Teste Encerrado</h1>
+        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">
+          Seus 15 dias de teste gratuito do <b>Agro Pro</b> chegaram ao fim.<br>
+          Para continuar usando todas as funcionalidades, escolha um plano abaixo.
+        </p>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 30px;">
+          <div style="padding: 20px; border-radius: 12px; border: 2px solid #e2e8f0; background: #f8fafc;">
+            <h3 style="margin: 0 0 5px; color: #475569;">Básico</h3>
+            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 290<small style='font-size:12px;'>/mês</small></p>
+            <small style="color: #64748b;">2 fazendas<br>10 talhões/fazenda<br>Relatórios básicos</small>
+          </div>
+          <div style="padding: 20px; border-radius: 12px; border: 2px solid #10b981; background: #ecfdf5; position: relative;">
+            <div style="position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 2px 12px; border-radius: 12px; font-size: 11px; font-weight: bold;">POPULAR</div>
+            <h3 style="margin: 0 0 5px; color: #065f46;">Pro</h3>
+            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 450<small style='font-size:12px;'>/mês</small></p>
+            <small style="color: #64748b;">4 fazendas<br>20 talhões/fazenda<br>IA Prescritiva + Suporte</small>
+          </div>
+          <div style="padding: 20px; border-radius: 12px; border: 2px solid #f59e0b; background: #fffbeb;">
+            <h3 style="margin: 0 0 5px; color: #92400e;">Master</h3>
+            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 790<small style='font-size:12px;'>/mês</small></p>
+            <small style="color: #64748b;">10 fazendas<br>Talhões ilimitados<br>Copilot + Consultoria</small>
+          </div>
+        </div>
+        
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <button onclick="window.location.href='mailto:suporteagropro@gmail.com?subject=Assinatura Agro Pro'" style="padding: 14px 30px; background: #10b981; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer;">📧 Assinar Agora</button>
+          <a href="https://wa.me/5599991360547?text=Olá! Quero assinar o Agro Pro" target="_blank" style="padding: 14px 30px; background: #25d366; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none; display: block;">💬 Falar no WhatsApp</a>
+          <button onclick="localStorage.removeItem('agro_session'); localStorage.removeItem('agro_trial'); localStorage.removeItem('agro_plano'); localStorage.removeItem('agro_role'); location.reload();" style="padding: 10px; background: transparent; color: #64748b; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; cursor: pointer;">Sair da conta</button>
+        </div>
+        
+        <p style="margin-top: 20px; font-size: 12px; color: #94a3b8;">Dúvidas? Entre em contato: suporteagropro@gmail.com | WhatsApp: (99) 99136-0547</p>
+        <p style="font-size: 11px; color: #cbd5e1; margin-top: 5px;">Tiago Santos — Fundador & Desenvolvedor</p>
+      </div>
+    </div>
+  `;
+}
 
 const Storage = {
   key: "agro_pro_v10",
@@ -328,7 +555,9 @@ function renderShell(pageKey, title, subtitle) {
   const safraId = getSafraId();
   const safra = getSafraAtual();
 
-  const nav = PAGES.map(p => {
+  // Filtrar páginas pela role do usuário
+  const allowedPages = PAGES.filter(p => canAccessPage(p.key));
+  const nav = allowedPages.map(p => {
     const active = (p.key === pageKey) ? "active" : "";
     return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span> ${escapeHtml(p.label)}</a>`;
   }).join("");
@@ -348,6 +577,7 @@ function renderShell(pageKey, title, subtitle) {
           <div>
             <h1>Agro Pro <span class="plan-badge plan-${planoAtual.toLowerCase()}">${planoAtual}</span></h1>
             <p>Gestão Agrícola Inteligente</p>
+            ${userRole !== 'admin' ? `<span style="${getRoleBadgeColor()} font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: bold;">${getRoleLabel()}</span>` : ''}
           </div>
         </div>
 
@@ -375,8 +605,10 @@ function renderShell(pageKey, title, subtitle) {
         <nav class="nav">${nav}</nav>
 
         <div style="margin: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 12px;">
-           <b>Plano ${planoAtual}</b><br>
-           <a href="configuracoes.html" style="color: #4ade80; text-decoration: none;">Fazer Upgrade →</a>
+           <b>Plano ${planoAtual === 'Trial' ? 'Trial (Pro)' : planoAtual}</b>
+           ${userRole !== 'admin' ? `<br><span style="color: #fbbf24;">Perfil: ${getRoleLabel()}</span>` : ''}<br>
+           ${planoAtual === 'Trial' && trialInfo ? `<span style="color: #93c5fd;">${trialInfo.diasRestantes} dia${trialInfo.diasRestantes !== 1 ? 's' : ''} restante${trialInfo.diasRestantes !== 1 ? 's' : ''}</span><br>` : ''}
+           ${userRole === 'admin' ? `<a href="configuracoes.html" style="color: #4ade80; text-decoration: none;">${planoAtual === 'Trial' ? 'Assinar plano' : 'Fazer Upgrade'} →</a>` : `<span style="color: #94a3b8;">Conta vinculada ao admin</span>`}
         </div>
       </aside>
 
@@ -642,11 +874,17 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
   const db = getDB();
   const sid = getSafraId();
 
+  // Permissões por role
+  const _pkMap = { equipe:'equipe', maquinas:'maquinas', safras:'safras', fazendas:'fazendas', talhoes:'talhoes', produtos:'produtos', estoque:'estoque', insumosbase:'insumosbase', aplicacoes:'aplicacoes', combustivel:'combustivel', clima:'clima', colheitas:'colheitas', manutencao:'manutencao' };
+  const _cpk = _pkMap[entityKey] || entityKey;
+  const _canCr = canCreateOnPage(_cpk);
+  const _canDel = canDeleteOnPage(_cpk);
+
   setTopActions(`<button class="btn" id="btnExportCSV">Exportar CSV</button>`);
 
   const content = document.getElementById("content");
 
-  const formHtml = `
+  const formHtml = _canCr ? `
       <div class="card">
       <h3>Novo registro</h3>
       <div class="help">${escapeHtml(subtitle || "")}</div>
@@ -684,7 +922,7 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
         </div>
       </form>
     </div>
-  `;
+  ` : `<div class="card" style="background:#f8fafc; border: 1px dashed #cbd5e1; text-align:center; padding:15px;"><p style="color:#64748b; margin:0;">🔒 Modo visualização — Seu perfil de <b>${getRoleLabel()}</b> não permite criar registros nesta página.</p></div>`;
 
   const tableHtml = `
     <div class="tableWrap">
@@ -717,7 +955,7 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
         <tr>
           ${tds}
           <td class="noPrint">
-            <button class="btn danger" onclick="window.__del('${r.id}')">Excluir</button>
+            ${_canDel ? `<button class="btn danger" onclick="window.__del('${r.id}')">Excluir</button>` : '<span style="color:#94a3b8; font-size:12px;">—</span>'}
           </td>
         </tr>
       `;
@@ -725,6 +963,7 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
   }
 
   window.__del = (id) => {
+    if (!_canDel) { toast("Sem permissão", "Seu perfil não permite excluir registros."); return; }
     if (!confirm("Excluir este registro?")) return;
     const db2 = getDB();
     db2[entityKey] = (db2[entityKey] || []).filter(x => x.id !== id);
@@ -733,28 +972,26 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
     toast("Excluído", "Registro removido.");
     renderTable();
   };
-
-  document.getElementById("frm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const obj = { id: uid(entityKey.slice(0, 3)), safraId: sid };
-
-    fields.forEach(f => {
-      let v = fd.get(f.key);
-      if (f.type === "number") v = Number(v || 0);
-      obj[f.key] = v;
+  if (_canCr && document.getElementById("frm")) {
+    document.getElementById("frm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const obj = { id: uid(entityKey.slice(0, 3)), safraId: sid };
+      fields.forEach(f => {
+        let v = fd.get(f.key);
+        if (f.type === "number") v = Number(v || 0);
+        obj[f.key] = v;
+      });
+      const db2 = getDB();
+      if (helpers?.beforeSave) helpers.beforeSave(obj, db2);
+      db2[entityKey] = db2[entityKey] || [];
+      db2[entityKey].push(obj);
+      setDB(db2);
+      e.target.reset();
+      toast("Salvo", "Registro adicionado com sucesso.");
+      renderTable();
     });
-
-    const db2 = getDB();
-    if (helpers?.beforeSave) helpers.beforeSave(obj, db2);
-    db2[entityKey] = db2[entityKey] || [];
-    db2[entityKey].push(obj);
-    setDB(db2);
-
-    e.target.reset();
-    toast("Salvo", "Registro adicionado com sucesso.");
-    renderTable();
-  });
+  }
 
   document.getElementById("btnExportCSV").addEventListener("click", () => {
     const db2 = getDB();
@@ -880,6 +1117,125 @@ function pageSafras() {
   render();
 }
 
+
+function pageLogin() {
+  const root = document.getElementById("app");
+  root.innerHTML = `
+    <div style="min-height: 100vh; background: linear-gradient(135deg, #0f172a, #1e293b); display: flex; align-items: center; justify-content: center; padding: 20px;">
+      <div style="max-width: 420px; width: 100%; background: white; border-radius: 16px; padding: 35px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="text-align: center; margin-bottom: 25px;">
+          <div style="width: 50px; height: 50px; background: #4ade80; border-radius: 12px; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 24px;">🌱</div>
+          <h1 style="color: #1e293b; margin-bottom: 5px; font-size: 26px;">Agro Pro</h1>
+          <p style="color: #64748b; font-size: 14px;">Gestão Agrícola Inteligente</p>
+        </div>
+        
+        <div id="loginForm">
+          <div style="margin-bottom: 18px;">
+            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">E-mail</label>
+            <input type="email" id="loginEmail" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="seu@email.com">
+          </div>
+          <div style="margin-bottom: 22px;">
+            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">Senha</label>
+            <input type="password" id="loginPass" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="••••••••">
+          </div>
+          <button id="btnEntrar" style="width: 100%; padding: 14px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 16px; cursor: pointer; transition: background 0.2s;">ENTRAR</button>
+          <p style="text-align: center; margin-top: 18px; font-size: 14px; color: #64748b;">Não tem conta? <a href="#" id="linkCadastro" style="color: #10b981; font-weight: 600;">Teste grátis por 15 dias</a></p>
+        </div>
+
+        <div id="signupForm" style="display: none;">
+          <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 12px; margin-bottom: 20px; text-align: center;">
+            <p style="margin: 0; font-size: 13px; color: #065f46;">🎁 <b>15 dias grátis</b> com acesso completo ao Plano Pro!</p>
+            <p style="margin: 4px 0 0; font-size: 11px; color: #047857;">Sem cartão de crédito. Cancele quando quiser.</p>
+          </div>
+          <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">Nome Completo</label>
+            <input type="text" id="signName" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="Seu nome completo">
+          </div>
+          <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">E-mail</label>
+            <input type="email" id="signEmail" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="seu@email.com">
+          </div>
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">Senha</label>
+            <input type="password" id="signPass" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="Mínimo 6 caracteres">
+          </div>
+          <button id="btnCadastrar" style="width: 100%; padding: 14px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 16px; cursor: pointer;">CRIAR CONTA GRÁTIS</button>
+          <p style="text-align: center; margin-top: 18px; font-size: 14px; color: #64748b;">Já tem conta? <a href="#" id="linkLogin" style="color: #10b981; font-weight: 600;">Fazer Login</a></p>
+        </div>
+        
+        <p style="text-align: center; margin-top: 20px; font-size: 11px; color: #94a3b8;">Tiago Santos — Fundador & Desenvolvedor</p>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("linkCadastro").onclick = (e) => {
+    e.preventDefault();
+    document.getElementById("loginForm").style.display = "none";
+    document.getElementById("signupForm").style.display = "block";
+  };
+
+  document.getElementById("linkLogin").onclick = (e) => {
+    e.preventDefault();
+    document.getElementById("signupForm").style.display = "none";
+    document.getElementById("loginForm").style.display = "block";
+  };
+
+  // === LOGIN ===
+  document.getElementById("btnEntrar").onclick = async () => {
+    const email = document.getElementById("loginEmail").value.trim();
+    const pass = document.getElementById("loginPass").value;
+    if (!email || !pass) return toast("Erro", "Preencha todos os campos");
+    
+    toast("Aguarde", "Autenticando...");
+    
+    // Verificar se é uma conta de equipe (gerente/funcionário)
+    const teamAccounts = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
+    const teamAccount = teamAccounts.find(c => c.email === email && c.senha === pass && c.ativo);
+    
+    if (teamAccount) {
+      // Login como membro da equipe
+      localStorage.setItem("agro_session", JSON.stringify({ 
+        user: { email: teamAccount.email, nome: teamAccount.nome, role: teamAccount.role } 
+      }));
+      localStorage.setItem("agro_role", teamAccount.role);
+      toast("Bem-vindo", `Logado como ${teamAccount.role === 'gerente' ? 'Gerente' : 'Funcionário'}`);
+      setTimeout(() => location.reload(), 300);
+      return;
+    }
+    
+    // Login como admin (dono da conta)
+    if (email && pass) {
+      localStorage.setItem("agro_session", JSON.stringify({ user: { email, role: 'admin' } }));
+      localStorage.setItem("agro_role", "admin");
+      // Se não tem trial nem plano, inicia trial
+      if (!localStorage.getItem("agro_trial") && !localStorage.getItem("agro_plano")) {
+        iniciarTrial(email, '');
+      }
+      location.reload();
+    }
+  };
+
+  // === CADASTRO (SIGNUP) ===
+  document.getElementById("btnCadastrar").onclick = async () => {
+    const nome = document.getElementById("signName").value;
+    const email = document.getElementById("signEmail").value;
+    const pass = document.getElementById("signPass").value;
+    if (!nome || !email || !pass) return toast("Erro", "Preencha todos os campos");
+    if (pass.length < 6) return toast("Erro", "A senha deve ter no mínimo 6 caracteres");
+    
+    toast("Aguarde", "Criando sua conta...");
+    
+    // Simulação de cadastro até configurar Supabase Real
+    // Iniciar Trial de 15 dias
+    iniciarTrial(email, nome);
+    localStorage.setItem("agro_session", JSON.stringify({ user: { email, nome, role: 'admin' } }));
+    localStorage.setItem("agro_role", "admin");
+    
+    toast("Sucesso", "Conta criada! Você tem 15 dias de teste grátis.");
+    setTimeout(() => location.reload(), 800);
+  };
+}
+
 function pageDashboard() {
   const db = getDB();
   const safra = getSafraAtual();
@@ -960,18 +1316,23 @@ function pageDashboard() {
             <th>Talhão</th>
             <th>Área</th>
             <th>Produto</th>
-            <th>Custo</th>
+            ${canSeeFinanceiro() ? '<th>Custo</th>' : ''}
           </tr>
         </thead>
         <tbody>
           ${aplicacoes.slice().reverse().slice(0, 5).map(a => {
             const talhao = findNameById(talhoes, a.talhaoId);
             const produto = a.produtos?.[0]?.produtoNome || '—';
-            return `<tr><td>${a.data}</td><td>${escapeHtml(talhao)}</td><td>${num(a.areaHaAplicada, 1)} ha</td><td>${escapeHtml(produto)}</td><td>${kbrl(a.custoTotal)}</td></tr>`;
+            return `<tr><td>${a.data}</td><td>${escapeHtml(talhao)}</td><td>${num(a.areaHaAplicada, 1)} ha</td><td>${escapeHtml(produto)}</td>${canSeeFinanceiro() ? `<td>${kbrl(a.custoTotal)}</td>` : ''}</tr>`;
           }).join('')}
         </tbody>
       </table>
     </div>
+    ${isSimplifiedDashboard() ? `
+      <div class="card" style="background:#fffbeb; border-left: 4px solid #f59e0b; margin-top:15px;">
+        <p style="color:#92400e; margin:0;">\uD83D\uDD12 <b>Dashboard simplificado</b> \u2014 Seu perfil de ${getRoleLabel()} tem acesso limitado. Para mais detalhes, fale com o administrador.</p>
+      </div>
+    ` : ''}
   `;
 
   window.concluirLembrete = (id) => {
@@ -1133,6 +1494,7 @@ function pageCentralGestao() {
         <div class="ops-kpi-valor">${negDiesel.length}</div>
         <div class="ops-kpi-label">tanques negativos</div>
       </div>
+      ${canSeeFinanceiro() ? `
       <div class="ops-kpi-card">
         <h3>💰 Receita Total</h3>
         <div class="ops-kpi-valor ${receitaRealTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">${kbrl(receitaRealTotal)}</div>
@@ -1143,8 +1505,10 @@ function pageCentralGestao() {
         <div class="ops-kpi-valor">${custoTotal ? ((lucroRealTotal / custoTotal) * 100).toFixed(1) : 0}%</div>
         <div class="ops-kpi-label">sobre o custo</div>
       </div>
+      ` : ''}
     </div>
 
+    ${canSeeFinanceiro() ? `
     <div class="card" style="margin-bottom:20px;">
       <h3>📈 Resumo Financeiro</h3>
       <table style="width:100%;">
@@ -1178,6 +1542,7 @@ function pageCentralGestao() {
         </tr>
       </table>
     </div>
+    ` : '<div class="card" style="background:#f8fafc; border: 1px dashed #cbd5e1; text-align:center; padding:15px;"><p style="color:#64748b; margin:0;">🔒 Resumo financeiro oculto para seu perfil.</p></div>'}
 
     <div class="tableWrap">
       <h3>📋 Custos e Rentabilidade por Talhão</h3>
@@ -1187,11 +1552,11 @@ function pageCentralGestao() {
             <th>Talhão</th>
             <th>Cultura</th>
             <th>Área (ha)</th>
-            <th>Custo</th>
+            ${canSeeFinanceiro() ? '<th>Custo</th>' : ''}
             <th>Produção (kg)</th>
-            <th>Receita Estimada</th>
-            <th>Receita Real</th>
-            <th>Receita Líquida</th>
+            ${canSeeFinanceiro() ? '<th>Receita Estimada</th>' : ''}
+            ${canSeeFinanceiro() ? '<th>Receita Real</th>' : ''}
+            ${canSeeFinanceiro() ? '<th>Receita Líquida</th>' : ''}
             <th class="noPrint">IA Manejo</th>
           </tr>
         </thead>
@@ -1202,11 +1567,11 @@ function pageCentralGestao() {
               <td><b>${escapeHtml(t.nome)}</b></td>
               <td>${escapeHtml(t.cultura || '-')}</td>
               <td>${num(t.areaHa, 1)}</td>
-              <td>${kbrl(t.custo)}</td>
+              ${canSeeFinanceiro() ? `<td>${kbrl(t.custo)}</td>` : ''}
               <td>${t.colheitaRegistrada ? num(t.producaoRealKg, 0) : '-'}</td>
-              <td>${kbrl(t.receitaEstimada)}</td>
-              <td>${t.colheitaRegistrada ? kbrl(t.receitaReal) : '-'}</td>
-              <td class="${lucroClass}">${t.colheitaRegistrada ? kbrl(t.lucroReal) : '-'}</td>
+              ${canSeeFinanceiro() ? `<td>${kbrl(t.receitaEstimada)}</td>` : ''}
+              ${canSeeFinanceiro() ? `<td>${t.colheitaRegistrada ? kbrl(t.receitaReal) : '-'}</td>` : ''}
+              ${canSeeFinanceiro() ? `<td class="${lucroClass}">${t.colheitaRegistrada ? kbrl(t.lucroReal) : '-'}</td>` : ''}
               <td class="noPrint"><button class="btn primary" style="font-size:11px; padding:6px 10px;" onclick="window.__sugerirManejo('${t.id}')">🤖 Sugerir</button></td>
             </tr>`;
           }).join('')}
@@ -1837,7 +2202,7 @@ function pageTalhoes() {
     const db2 = getDB();
     db2.talhoes = db2.talhoes || [];
     
-    const limitesT = { 'Básico': 10, 'Pro': 15, 'Master': 9999 };
+    const limitesT = { 'Trial': 20, 'Básico': 10, 'Pro': 20, 'Master': 9999 };
     if (db2.talhoes.filter(t => t.fazendaId === obj.fazendaId).length >= limitesT[planoAtual]) {
       alert(`Limite de ${limitesT[planoAtual]} talhões por fazenda atingido para o plano ${planoAtual}.`);
       return;
@@ -3026,6 +3391,7 @@ function pageColheitas() {
 
 
 function pageEquipe() {
+  // Se for funcionário, só mostra a tabela (sem form de cadastro, sem gerenciamento de acessos)
   crudPage({
     entityKey: "equipe",
     subtitle: "Equipe de campo da safra atual.",
@@ -3044,6 +3410,149 @@ function pageEquipe() {
       { key: "obs", label: "Obs." }
     ]
   });
+
+  // Se for admin, adicionar seção de Gerenciamento de Acessos
+  if (getUserRole() === 'admin') {
+    renderGerenciamentoAcessos();
+  }
+}
+
+function renderGerenciamentoAcessos() {
+  const content = document.getElementById("content");
+  
+  // Carregar contas de acesso salvas no localStorage
+  const contasAcesso = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
+  
+  const acessoHtml = `
+    <div class="card" style="margin-top:25px; border: 2px solid #3b82f6;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <div>
+          <h3 style="margin:0; color:#3b82f6;">🔐 Gerenciamento de Acessos</h3>
+          <p style="color:#64748b; font-size:13px; margin:5px 0 0;">Crie contas de Gerente ou Funcionário para sua equipe acessar o sistema com permissões limitadas.</p>
+        </div>
+      </div>
+      <div class="hr"></div>
+      
+      <div style="background:#f8fafc; border-radius:8px; padding:15px; margin:15px 0;">
+        <h4 style="margin:0 0 10px;">Criar nova conta de acesso</h4>
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+          <div>
+            <small style="display:block; margin-bottom:4px; font-weight:600;">Nome</small>
+            <input class="input" id="teamName" placeholder="Nome do colaborador" />
+          </div>
+          <div>
+            <small style="display:block; margin-bottom:4px; font-weight:600;">E-mail (login)</small>
+            <input class="input" id="teamEmail" type="email" placeholder="email@exemplo.com" />
+          </div>
+          <div>
+            <small style="display:block; margin-bottom:4px; font-weight:600;">Perfil de Acesso</small>
+            <select class="select" id="teamRole">
+              <option value="gerente">Gerente</option>
+              <option value="funcionario">Funcionário</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
+          <div>
+            <small style="display:block; margin-bottom:4px; font-weight:600;">Senha</small>
+            <input class="input" id="teamPass" type="password" placeholder="Mínimo 6 caracteres" />
+          </div>
+          <div style="display:flex; align-items:flex-end;">
+            <button class="btn primary" id="btnCriarAcesso" style="width:100%;">+ Criar Conta de Acesso</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:15px;">
+        <h4>Contas de acesso ativas</h4>
+        <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; padding:10px; margin-bottom:10px;">
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:5px; font-size:12px; color:#065f46;">
+            <div><b>Perfil: Gerente</b></div>
+            <div>Vê tudo, exceto financeiro</div>
+            <div>Pode criar e editar registros</div>
+          </div>
+        </div>
+        <div style="background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; padding:10px; margin-bottom:15px;">
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:5px; font-size:12px; color:#92400e;">
+            <div><b>Perfil: Funcionário</b></div>
+            <div>Dashboard simplificado, sem relatórios</div>
+            <div>Registra aplicações, manutenção, combustível</div>
+          </div>
+        </div>
+        <table style="width:100%;">
+          <thead>
+            <tr>
+              <th style="text-align:left;">Nome</th>
+              <th style="text-align:left;">E-mail</th>
+              <th style="text-align:left;">Perfil</th>
+              <th style="text-align:left;">Criado em</th>
+              <th style="text-align:center;">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyAcessos">
+            ${contasAcesso.length === 0 ? '<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:20px;">Nenhuma conta de acesso criada ainda.</td></tr>' : 
+              contasAcesso.map(c => `
+                <tr>
+                  <td><b>${escapeHtml(c.nome)}</b></td>
+                  <td>${escapeHtml(c.email)}</td>
+                  <td><span style="${c.role === 'gerente' ? 'background:#dbeafe; color:#1e40af;' : 'background:#fef3c7; color:#92400e;'} padding:2px 8px; border-radius:4px; font-size:12px; font-weight:bold;">${c.role === 'gerente' ? 'Gerente' : 'Funcionário'}</span></td>
+                  <td style="color:#64748b; font-size:13px;">${c.criadoEm || '-'}</td>
+                  <td style="text-align:center;"><button class="btn danger" style="padding:4px 10px; font-size:12px;" onclick="window.__delAcesso('${c.id}')">Remover</button></td>
+                </tr>
+              `).join('')
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  content.insertAdjacentHTML('beforeend', acessoHtml);
+
+  // Handler criar conta de acesso
+  document.getElementById("btnCriarAcesso").addEventListener("click", () => {
+    const nome = document.getElementById("teamName").value.trim();
+    const email = document.getElementById("teamEmail").value.trim();
+    const role = document.getElementById("teamRole").value;
+    const pass = document.getElementById("teamPass").value;
+
+    if (!nome || !email || !pass) { toast("Erro", "Preencha todos os campos."); return; }
+    if (pass.length < 6) { toast("Erro", "Senha deve ter no mínimo 6 caracteres."); return; }
+
+    const contas = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
+    
+    // Verificar se e-mail já existe
+    if (contas.find(c => c.email === email)) {
+      toast("Erro", "Já existe uma conta com este e-mail.");
+      return;
+    }
+
+    contas.push({
+      id: uid('acc'),
+      nome,
+      email,
+      role,
+      senha: pass, // Em produção, usar hash via Supabase Auth
+      criadoEm: nowISO(),
+      ativo: true
+    });
+
+    localStorage.setItem("agro_team_accounts", JSON.stringify(contas));
+    toast("Conta criada", `${nome} agora pode acessar como ${role === 'gerente' ? 'Gerente' : 'Funcionário'}.`);
+    
+    // Recarregar a página para atualizar a tabela
+    pageEquipe();
+  });
+
+  // Handler remover conta
+  window.__delAcesso = (id) => {
+    if (!confirm("Remover esta conta de acesso? O usuário não poderá mais fazer login.")) return;
+    let contas = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
+    contas = contas.filter(c => c.id !== id);
+    localStorage.setItem("agro_team_accounts", JSON.stringify(contas));
+    toast("Conta removida", "Acesso revogado.");
+    pageEquipe();
+  };
 }
 
 function pageMaquinas() {
@@ -3137,8 +3646,8 @@ function pageAplicacoes() {
             <div style="background: linear-gradient(135deg, #1a2a3a, #0f1a24); padding:20px; border-radius:8px;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div>
-                  <h4 style="margin:0; color:#888;">💵 CUSTO TOTAL ESTIMADO</h4>
-                  <div style="font-size:32px; font-weight:bold; color:#4CAF50;" id="custoTotalDisplay">R$ 0,00</div>
+                  ${canSeeFinanceiro() ? `<h4 style="margin:0; color:#888;">💵 CUSTO TOTAL ESTIMADO</h4>
+                  <div style="font-size:32px; font-weight:bold; color:#4CAF50;" id="custoTotalDisplay">R$ 0,00</div>` : '<h4 style="margin:0; color:#888;">Registro de Aplicação</h4>'}
                 </div>
                 <button class="btn primary" type="submit" style="font-size:16px; padding:12px 24px;">✅ Salvar aplicação</button>
               </div>
@@ -3151,7 +3660,7 @@ function pageAplicacoes() {
       <div class="tableWrap" style="margin-top:20px;">
         <h3>📋 Últimas aplicações</h3>
         <table>
-          <thead><tr><th>Data</th><th>Talhão</th><th>Área</th><th>Produtos</th><th>Custo</th><th style="text-align:center;">Ações</th></tr></thead>
+          <thead><tr><th>Data</th><th>Talhão</th><th>Área</th><th>Produtos</th>${canSeeFinanceiro() ? '<th>Custo</th>' : ''}<th style="text-align:center;">Ações</th></tr></thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
@@ -3250,11 +3759,12 @@ function pageAplicacoes() {
     tb.innerHTML = rows.slice().reverse().map(a => {
       const tal = findNameById(talhoes, a.talhaoId);
       const prds = (a.produtos || []).map(p => p.produtoNome).join(' + ');
-      return `<tr><td>${a.data}</td><td><b>${escapeHtml(tal)}</b></td><td>${num(a.areaHaAplicada,1)} ha</td><td>${escapeHtml(prds||'—')}</td><td style="color:#4CAF50;">${kbrl(a.custoTotal)}</td><td style="text-align:center;"><button class="btn danger" style="padding:4px 8px;" onclick="window.__delA('${a.id}')">Excluir</button></td></tr>`;
+      return `<tr><td>${a.data}</td><td><b>${escapeHtml(tal)}</b></td><td>${num(a.areaHaAplicada,1)} ha</td><td>${escapeHtml(prds||'—')}</td>${canSeeFinanceiro() ? `<td style="color:#4CAF50;">${kbrl(a.custoTotal)}</td>` : ''}<td style="text-align:center;">${canDeleteOnPage('aplicacoes') ? `<button class="btn danger" style="padding:4px 8px;" onclick="window.__delA('${a.id}')">Excluir</button>` : '—'}</td></tr>`;
     }).join('') || '<tr><td colspan="6" style="text-align:center;">Nenhuma aplicação registrada</td></tr>';
   }
 
   window.__delA = (id) => {
+    if (!canDeleteOnPage('aplicacoes')) { toast("Sem permissão", "Seu perfil não permite excluir."); return; }
     if (!confirm("Excluir esta aplicação?")) return;
     const db2 = getDB();
     db2.aplicacoes = db2.aplicacoes.filter(x => x.id !== id);
@@ -3358,7 +3868,14 @@ function pageAplicacoes() {
 
 // pageRelatorios stub removido - função real abaixo
 
-window.setPlano = (p) => { localStorage.setItem("agro_plano", p); location.reload(); };
+window.setPlano = (p) => { 
+  localStorage.setItem("agro_plano", p); 
+  // Se mudou para plano pago, remover dados de trial
+  if (p !== 'Trial') {
+    localStorage.removeItem("agro_trial");
+  }
+  location.reload(); 
+};
 function pageConfiguracoes() {
   const db = getDB();
   const params = db.parametros || { 
@@ -3397,43 +3914,57 @@ function pageConfiguracoes() {
     </style>
 
     <div class="config-section">
-      <div class="config-card">
-        <h3>💎 Planos e Assinatura</h3>
-        <p>Seu plano atual: <b>${planoAtual}</b></p>
+      ${userRole === 'admin' ? `<div class="config-card">
+        <h3>💎 Planos e Assinatura</h3>` : '<!-- Planos ocultos para não-admin --><div style="display:none;">'}
+        <p>Seu plano atual: <b>${planoAtual === 'Trial' ? 'Período de Teste (Pro)' : planoAtual}</b></p>
+        ${planoAtual === 'Trial' && trialInfo ? `
+          <div style="background: #dbeafe; border: 1px solid #93c5fd; border-radius: 8px; padding: 12px; margin: 10px 0;">
+            <p style="margin: 0; font-size: 14px; color: #1e40af;">🎁 <b>${trialInfo.diasRestantes} dia${trialInfo.diasRestantes !== 1 ? 's' : ''}</b> restante${trialInfo.diasRestantes !== 1 ? 's' : ''} no período de teste gratuito.</p>
+            <p style="margin: 5px 0 0; font-size: 12px; color: #3b82f6;">Você tem acesso completo ao Plano Pro. Assine antes do término para não perder acesso.</p>
+          </div>
+        ` : ''}
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-top:15px;">
           <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Básico'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
             <h4 style="margin:0 0 5px 0;">Básico</h4>
             <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 290<small>/mês</small></p>
-            <small>2 fazendas, 10 talhões/fazenda</small><br>
+            <small>2 fazendas, 10 talhões/fazenda<br>Relatórios básicos</small><br>
             <button class="btn" style="margin-top:10px;" onclick="setPlano('Básico')">Selecionar</button>
           </div>
-          <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Pro'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
+          <div style="padding:15px; border-radius:8px; border: ${(planoAtual==='Pro'||planoAtual==='Trial')?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:${(planoAtual==='Pro'||planoAtual==='Trial')?'#ecfdf5':'white'}; position: relative;">
+            ${planoAtual === 'Trial' ? '<div style="position:absolute; top:-8px; right:10px; background:#3b82f6; color:white; padding:2px 8px; border-radius:8px; font-size:10px; font-weight:bold;">ATUAL (TESTE)</div>' : ''}
             <h4 style="margin:0 0 5px 0;">Pro</h4>
             <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 450<small>/mês</small></p>
-            <small>4 fazendas, 15 talhões/fazenda, IA</small><br>
-            <button class="btn" style="margin-top:10px;" onclick="setPlano('Pro')">Selecionar</button>
+            <small>4 fazendas, 20 talhões/fazenda<br>IA Prescritiva + Suporte</small><br>
+            <button class="btn primary" style="margin-top:10px;" onclick="setPlano('Pro')">${planoAtual === 'Trial' ? 'Assinar Pro' : 'Selecionar'}</button>
           </div>
           <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Master'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
             <h4 style="margin:0 0 5px 0;">Master</h4>
             <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 790<small>/mês</small></p>
-            <small>5 fazendas, Talhões ilimitados, IA Ilimitada</small><br>
+            <small>10 fazendas, Talhões ilimitados<br>Copilot + Consultoria</small><br>
             <button class="btn" style="margin-top:10px;" onclick="setPlano('Master')">Selecionar</button>
           </div>
         </div>
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+          <p style="font-size: 13px; color: #64748b;">Para assinar, entre em contato:</p>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px;">
+            <a href="mailto:suporteagropro@gmail.com?subject=Assinatura Agro Pro" style="padding: 8px 16px; background: #3b82f6; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">📧 E-mail</a>
+            <a href="https://wa.me/5599991360547?text=Olá! Quero assinar o Agro Pro" target="_blank" style="padding: 8px 16px; background: #25d366; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">💬 WhatsApp</a>
+          </div>
+        </div>
       </div>
+      ${userRole === 'admin' ? '' : '</div>'}
 
-      <div class="config-card">
-        <h3>🔑 Configuração da IA (API Key)</h3>
+      ${userRole !== 'funcionario' ? `<div class="config-card">
+        <h3>🔑 Configuração da IA (API Key)</h3>` : '<div style="display:none;">'}
         <p style="color:#64748b; font-size:13px;">Para usar o Agro-Copilot e a IA Prescritiva, informe sua chave da API OpenAI. A chave é armazenada apenas localmente no seu navegador.</p>
         <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
           <input class="input" id="inputApiKeyConfig" type="password" placeholder="sk-..." style="max-width:400px;" value="">
           <button class="btn primary" id="btnSalvarKeyConfig">Salvar Chave</button>
         </div>
         <div style="margin-top:8px; font-size:12px; color:#64748b;" id="statusKeyConfig"></div>
-      </div>
-
-      <div class="config-card">
-        <h3>⚙️ Parâmetros de Mercado</h3>
+       </div>
+      ${userRole === 'admin' ? `<div class="config-card">
+        <h3>⚙️ Parâmetros de Mercado</h3>` : '<div style="display:none;">'}
         <form id="frmParams" class="formGrid">
           <div><small>Preço da saca de soja (R$)</small><input class="input" name="precoSoja" value="${params.precoSoja}"></div>
           <div><small>Produtividade mínima soja (sc/ha)</small><input class="input" name="prodMinSoja" value="${params.produtividadeMinSoja}"></div>
@@ -3448,14 +3979,19 @@ function pageConfiguracoes() {
           <div class="full row" style="justify-content:flex-end"><button class="btn primary" type="submit">Salvar parâmetros</button></div>
         </form>
       </div>
-      <div class="config-card">
-        <h3>💾 Backup e Restauração</h3>
+      ${userRole === 'admin' ? `<div class="config-card">
+        <h3>💾 Backup e Restauração</h3>` : '<div style="display:none;">'}
         <div class="row" style="gap:10px;"><button class="btn primary" id="btnExport2">📤 Exportar Backup</button><button class="btn" id="btnImport2">📥 Importar Backup</button></div>
       </div>
-      <div class="config-card">
-        <h3>⚠️ Reset de Dados</h3>
+      ${userRole === 'admin' ? `<div class="config-card">
+        <h3>⚠️ Reset de Dados</h3>` : '<div style="display:none;">'}
         <div class="reset-buttons"><button class="btn warning" id="btnZerarDados">🧹 Zerar todos os dados</button><button class="btn primary" id="btnRestaurarDemo">🔄 Restaurar dados de demonstração</button></div>
         <p style="margin-top:15px; color:#64748b; font-size:13px;"><strong>Zerar dados:</strong> remove todas as fazendas, talhões, produtos, estoque, etc., mantendo apenas a safra atual.<br><strong>Restaurar demo:</strong> recria o banco com os dados de exemplo.</p>
+      </div>
+      <div class="config-card">
+        <h3>👤 Conta</h3>
+        <p style="color:#64748b; font-size:13px;">Usuário: <b>${userSession?.user?.email || 'N/A'}</b></p>
+        <button class="btn" id="btnLogout" style="margin-top:10px; background: #ef4444; color: white;">Sair da Conta</button>
       </div>
     </div>
   `;
@@ -3538,6 +4074,15 @@ function pageConfiguracoes() {
     window.__OPENAI_KEY = key;
     document.getElementById("statusKeyConfig").innerHTML = '✅ Chave salva com sucesso!';
     toast("Chave salva", "API Key configurada.");
+  });
+
+  // Logout
+  document.getElementById("btnLogout").addEventListener("click", () => {
+    if (!confirm("Deseja realmente sair da sua conta?")) return;
+    localStorage.removeItem("agro_session");
+    localStorage.removeItem("agro_role");
+    toast("Logout", "Você saiu da conta.");
+    setTimeout(() => location.reload(), 300);
   });
 }
 
@@ -3875,25 +4420,25 @@ function pageRelatorios() {
         <h3>📏 Área Total</h3>
         <div class="relatorio-kpi-valor">${num(areaTotal, 1)} ha</div>
       </div>
-      <div class="relatorio-kpi-card">
+      ${canSeeFinanceiro() ? `<div class="relatorio-kpi-card">
         <h3>💰 Custo Total</h3>
         <div class="relatorio-kpi-valor">${kbrl(custoTotal)}</div>
         <div class="relatorio-kpi-label">R$ ${num(custoPorHa, 2)}/ha</div>
-      </div>
+      </div>` : ''}
       <div class="relatorio-kpi-card">
         <h3>🌾 Produção Total</h3>
         <div class="relatorio-kpi-valor">${num(producaoTotalKg, 0)} kg</div>
       </div>
-      <div class="relatorio-kpi-card">
+      ${canSeeFinanceiro() ? `<div class="relatorio-kpi-card">
         <h3>📊 Receita Total</h3>
         <div class="relatorio-kpi-valor ${receitaRealTotal >= 0 ? 'destaque-positivo' : 'destaque-negativo'}">${kbrl(receitaRealTotal)}</div>
         <div class="relatorio-kpi-label">vs estimado ${kbrl(lucroEstimadoTotal)}</div>
-      </div>
+      </div>` : ''}
     </div>
 
-    <!-- ========== COMPOSIÇÃO DE CUSTOS (NOVO) ========== -->
+    ${canSeeFinanceiro() ? `<!-- ========== COMPOSIÇÃO DE CUSTOS ========== -->
     <div class="secao-titulo">💰 Composição de Custos da Safra</div>
-    <div class="composicao-custo">
+    <div class="composicao-custo">` : '<!-- Financeiro oculto --><div style="display:none;">'}
       <div class="card">
         <h4>📊 Custos por Categoria</h4>
         <table style="width:100%;">
@@ -3918,9 +4463,10 @@ function pageRelatorios() {
       </div>
     </div>
 
-    <!-- ========== COMPARATIVO RECEITA ========== -->
+    ${canSeeFinanceiro() ? '' : '</div><!-- end hidden block -->'}
+    ${canSeeFinanceiro() ? `<!-- ========== COMPARATIVO RECEITA ========== -->
     <div class="card" style="margin-bottom:20px;">
-      <h3>📈 Comparativo Receita</h3>
+      <h3>📈 Comparativo Receita</h3>` : '<div style="display:none;">'}
       <table style="width:100%;">
         <tr>
           <td><b>Receita estimada:</b></td>
@@ -3948,6 +4494,7 @@ function pageRelatorios() {
         </tr>
       </table>
     </div>
+    ${canSeeFinanceiro() ? '' : '</div>'}
 
     <!-- ========== GRÁFICOS MENSAIS ========== -->
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
@@ -5514,7 +6061,7 @@ function pageAjuda() {
 
 
 function pageCopilot() {
-  if (planoAtual === "Básico") {
+  if (planoAtual === "Básico" || planoAtual === "Expirado") {
     document.getElementById("content").innerHTML = `
       <div class="card" style="text-align:center; padding: 50px;">
         <h2>🤖 Agro-Copilot (IA)</h2>
@@ -5698,8 +6245,10 @@ function boot() {
       
       .plan-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
       .plan-basic { background: #e2e8f0; color: #475569; }
+      .plan-basico { background: #e2e8f0; color: #475569; }
       .plan-pro { background: #dcfce7; color: #166534; }
       .plan-master { background: #fef9c3; color: #854d0e; }
+      .plan-trial { background: #dbeafe; color: #1e40af; }
 `;
     document.head.appendChild(s);
   }
@@ -5730,10 +6279,78 @@ function boot() {
   const savedApiKey = localStorage.getItem("agro_pro_openai_key") || "";
   if (savedApiKey) { window.__OPENAI_KEY = savedApiKey; }
 
+  
+  // Verificar Sessão
+  const sessionRaw = localStorage.getItem("agro_session");
+  if (!sessionRaw && pageKey !== "login") {
+    pageLogin();
+    return;
+  }
+  userSession = sessionRaw ? JSON.parse(sessionRaw) : null;
+
+  // === CARREGAR ROLE DO USUÁRIO ===
+  // Prioridade: 1) sessão com role, 2) localStorage agro_role, 3) default admin
+  if (userSession?.user?.role) {
+    userRole = userSession.user.role;
+    localStorage.setItem("agro_role", userRole);
+  } else {
+    userRole = localStorage.getItem("agro_role") || "admin";
+  }
+
+  // === VERIFICAR ACESSO À PÁGINA ===
+  if (!canAccessPage(pageKey) && pageKey !== 'login') {
+    // Redirecionar para dashboard se não tem acesso
+    window.location.href = 'index.html';
+    return;
+  }
+
+  // === VERIFICAR TRIAL ===
+  trialInfo = getTrialInfo();
+  const planoSalvo = localStorage.getItem("agro_plano") || "Trial";
+  
+  // Atualizar planoAtual baseado no estado do trial
+  if (planoSalvo === "Trial") {
+    if (trialInfo && !trialInfo.expirado) {
+      // Trial ativo: dar acesso Pro
+      planoAtual = "Trial";
+    } else if (trialInfo && trialInfo.expirado) {
+      // Trial expirado: bloquear acesso
+      pageTrialExpirado();
+      return;
+    } else {
+      // Sem trial data mas plano é Trial (edge case): iniciar trial
+      if (userSession?.user?.email) {
+        iniciarTrial(userSession.user.email, userSession.user.nome || '');
+        trialInfo = getTrialInfo();
+      }
+      planoAtual = "Trial";
+    }
+  } else {
+    planoAtual = planoSalvo;
+  }
+
   const [t, s] = titles[pageKey] || ["Agro Pro", ""];
   renderShell(pageKey, t, s);
 
-  if (pageKey === "dashboard") pageDashboard();
+  // Inserir banner de trial após o shell ser renderizado
+  const trialBannerHTML = renderTrialBanner();
+  if (trialBannerHTML) {
+    const mainEl = document.querySelector('.main');
+    if (mainEl) {
+      mainEl.insertAdjacentHTML('afterbegin', trialBannerHTML);
+    }
+  }
+
+  // Verificar acesso antes de renderizar a página
+  if (!canAccessPage(pageKey)) {
+    document.getElementById('content').innerHTML = `
+      <div class="card" style="text-align:center; padding:40px;">
+        <h2>🚫 Acesso Restrito</h2>
+        <p style="color:#64748b;">Seu perfil de <b>${getRoleLabel()}</b> não tem permissão para acessar esta página.</p>
+        <a href="index.html" class="btn primary" style="margin-top:15px;">Voltar ao Dashboard</a>
+      </div>
+    `;
+  } else if (pageKey === "dashboard") pageDashboard();
   else if (pageKey === "centralgestao") pageCentralGestao();
   else if (pageKey === "safras") pageSafras();
   else if (pageKey === "fazendas") pageFazendas();
