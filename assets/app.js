@@ -1,3 +1,7 @@
+/* ============================================================
+   AGRO PRO — app.js (v19 — SUPABASE CLOUD MIGRATION)
+   Migração completa: localStorage → Supabase
+   ============================================================ */
 
 let planoAtual = localStorage.getItem("agro_plano") || "Trial";
 let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;
@@ -10,6 +14,30 @@ let userRole = localStorage.getItem("agro_role") || "admin"; // admin, gerente, 
 // ============================================================
 // SISTEMA DE PERMISSÕES POR PERFIL (ROLES)
 // ============================================================
+
+// Páginas bloqueadas no plano Básico (não aparecem na sidebar)
+const PLAN_BLOCKED_PAGES = {
+  'Básico': ['colheitas','manutencao','clima','relatorios','centralgestao'],
+  'Pro': [],
+  'Master': [],
+  'Trial': []
+};
+
+// Limites por plano
+const PLAN_LIMITS = {
+  'Básico': { fazendas: 1, talhoes: 5, maquinas: 4, funcionarios: 8, admins: 1 },
+  'Pro':    { fazendas: 2, talhoes: 9999, maquinas: 9999, funcionarios: 12, admins: 2 },
+  'Master': { fazendas: 8, talhoes: 9999, maquinas: 9999, funcionarios: 9999, admins: 9999 },
+  'Trial':  { fazendas: 2, talhoes: 9999, maquinas: 9999, funcionarios: 12, admins: 2 }
+};
+
+function getPlanLimits() {
+  return PLAN_LIMITS[planoAtual] || PLAN_LIMITS['Básico'];
+}
+
+function getPlanBlockedPages() {
+  return PLAN_BLOCKED_PAGES[planoAtual] || [];
+}
 
 const ROLE_PERMISSIONS = {
   admin: {
@@ -63,7 +91,11 @@ function getRolePerms() {
 
 function canAccessPage(pageKey) {
   const perms = getRolePerms();
-  return perms.pages.includes(pageKey);
+  if (!perms.pages.includes(pageKey)) return false;
+  // Bloquear páginas conforme o plano
+  const blocked = getPlanBlockedPages();
+  if (blocked.includes(pageKey)) return false;
+  return true;
 }
 
 function canCreateOnPage(pageKey) {
@@ -187,94 +219,15 @@ function renderTrialBanner() {
 
 // ============================================================
 // CLOUD SYNC — BACKUP AUTOMÁTICO NA NUVEM (SUPABASE)
+// As funções cloudSync() e cloudRestore() estão definidas em
+// supabase-client.js com sync granular por tabela + backup JSON.
+// Se supabase-client.js não estiver carregado, fallback silencioso.
 // ============================================================
-
-let _syncTimer = null;
-let _syncPending = false;
-
-// Salvar dados na nuvem (debounced — executa 3s após última alteração)
-function cloudSync() {
-  if (_syncTimer) clearTimeout(_syncTimer);
-  _syncPending = true;
-  _syncTimer = setTimeout(async () => {
-    try {
-      if (typeof supabase === 'undefined' || !supabase) { _syncPending = false; return; }
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { _syncPending = false; return; }
-      
-      const db = Storage.load();
-      if (!db) { _syncPending = false; return; }
-      
-      // Upsert: insere se não existe, atualiza se já existe
-      const { error } = await supabase
-        .from('user_data_backup')
-        .upsert({
-          user_id: user.id,
-          data: db,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-      
-      if (error) {
-        console.warn('Cloud Sync: erro ao salvar:', error.message);
-      } else {
-        console.log('Cloud Sync: dados salvos na nuvem');
-      }
-    } catch (e) {
-      console.warn('Cloud Sync: falha silenciosa:', e.message);
-    }
-    _syncPending = false;
-  }, 3000); // 3 segundos de debounce
+if (typeof cloudSync === 'undefined') {
+  function cloudSync() { /* Supabase não configurado — modo offline */ }
 }
-
-// Restaurar dados da nuvem (chamado no login)
-async function cloudRestore() {
-  try {
-    if (typeof supabase === 'undefined' || !supabase) return false;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
-    
-    const { data, error } = await supabase
-      .from('user_data_backup')
-      .select('data, updated_at')
-      .eq('user_id', user.id)
-      .single();
-    
-    if (error || !data) {
-      console.log('Cloud Sync: nenhum backup encontrado na nuvem');
-      return false;
-    }
-    
-    // Verificar se o backup na nuvem é mais recente que o local
-    const localDB = Storage.load();
-    const cloudDate = new Date(data.updated_at);
-    const localDate = localDB?.meta?.lastSync ? new Date(localDB.meta.lastSync) : new Date(0);
-    
-    if (!localDB || !localDB.fazendas || localDB.fazendas.length === 0) {
-      // Local está vazio ou é novo — restaurar da nuvem
-      console.log('Cloud Sync: restaurando dados da nuvem (local vazio)');
-      const cloudDB = data.data;
-      cloudDB.meta = cloudDB.meta || {};
-      cloudDB.meta.lastSync = new Date().toISOString();
-      Storage.save(cloudDB);
-      return true;
-    }
-    
-    if (cloudDate > localDate && data.data.fazendas && data.data.fazendas.length > 0) {
-      // Nuvem é mais recente e tem dados — restaurar
-      console.log('Cloud Sync: restaurando dados da nuvem (mais recente)');
-      const cloudDB = data.data;
-      cloudDB.meta = cloudDB.meta || {};
-      cloudDB.meta.lastSync = new Date().toISOString();
-      Storage.save(cloudDB);
-      return true;
-    }
-    
-    console.log('Cloud Sync: dados locais estão atualizados');
-    return false;
-  } catch (e) {
-    console.warn('Cloud Sync: erro ao restaurar:', e.message);
-    return false;
-  }
+if (typeof cloudRestore === 'undefined') {
+  async function cloudRestore() { return false; /* Supabase não configurado */ }
 }
 
 function pageTrialExpirado() {
@@ -292,19 +245,19 @@ function pageTrialExpirado() {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 30px;">
           <div style="padding: 20px; border-radius: 12px; border: 2px solid #e2e8f0; background: #f8fafc;">
             <h3 style="margin: 0 0 5px; color: #475569;">Básico</h3>
-            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 290<small style='font-size:12px;'>/mês</small></p>
-            <small style="color: #64748b;">2 fazendas<br>10 talhões/fazenda<br>Relatórios básicos</small>
+            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 100<small style='font-size:12px;'>/mês</small></p>
+            <small style="color: #64748b;">1 fazenda, 5 talhões<br>4 máquinas, 8 funcionários<br>Dashboard + Aplicações + Estoque</small>
           </div>
           <div style="padding: 20px; border-radius: 12px; border: 2px solid #10b981; background: #ecfdf5; position: relative;">
             <div style="position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 2px 12px; border-radius: 12px; font-size: 11px; font-weight: bold;">POPULAR</div>
             <h3 style="margin: 0 0 5px; color: #065f46;">Pro</h3>
-            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 450<small style='font-size:12px;'>/mês</small></p>
-            <small style="color: #64748b;">4 fazendas<br>20 talhões/fazenda<br>IA Prescritiva + Suporte</small>
+            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 299<small style='font-size:12px;'>/mês</small></p>
+            <small style="color: #64748b;">2 fazendas, talhões ilimitados<br>12 funcionários + Roles<br>Relatórios + IA Prescritiva</small>
           </div>
           <div style="padding: 20px; border-radius: 12px; border: 2px solid #f59e0b; background: #fffbeb;">
             <h3 style="margin: 0 0 5px; color: #92400e;">Master</h3>
-            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 790<small style='font-size:12px;'>/mês</small></p>
-            <small style="color: #64748b;">10 fazendas<br>Talhões ilimitados<br>Copilot + Consultoria</small>
+            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 599<small style='font-size:12px;'>/mês</small></p>
+            <small style="color: #64748b;">8 fazendas, tudo ilimitado<br>Roles + Admins ilimitados<br>Suporte prioritário</small>
           </div>
         </div>
         
@@ -533,7 +486,8 @@ function setDB(db) {
   db.meta.lastSync = new Date().toISOString();
   Storage.save(db);
   // Disparar backup automático na nuvem (debounced)
-  cloudSync();
+  // cloudSync() está definido em supabase-client.js (sync granular + backup JSON)
+  if (typeof cloudSync === 'function') cloudSync();
 }
 
 function getSafraId() {
@@ -697,8 +651,16 @@ function renderShell(pageKey, title, subtitle) {
     setTimeout(() => location.reload(), 200);
   });
 
-  document.getElementById("btnSairSidebar")?.addEventListener("click", () => {
+  document.getElementById("btnSairSidebar")?.addEventListener("click", async () => {
     if (confirm("Deseja realmente sair da conta?")) {
+      // Fazer sync final antes de sair
+      if (typeof cloudSync === 'function') cloudSync();
+      
+      // SignOut do Supabase
+      if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
+        try { await AuthService.signOut(); } catch (e) { console.warn('Logout Supabase:', e.message); }
+      }
+      
       // Limpar apenas dados da sessão atual, mas MANTER agro_team_accounts
       localStorage.removeItem("agro_session");
       localStorage.removeItem("agro_role");
@@ -707,7 +669,6 @@ function renderShell(pageKey, title, subtitle) {
       // Importante: NÃO remover agro_team_accounts aqui, senão as contas de equipe somem!
       toast("Saindo...", "Até logo!");
       setTimeout(() => {
-        // Redirecionar para index.html para garantir que caia no login
         window.location.href = "index.html";
       }, 500);
     }
@@ -1030,6 +991,22 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
       const db2 = getDB();
       if (helpers?.beforeSave) helpers.beforeSave(obj, db2);
       db2[entityKey] = db2[entityKey] || [];
+      
+      // Verificar limites por plano
+      const _limits = getPlanLimits();
+      if (entityKey === 'fazendas' && db2.fazendas.length >= _limits.fazendas) {
+        toast('Limite atingido', `Seu plano ${planoAtual} permite no máximo ${_limits.fazendas} fazenda(s). Faça upgrade para adicionar mais.`);
+        return;
+      }
+      if (entityKey === 'maquinas' && onlySafra(db2.maquinas || []).length >= _limits.maquinas) {
+        toast('Limite atingido', `Seu plano ${planoAtual} permite no máximo ${_limits.maquinas} máquina(s). Faça upgrade para adicionar mais.`);
+        return;
+      }
+      if (entityKey === 'equipe' && onlySafra(db2.equipe || []).length >= _limits.funcionarios) {
+        toast('Limite atingido', `Seu plano ${planoAtual} permite no máximo ${_limits.funcionarios} funcionário(s). Faça upgrade para adicionar mais.`);
+        return;
+      }
+      
       db2[entityKey].push(obj);
       setDB(db2);
       e.target.reset();
@@ -1257,7 +1234,7 @@ function pageLogin() {
     }
     
     // 2. Tentar autenticação no Supabase Real
-    if (typeof AuthService !== 'undefined' && typeof supabase !== 'undefined' && supabase) {
+    if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
       try {
         const { data, error } = await AuthService.signIn(email, pass);
         if (error) {
@@ -1266,29 +1243,51 @@ function pageLogin() {
         
         // Carregar perfil do banco
         const profile = await AuthService.getUserProfile();
+        const userName = profile?.full_name || email.split('@')[0];
+        const userRole = profile?.user_role || 'admin';
+        
         localStorage.setItem("agro_session", JSON.stringify({ 
           user: { 
             id: data.user.id, 
             email: data.user.email, 
-            nome: profile?.full_name || email.split('@')[0], 
-            role: profile?.role || 'admin' 
+            nome: userName, 
+            role: userRole 
           } 
         }));
-        localStorage.setItem("agro_role", profile?.role || "admin");
+        localStorage.setItem("agro_role", userRole);
         
-        // Sincronizar plano/trial se existir no banco
-        if (profile?.plan_type) localStorage.setItem("agro_plano", profile.plan_type);
+        // Sincronizar plano/trial do banco para localStorage
+        if (profile?.plan_type) {
+          const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
+          localStorage.setItem("agro_plano", planMap[profile.plan_type] || 'Trial');
+        }
         if (profile?.trial_ends_at) {
           const fim = new Date(profile.trial_ends_at);
           const agora = new Date();
           const dias = Math.ceil((fim - agora) / (1000 * 60 * 60 * 24));
           localStorage.setItem("agro_trial", JSON.stringify({
+            email: data.user.email,
+            nome: userName,
+            plan_type: 'trial',
+            trial_ends_at: profile.trial_ends_at,
+            created_at: profile.created_at,
             dataFim: profile.trial_ends_at,
             expirado: dias <= 0
           }));
         }
 
-        toast("Bem-vindo", "Login realizado com sucesso!");
+        // Restaurar dados da nuvem (tabelas individuais + backup JSON)
+        toast("Sincronizando", "Carregando seus dados da nuvem...");
+        try {
+          const restored = await cloudRestore();
+          if (restored) {
+            console.log('Login: dados restaurados da nuvem');
+          }
+        } catch (restoreErr) {
+          console.warn('Login: erro ao restaurar da nuvem:', restoreErr.message);
+        }
+
+        toast("Bem-vindo", `Login realizado! Olá, ${userName}`);
         setTimeout(() => location.reload(), 500);
         return;
       } catch (err) {
@@ -1320,7 +1319,7 @@ function pageLogin() {
     toast("Aguarde", "Criando sua conta...");
     
     // 1. Tentar cadastro no Supabase Real
-    if (typeof AuthService !== 'undefined' && typeof supabase !== 'undefined' && supabase) {
+    if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
       try {
         const { data, error } = await AuthService.signUp(email, pass, nome);
         if (error) {
@@ -1336,6 +1335,14 @@ function pageLogin() {
           user: { id: data.user.id, email, nome, role: 'admin' } 
         }));
         localStorage.setItem("agro_role", "admin");
+        
+        // Criar dados iniciais no Supabase (safra, fazenda demo, parâmetros)
+        try {
+          await seedSupabase();
+          console.log('Signup: dados iniciais criados no Supabase');
+        } catch (seedErr) {
+          console.warn('Signup: erro ao criar dados iniciais:', seedErr.message);
+        }
         
         toast("Sucesso", "Conta criada! Você tem 15 dias de teste grátis.");
         setTimeout(() => location.reload(), 1000);
@@ -2320,7 +2327,7 @@ function pageTalhoes() {
     const db2 = getDB();
     db2.talhoes = db2.talhoes || [];
     
-    const limitesT = { 'Trial': 20, 'Básico': 10, 'Pro': 20, 'Master': 9999 };
+    const limitesT = { 'Trial': 9999, 'Básico': 5, 'Pro': 9999, 'Master': 9999 };
     if (db2.talhoes.filter(t => t.fazendaId === obj.fazendaId).length >= limitesT[planoAtual]) {
       alert(`Limite de ${limitesT[planoAtual]} talhões por fazenda atingido para o plano ${planoAtual}.`);
       return;
@@ -4002,11 +4009,19 @@ function pageAplicacoes() {
 
 // pageRelatorios stub removido - função real abaixo
 
-window.setPlano = (p) => { 
+window.setPlano = async (p) => { 
   localStorage.setItem("agro_plano", p); 
   // Se mudou para plano pago, remover dados de trial
   if (p !== 'Trial') {
     localStorage.removeItem("agro_trial");
+  }
+  // Sincronizar plano com o Supabase
+  if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
+    try {
+      const planMap = { 'Básico': 'basico', 'Pro': 'pro', 'Master': 'master', 'Trial': 'trial' };
+      await AuthService.updateProfile({ plan_type: planMap[p] || 'trial' });
+      console.log('Plano atualizado no Supabase:', p);
+    } catch (e) { console.warn('Erro ao atualizar plano no Supabase:', e.message); }
   }
   location.reload(); 
 };
@@ -4060,21 +4075,21 @@ function pageConfiguracoes() {
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-top:15px;">
           <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Básico'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
             <h4 style="margin:0 0 5px 0;">Básico</h4>
-            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 290<small>/mês</small></p>
-            <small>2 fazendas, 10 talhões/fazenda<br>Relatórios básicos</small><br>
+            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 100<small>/mês</small></p>
+            <small>1 fazenda, 5 talhões<br>4 máquinas, 8 funcionários<br>Dashboard + Aplicações + Estoque</small><br>
             <button class="btn" style="margin-top:10px;" onclick="setPlano('Básico')">Selecionar</button>
           </div>
           <div style="padding:15px; border-radius:8px; border: ${(planoAtual==='Pro'||planoAtual==='Trial')?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:${(planoAtual==='Pro'||planoAtual==='Trial')?'#ecfdf5':'white'}; position: relative;">
             ${planoAtual === 'Trial' ? '<div style="position:absolute; top:-8px; right:10px; background:#3b82f6; color:white; padding:2px 8px; border-radius:8px; font-size:10px; font-weight:bold;">ATUAL (TESTE)</div>' : ''}
             <h4 style="margin:0 0 5px 0;">Pro</h4>
-            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 450<small>/mês</small></p>
-            <small>4 fazendas, 20 talhões/fazenda<br>IA Prescritiva + Suporte</small><br>
+            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 299<small>/mês</small></p>
+            <small>2 fazendas, talhões ilimitados<br>12 funcionários + Roles<br>Relatórios + IA Prescritiva</small><br>
             <button class="btn primary" style="margin-top:10px;" onclick="setPlano('Pro')">${planoAtual === 'Trial' ? 'Assinar Pro' : 'Selecionar'}</button>
           </div>
           <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Master'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
             <h4 style="margin:0 0 5px 0;">Master</h4>
-            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 790<small>/mês</small></p>
-            <small>10 fazendas, Talhões ilimitados<br>Copilot + Consultoria</small><br>
+            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 599<small>/mês</small></p>
+            <small>8 fazendas, tudo ilimitado<br>Roles + Admins ilimitados<br>Suporte prioritário</small><br>
             <button class="btn" style="margin-top:10px;" onclick="setPlano('Master')">Selecionar</button>
           </div>
         </div>
@@ -4123,14 +4138,27 @@ function pageConfiguracoes() {
         <p style="margin-top:15px; color:#64748b; font-size:13px;"><strong>Zerar dados:</strong> remove todas as fazendas, talhões, produtos, estoque, etc., mantendo apenas a safra atual.<br><strong>Restaurar demo:</strong> recria o banco com os dados de exemplo.</p>
       </div>
       <div class="config-card">
+        <h3>☁️ Sincronização na Nuvem (Supabase)</h3>
+        <div id="cloudSyncStatus" style="margin-bottom:12px;">
+          <p style="color:#64748b; font-size:13px;">Status: <b id="cloudStatusText">${typeof isSupabaseReady === 'function' && isSupabaseReady() ? '✅ Conectado ao Supabase' : '⚠️ Modo Offline (Supabase não configurado)'}</b></p>
+        </div>
+        <p style="color:#64748b; font-size:13px;">Seus dados são automaticamente sincronizados com a nuvem a cada alteração. Você também pode forçar uma sincronização manual.</p>
+        <div class="row" style="gap:10px; margin-top:10px;">
+          <button class="btn primary" id="btnForceSync">☁️ Sincronizar Agora</button>
+          <button class="btn" id="btnForceRestore">📥 Restaurar da Nuvem</button>
+        </div>
+      </div>
+
+      <div class="config-card">
         <h3>👤 Conta</h3>
         <p style="color:#64748b; font-size:13px;">Usuário: <b>${userSession?.user?.email || 'N/A'}</b></p>
+        <p style="color:#64748b; font-size:12px;">ID: <code style="font-size:11px;">${userSession?.user?.id || 'local'}</code></p>
         <button class="btn" id="btnLogout" style="margin-top:10px; background: #ef4444; color: white;">Sair da Conta</button>
       </div>
     </div>
   `;
 
-  document.getElementById("frmParams").addEventListener("submit", (e) => {
+  document.getElementById("frmParams").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const db2 = getDB();
@@ -4147,6 +4175,10 @@ function pageConfiguracoes() {
       pesoPadraoSaca: Number(fd.get("pesoPadraoSaca") || 60)
     };
     setDB(db2);
+    // Sync parâmetros diretamente no Supabase
+    if (typeof SupaCRUD !== 'undefined') {
+      try { await SupaCRUD.upsertParametros(db2.parametros); } catch (e) { console.warn('Sync params:', e.message); }
+    }
     toast("Parâmetros salvos", "Valores atualizados.");
   });
 
@@ -4166,8 +4198,10 @@ function pageConfiguracoes() {
         if (!data.safras) { alert("Arquivo inválido (não contém safras)."); return; }
         if (!confirm("Importar vai SUBSTITUIR todos os dados locais. Continuar?")) return;
         Storage.save(data);
-        toast("Importado", "Recarregando…");
-        setTimeout(() => location.reload(), 200);
+        // Sincronizar com a nuvem após importação
+        if (typeof cloudSync === 'function') cloudSync();
+        toast("Importado", "Recarregando e sincronizando com a nuvem…");
+        setTimeout(() => location.reload(), 500);
       } catch (e) { alert("Não foi possível ler o arquivo JSON."); }
     };
     input.click();
@@ -4210,11 +4244,51 @@ function pageConfiguracoes() {
     toast("Chave salva", "API Key configurada.");
   });
 
+  // Cloud Sync Manual
+  document.getElementById("btnForceSync")?.addEventListener("click", async () => {
+    if (typeof cloudSync !== 'function' || typeof isSupabaseReady !== 'function' || !isSupabaseReady()) {
+      toast("Offline", "Supabase não configurado. Configure as credenciais no supabase-client.js");
+      return;
+    }
+    toast("Sincronizando", "Enviando dados para a nuvem...");
+    cloudSync();
+    // Aguardar o debounce
+    setTimeout(() => toast("Sincronizado", "Dados enviados para a nuvem!"), 3000);
+  });
+
+  document.getElementById("btnForceRestore")?.addEventListener("click", async () => {
+    if (typeof cloudRestore !== 'function' || typeof isSupabaseReady !== 'function' || !isSupabaseReady()) {
+      toast("Offline", "Supabase não configurado.");
+      return;
+    }
+    if (!confirm("Isso vai SUBSTITUIR seus dados locais pelos dados da nuvem. Continuar?")) return;
+    toast("Restaurando", "Baixando dados da nuvem...");
+    try {
+      const restored = await cloudRestore();
+      if (restored) {
+        toast("Restaurado", "Dados da nuvem carregados! Recarregando...");
+        setTimeout(() => location.reload(), 500);
+      } else {
+        toast("Info", "Dados locais já estão atualizados ou nenhum backup encontrado.");
+      }
+    } catch (e) {
+      toast("Erro", "Falha ao restaurar: " + e.message);
+    }
+  });
+
   // Logout
-  document.getElementById("btnLogout").addEventListener("click", () => {
+  document.getElementById("btnLogout").addEventListener("click", async () => {
     if (!confirm("Deseja realmente sair da sua conta?")) return;
+    // Sync final
+    if (typeof cloudSync === 'function') cloudSync();
+    // SignOut Supabase
+    if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
+      try { await AuthService.signOut(); } catch (e) { console.warn('Logout:', e.message); }
+    }
     localStorage.removeItem("agro_session");
     localStorage.removeItem("agro_role");
+    localStorage.removeItem("agro_trial");
+    localStorage.removeItem("agro_plano");
     toast("Logout", "Você saiu da conta.");
     setTimeout(() => location.reload(), 300);
   });
@@ -6195,108 +6269,31 @@ function pageAjuda() {
 
 
 function pageCopilot() {
-  if (planoAtual === "Básico" || planoAtual === "Expirado") {
-    document.getElementById("content").innerHTML = `
-      <div class="card" style="text-align:center; padding: 50px;">
-        <h2>🤖 Agro-Copilot (IA)</h2>
-        <p>A IA Avançada está disponível apenas nos planos <b>PRO</b> e <b>MASTER</b>.</p>
-        <button class="btn primary" onclick="location.href='configuracoes.html'">Fazer Upgrade Agora</button>
-      </div>
-    `;
-    return;
-  }
-
-  const content = document.getElementById("content");
-  content.innerHTML = `
+  document.getElementById("content").innerHTML = `
     <div class="section">
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <h2>🤖 Agro-Copilot</h2>
-            <p>Converse com seus dados. Pergunte sobre custos, clima, estoque ou recomendações.</p>
-          </div>
-          <div class="plan-badge plan-${planoAtual.toLowerCase()}">Uso Ilimitado</div>
+      <div class="card" style="text-align:center; padding: 60px 30px;">
+        <div style="width:80px; height:80px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius:20px; display:flex; align-items:center; justify-content:center; margin: 0 auto 20px; font-size:36px;">
+          🤖
         </div>
-        
-        <div class="chat-container">
-          <div class="chat-messages" id="chatMsgs">
-            <div class="msg bot">Olá! Sou seu assistente Agro Pro. Como posso ajudar você hoje? Você pode perguntar sobre seus talhões, custos ou pedir recomendações de manejo.</div>
+        <h2 style="margin: 0 0 10px; color: #1e293b;">Agro-Copilot (IA)</h2>
+        <div style="display:inline-block; background: #dbeafe; color: #1d4ed8; padding: 4px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 20px;">EM BREVE</div>
+        <p style="color: #64748b; max-width: 500px; margin: 0 auto 25px; line-height: 1.6;">
+          Estamos desenvolvendo o <b>Agro-Copilot</b>, uma inteligência artificial avançada que vai conversar com seus dados e oferecer recomendações personalizadas de manejo, análise de custos e alertas inteligentes.
+        </p>
+        <div style="background: #f8fafc; border-radius: 12px; padding: 20px; max-width: 500px; margin: 0 auto; text-align: left;">
+          <h4 style="margin: 0 0 12px; color: #334155;">O que o Copilot vai fazer por você:</h4>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display:flex; align-items:center; gap:8px;"><span style="color:#10b981;">✓</span> Responder perguntas sobre seus dados em linguagem natural</div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="color:#10b981;">✓</span> Sugerir melhores práticas de manejo por cultura</div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="color:#10b981;">✓</span> Analisar custos e identificar oportunidades de economia</div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="color:#10b981;">✓</span> Alertar sobre condições climáticas e pragas</div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="color:#10b981;">✓</span> Gerar relatórios automáticos com insights</div>
           </div>
-          <form class="chat-input" id="chatFrm">
-            <input type="text" class="input" id="chatInp" placeholder="Digite sua pergunta aqui..." style="flex:1" required>
-            <button class="btn primary" type="submit">Enviar</button>
-          </form>
         </div>
-        
-        <p style="font-size:11px; color:#888; margin-top:10px;">⚠️ As respostas são geradas por IA e devem ser validadas por um profissional. <a href="ajuda.html">Saiba mais</a>.</p>
+        <p style="font-size: 12px; color: #94a3b8; margin-top: 20px;">Disponível nos planos <b>Pro</b> e <b>Master</b>. Você será notificado quando estiver disponível.</p>
       </div>
     </div>
   `;
-
-  const chatMsgs = document.getElementById("chatMsgs");
-  const chatFrm = document.getElementById("chatFrm");
-
-  chatFrm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const q = document.getElementById("chatInp").value;
-    if (!q) return;
-
-    // Adicionar msg do usuário
-    const uEl = document.createElement("div");
-    uEl.className = "msg user";
-    uEl.innerText = q;
-    chatMsgs.appendChild(uEl);
-    chatMsgs.scrollTop = chatMsgs.scrollHeight;
-    document.getElementById("chatInp").value = "";
-
-    // Msg de carregando
-    const bEl = document.createElement("div");
-    bEl.className = "msg bot";
-    bEl.innerText = "...";
-    chatMsgs.appendChild(bEl);
-    chatMsgs.scrollTop = chatMsgs.scrollHeight;
-
-    // Chamar IA
-    const db = getDB();
-    const context = `
-      CONTEXTO DO SISTEMA AGRO PRO:
-      Fazendas: ${db.fazendas.length}, Talhões: ${db.talhoes.length}, Safra: ${getSafraAtual()?.nome}
-      Resumo Financeiro: Receita Total ${brl(onlySafra(db.colheitas).reduce((s,c)=>s+c.producaoTotal*130,0))} (est.)
-      Estoque: ${db.estoque.length} itens.
-    `;
-    
-    // Simulação ou chamada real se houver chave
-    if (!window.__OPENAI_KEY) {
-      setTimeout(() => {
-        bEl.innerText = "Chave da API não configurada. Por favor, configure sua chave nas Configurações para usar o Agro-Copilot.";
-      }, 1000);
-      return;
-    }
-
-    const res = await callIA(q, context);
-    bEl.innerText = res;
-    chatMsgs.scrollTop = chatMsgs.scrollHeight;
-  });
-}
-
-async function callIA(question, context) {
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + window.__OPENAI_KEY },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: "Você é o Agro-Copilot, um assistente inteligente do sistema Agro Pro. Você tem acesso aos dados da fazenda e ajuda o produtor com análises e recomendações. Seja prático e direto. " + context },
-          { role: "user", content: question }
-        ]
-      })
-    });
-    const data = await response.json();
-    return data.choices[0].message.content;
-  } catch (e) {
-    return "Erro ao conectar com a IA: " + e.message;
-  }
 }
 
 function boot() {
@@ -6414,9 +6411,35 @@ function boot() {
   if (savedApiKey) { window.__OPENAI_KEY = savedApiKey; }
 
   
-  // Verificar Sessão
+  // Verificar Sessão (localStorage + Supabase)
   const sessionRaw = localStorage.getItem("agro_session");
   if (!sessionRaw && pageKey !== "login") {
+    // Verificar se tem sessão ativa no Supabase antes de redirecionar para login
+    if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
+      AuthService.getSession().then(async (session) => {
+        if (session && session.user) {
+          // Tem sessão no Supabase mas não no localStorage — restaurar
+          const profile = await AuthService.getUserProfile();
+          const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
+          localStorage.setItem("agro_session", JSON.stringify({ 
+            user: { id: session.user.id, email: session.user.email, nome: profile?.full_name || '', role: profile?.user_role || 'admin' } 
+          }));
+          localStorage.setItem("agro_role", profile?.user_role || 'admin');
+          if (profile?.plan_type) localStorage.setItem("agro_plano", planMap[profile.plan_type] || 'Trial');
+          if (profile?.trial_ends_at) {
+            const fim = new Date(profile.trial_ends_at);
+            const dias = Math.ceil((fim - new Date()) / (1000*60*60*24));
+            localStorage.setItem("agro_trial", JSON.stringify({ trial_ends_at: profile.trial_ends_at, created_at: profile.created_at, expirado: dias <= 0 }));
+          }
+          // Restaurar dados da nuvem
+          await cloudRestore();
+          location.reload();
+        } else {
+          pageLogin();
+        }
+      }).catch(() => pageLogin());
+      return;
+    }
     pageLogin();
     return;
   }
@@ -6424,12 +6447,14 @@ function boot() {
 
   // === CLOUD SYNC: Restaurar dados da nuvem se local estiver vazio ===
   // (executa de forma assíncrona, sem bloquear o carregamento)
-  cloudRestore().then(restored => {
-    if (restored) {
-      console.log('Cloud Sync: dados restaurados da nuvem! Recarregando...');
-      location.reload();
-    }
-  });
+  if (typeof cloudRestore === 'function') {
+    cloudRestore().then(restored => {
+      if (restored) {
+        console.log('Cloud Sync: dados restaurados da nuvem! Recarregando...');
+        location.reload();
+      }
+    }).catch(e => console.warn('Cloud Restore boot:', e.message));
+  }
 
   // === CARREGAR ROLE DO USUÁRIO ===
   // Prioridade: 1) sessão com role, 2) localStorage agro_role, 3) default admin
@@ -6513,10 +6538,20 @@ function boot() {
   else if (pageKey === "ajuda") pageAjuda();
   else if (pageKey === "config") pageConfiguracoes();
 
+  // === STATUS DE CONEXÃO COM A NUVEM ===
+  const cloudStatus = (typeof isSupabaseReady === 'function' && isSupabaseReady()) ? '☁️ Conectado' : '📴 Offline';
+  const cloudColor = (typeof isSupabaseReady === 'function' && isSupabaseReady()) ? '#4ade80' : '#f59e0b';
+  const sidebarBottom = document.querySelector('.sidebar > div:last-child');
+  if (sidebarBottom) {
+    sidebarBottom.insertAdjacentHTML('beforeend', `
+      <div style="margin-top: 8px; font-size: 10px; color: ${cloudColor}; text-align: center;">${cloudStatus}</div>
+    `);
+  }
+
   toast("Agro Pro", "Sistema carregado.");
 
   // === CLOUD SYNC: Fazer backup inicial na nuvem ===
-  cloudSync();
+  if (typeof cloudSync === 'function') cloudSync();
 }
 
 document.addEventListener("DOMContentLoaded", boot);// ============================================================================
