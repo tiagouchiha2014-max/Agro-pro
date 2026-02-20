@@ -17,11 +17,13 @@ let _supabaseReady = false;
 
 function initSupabase() {
   if (supabase) return true;
-  if (!SUPABASE_URL || SUPABASE_URL === "https://cqckmitwbevwkkxlzxdl.supabase.co" ||
-      !SUPABASE_ANON || SUPABASE_ANON === "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxY2ttaXR3YmV2d2treGx6eGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NTY5NzUsImV4cCI6MjA4NzEzMjk3NX0.rzuZ3DjmoJY8KaKEOb62TP7E74h-pU1KO9ZGoYNYTYg") {
+  // Verifica se as chaves foram preenchidas
+  if (!SUPABASE_URL || SUPABASE_URL.includes("COLE_SUA_URL") ||
+      !SUPABASE_ANON || SUPABASE_ANON.includes("COLE_SUA_ANON")) {
     console.warn("Supabase: credenciais não configuradas. Modo offline ativo.");
     return false;
   }
+
   try {
     // O Supabase JS SDK é carregado via CDN no HTML
     if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
