@@ -6441,13 +6441,19 @@ function boot() {
   }
   userSession = sessionRaw ? JSON.parse(sessionRaw) : null;
 
-  // === CLOUD SYNC: Restaurar dados da nuvem se local estiver vazio ===
+  // === CLOUD SYNC: Restaurar dados da nuvem + Sincronizar dados locais ===
   // (executa de forma assíncrona, sem bloquear o carregamento)
   if (typeof cloudRestore === 'function') {
     cloudRestore().then(restored => {
       if (restored) {
         console.log('Cloud Sync: dados restaurados da nuvem! Recarregando...');
         location.reload();
+      } else {
+        // Se nenhum dado foi restaurado, sincronizar dados locais para a nuvem
+        if (typeof cloudSync === 'function') {
+          console.log('Cloud Sync: sincronizando dados locais para a nuvem...');
+          cloudSync();
+        }
       }
     }).catch(e => console.warn('Cloud Restore boot:', e.message));
   }
