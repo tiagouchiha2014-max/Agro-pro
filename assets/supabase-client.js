@@ -1,12 +1,12 @@
 /* ============================================================
-   AGRO PRO — supabase-client.js (v2.0 — MIGRAÇÃO COMPLETA)
+   AGRO PRO — supabase-client.js (v2.2 — FIX FINAL CACHE)
    Integração com Supabase: Auth + Sync Granular + CRUD
    ============================================================ */
 // ============================================================
 // CONFIGURAÇÃO — Preencha com as credenciais do seu projeto Supabase
 // ============================================================
-const SUPABASE_URL  = "https://cqckmitwbevwkkxlzxdl.supabase.co";       // Ex: https://xyzcompany.supabase.co
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxY2ttaXR3YmV2d2treGx6eGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NTY5NzUsImV4cCI6MjA4NzEzMjk3NX0.rzuZ3DjmoJY8KaKEOb62TP7E74h-pU1KO9ZGoYNYTYg";  // Ex: eyJhbGciOiJIUzI1NiIs...
+const SUPABASE_URL  = "https://cqckmitwbevwkkxlzxdl.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxY2ttaXR3YmV2d2treGx6eGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NTY5NzUsImV4cCI6MjA4NzEzMjk3NX0.rzuZ3DjmoJY8KaKEOb62TP7E74h-pU1KO9ZGoYNYTYg";
 
 // ============================================================
 // INICIALIZAÇÃO DO CLIENTE SUPABASE
@@ -16,9 +16,9 @@ let _supabaseReady = false;
 
 function initSupabase() {
   if (supabase) return true;
-  if (!SUPABASE_URL || SUPABASE_URL === "COLE_SUA_URL_AQUI" ||
-      !SUPABASE_ANON || SUPABASE_ANON === "COLE_SUA_ANON_KEY_AQUI") {
-    console.warn("Supabase: credenciais não configuradas. Modo offline ativo.");
+  // v2.2: Conexão direta — sem travas de validação
+  if (!SUPABASE_URL || !SUPABASE_ANON) {
+    console.warn("Supabase: credenciais vazias. Modo offline ativo.");
     return false;
   }
   try {
@@ -32,7 +32,7 @@ function initSupabase() {
       return false;
     }
     _supabaseReady = true;
-    console.log("Supabase: cliente inicializado com sucesso.");
+    console.log("Supabase v2.2: cliente inicializado com sucesso!");
     return true;
   } catch (e) {
     console.error("Supabase: erro ao inicializar:", e.message);
@@ -273,7 +273,6 @@ async function syncGranular(userId, db) {
           snakeData.user_id = userId;
           delete snakeData.id; // Deixar o Supabase gerar UUID
           delete snakeData.created_at;
-          delete snakeData.updated_at;
 
           const { data: inserted, error: insErr } = await supabase
             .from(tableName)
