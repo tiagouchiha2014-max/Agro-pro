@@ -1,6 +1,6 @@
 /* ============================================================
-   AGRO PRO — app.js (v19 — SUPABASE CLOUD MIGRATION)
-   Migração completa: localStorage → Supabase
+   AGRO PRO — app.js (v20 — CORREÇÕES CHECKLIST COMPLETO)
+   Bugs críticos, segurança, namespace, sync robusto
    ============================================================ */
 
 let planoAtual = localStorage.getItem("agro_plano") || "Trial";
@@ -298,6 +298,13 @@ function nowISO() {
   const d = new Date();
   const pad = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Hash de senha com SHA-256 (substitui armazenamento em texto puro)
+async function _hashPassword(pass) {
+  const data = new TextEncoder().encode(pass);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 function escapeHtml(str) {
@@ -656,23 +663,15 @@ function renderShell(pageKey, title, subtitle) {
     if (confirm("Deseja realmente sair da conta?")) {
       toast("Saindo...", "Salvando dados na nuvem...");
       
-      // Fazer sync IMEDIATO antes de sair (sem debounce)
-      if (typeof cloudSyncImmediate === 'function') {
-        try { await cloudSyncImmediate(); } catch (e) { console.warn('Sync final:', e.message); }
-      }
+      // Fazer sync IMEDIATO antes de sair
+      try { if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate(); } catch (e) {}
       
       // SignOut do Supabase
-      if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
-        try { await AuthService.signOut(); } catch (e) { console.warn('Logout Supabase:', e.message); }
-      }
+      try { if (typeof AuthService !== 'undefined' && isSupabaseReady()) await AuthService.signOut(); } catch (e) {}
       
-      // Limpar TODOS os dados locais (sessão + banco)
-      localStorage.removeItem("agro_session");
-      localStorage.removeItem("agro_role");
-      localStorage.removeItem("agro_trial");
-      localStorage.removeItem("agro_plano");
-      localStorage.removeItem("agro_pro_v10");
-      // Importante: NÃO remover agro_team_accounts aqui, senão as contas de equipe somem!
+      // Limpar dados locais
+      ['agro_session','agro_role','agro_trial','agro_plano','agro_pro_v10'].forEach(k => localStorage.removeItem(k));
+      sessionStorage.clear();
       toast("Saindo...", "Até logo!");
       setTimeout(() => {
         window.location.href = "index.html";
@@ -1218,11 +1217,25 @@ function pageLogin() {
     
     // 1. Verificar se é uma conta de equipe (gerente/funcionário)
     const teamAccounts = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
-    console.log("Verificando contas de equipe:", teamAccounts);
-    const teamAccount = teamAccounts.find(c => c.email.toLowerCase() === email.toLowerCase() && c.senha === pass && c.ativo);
+    const teamAccount = await (async () => {
+      for (const c of teamAccounts) {
+        if (c.email.toLowerCase() !== email.toLowerCase() || !c.ativo) continue;
+        if (c.passHash) {
+          const h = await _hashPassword(pass);
+          if (h === c.passHash) return c;
+        } else if (c.senha === pass) {
+          // Migrar senha antiga para hash
+          c.passHash = await _hashPassword(pass);
+          delete c.senha;
+          localStorage.setItem("agro_team_accounts", JSON.stringify(teamAccounts));
+          return c;
+        }
+      }
+      return null;
+    })();
     
     if (teamAccount) {
-      console.log("Conta de equipe encontrada:", teamAccount.role);
+      // Conta de equipe encontrada
       localStorage.setItem("agro_session", JSON.stringify({ 
         user: { 
           email: teamAccount.email, 
@@ -4160,7 +4173,7 @@ function pageConfiguracoes() {
       <div class="config-card">
         <h3>☁️ Sincronização na Nuvem (Supabase)</h3>
         <div id="cloudSyncStatus" style="margin-bottom:12px;">
-          <p style="color:#64748b; font-size:13px;">Status: <b id="cloudStatusText">${window._cloudConnected === true || (typeof isSupabaseReady === 'function' && isSupabaseReady()) ? '✅ Conectado ao Supabase' : '⚠️ Modo Offline (Supabase não configurado)'}</b></p>
+          <p style="color:#64748b; font-size:13px;">Status: <b id="cloudStatusText">${(typeof isSupabaseReady === 'function' && isSupabaseReady()) ? '✅ Conectado ao Supabase' : '⚠️ Modo Offline'}</b></p>
         </div>
         <p style="color:#64748b; font-size:13px;">Seus dados são automaticamente sincronizados com a nuvem a cada alteração. Você também pode forçar uma sincronização manual.</p>
         <div class="row" style="gap:10px; margin-top:10px;">
@@ -4171,8 +4184,7 @@ function pageConfiguracoes() {
 
       <div class="config-card">
         <h3>👤 Conta</h3>
-        <p style="color:#64748b; font-size:13px;">Usuário: <b>${userSession?.user?.email || 'N/A'}</b></p>
-        <p style="color:#64748b; font-size:12px;">ID: <code style="font-size:11px;">${userSession?.user?.id || 'local'}</code></p>
+        <p style="color:#64748b; font-size:13px;">Usuário: <b>${escapeHtml(userSession?.user?.email || 'N/A')}</b></p>
         <button class="btn" id="btnLogout" style="margin-top:10px; background: #ef4444; color: white;">Sair da Conta</button>
       </div>
     </div>
@@ -4312,22 +4324,12 @@ function pageConfiguracoes() {
   document.getElementById("btnLogout").addEventListener("click", async () => {
     if (!confirm("Deseja realmente sair da sua conta?")) return;
     toast("Saindo...", "Salvando dados na nuvem...");
-    // Sync IMEDIATO final (sem debounce)
-    if (typeof cloudSyncImmediate === 'function') {
-      try { await cloudSyncImmediate(); } catch (e) { console.warn('Sync final:', e.message); }
-    }
-    // SignOut Supabase
-    if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
-      try { await AuthService.signOut(); } catch (e) { console.warn('Logout:', e.message); }
-    }
-    // Limpar TODOS os dados locais
-    localStorage.removeItem("agro_session");
-    localStorage.removeItem("agro_role");
-    localStorage.removeItem("agro_trial");
-    localStorage.removeItem("agro_plano");
-    localStorage.removeItem("agro_pro_v10");
+    try { if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate(); } catch (e) {}
+    try { if (typeof AuthService !== 'undefined' && isSupabaseReady()) await AuthService.signOut(); } catch (e) {}
+    ['agro_session','agro_role','agro_trial','agro_plano','agro_pro_v10'].forEach(k => localStorage.removeItem(k));
+    sessionStorage.clear();
     toast("Logout", "Você saiu da conta.");
-    setTimeout(() => location.reload(), 500);
+    setTimeout(() => { window.location.href = 'index.html'; }, 500);
   });
 }
 
@@ -6373,7 +6375,7 @@ function boot() {
       .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
       .topbar { 
         background: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center;
-        border-bottom: 1px solid #e2e8f0; sticky; top: 0; z-index: 100;
+        border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100;
       }
       .topbar h2 { margin: 0; font-size: 20px; color: #0f172a; }
       
@@ -6443,8 +6445,8 @@ function boot() {
     ajuda: ["Ajuda & Suporte", "Centro de Ajuda e Documentação"]
   };
 
-  // Carregar chave de IA globalmente (antes de qualquer pagina)
-  const savedApiKey = localStorage.getItem("agro_pro_openai_key") || "";
+  // Carregar chave de IA (sessionStorage para menor persistência)
+  const savedApiKey = sessionStorage.getItem("agro_pro_openai_key") || localStorage.getItem("agro_pro_openai_key") || "";
   if (savedApiKey) { window.__OPENAI_KEY = savedApiKey; }
 
   
@@ -6483,23 +6485,16 @@ function boot() {
   userSession = sessionRaw ? JSON.parse(sessionRaw) : null;
 
   // === CLOUD SYNC: Restaurar dados da nuvem + Sincronizar dados locais ===
-  // (executa de forma assíncrona, sem bloquear o carregamento)
   if (typeof cloudRestore === 'function' && !sessionStorage.getItem('_cloudRestored')) {
     cloudRestore().then(restored => {
       if (restored) {
-        console.log('Cloud Sync: dados restaurados da nuvem! Recarregando...');
         sessionStorage.setItem('_cloudRestored', '1');
         location.reload();
-      } else {
-        // Se nenhum dado foi restaurado, sincronizar dados locais para a nuvem
-        if (typeof cloudSync === 'function') {
-          console.log('Cloud Sync: sincronizando dados locais para a nuvem...');
-          cloudSync();
-        }
+      } else if (typeof cloudSync === 'function') {
+        cloudSync();
       }
-    }).catch(e => console.warn('Cloud Restore boot:', e.message));
+    }).catch(() => {});
   } else if (typeof cloudSync === 'function') {
-    // Já restaurou antes, apenas sincronizar
     cloudSync();
   }
 
