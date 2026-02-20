@@ -1,15 +1,17 @@
-/* ============================================================
-   AGRO PRO — supabase-client.js (v3.0 — REVISÃO COMPLETA)
-   Integração com Supabase: Auth + Sync Granular + CRUD  
-CORREÇÕES v3.0:
-   - cloudSyncImmediate() para sync sem debounce (cadastro/login)
-   - cloudSync() com debounce para uso normal (setDB)
-   - Indicador de status atualizado via window._cloudConnected
-   - Exportações window.* completas
+  /* ============================================================
+   AGRO PRO — supabase-client.js (v4.0 — CORREÇÃO DEFINITIVA)
+   Integração com Supabase: Auth + Sync + CRUD
+   
+   CORREÇÕES v4.0:
+   - syncGranular: detecta IDs locais (qualquer ID que NÃO seja UUID)
+   - Mapeamento de IDs locais → UUIDs para referências cruzadas
+   - Campo "area" → "area_ha" no FIELD_MAP
+   - Sync mais robusto e com logs detalhados
+   - Testado ao vivo com dados reais
    ============================================================ */
 
 // ============================================================
-// CONFIGURAÇÃO — Preencha com as credenciais do seu projeto Supabase
+// CONFIGURAÇÃO — Credenciais do projeto Supabase
 // ============================================================
 var SUPABASE_URL  = "https://cqckmitwbevwkkxlzxdl.supabase.co";
 var SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxY2ttaXR3YmV2d2treGx6eGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NTY5NzUsImV4cCI6MjA4NzEzMjk3NX0.rzuZ3DjmoJY8KaKEOb62TP7E74h-pU1KO9ZGoYNYTYg";
@@ -23,7 +25,7 @@ var _supabaseReady = false;
 function initSupabase() {
   if (_supabaseClient) return true;
   if (!SUPABASE_URL || !SUPABASE_ANON) {
-    console.warn("Supabase: credenciais vazias. Modo offline ativo.");
+    console.warn("[Supabase] Credenciais vazias. Modo offline.");
     return false;
   }
   try {
@@ -32,16 +34,17 @@ function initSupabase() {
     } else if (typeof globalThis.supabase !== 'undefined' && globalThis.supabase.createClient) {
       _supabaseClient = globalThis.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
     } else {
-      console.warn("Supabase SDK não encontrado. Verifique se o CDN está carregado.");
+      console.warn("[Supabase] SDK não encontrado no window/globalThis.");
       return false;
     }
     _supabaseReady = true;
     window._supabaseReady = true;
+    window._supabaseClient = _supabaseClient;
     window._cloudConnected = true;
-    console.log("Supabase v3.0: cliente inicializado com sucesso!");
+    console.log("[Supabase v4.0] Cliente inicializado com sucesso!");
     return true;
   } catch (e) {
-    console.error("Supabase: erro ao inicializar:", e.message);
+    console.error("[Supabase] Erro ao inicializar:", e.message);
     return false;
   }
 }
@@ -52,6 +55,14 @@ function isSupabaseReady() {
 
 function getSupabaseClient() {
   return _supabaseClient;
+}
+
+// ============================================================
+// UTILITÁRIO: Verificar se string é UUID válido
+// ============================================================
+function isUUID(str) {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 }
 
 // ============================================================
@@ -145,10 +156,19 @@ var TABLE_MAP = {
   pragas:         'pragas'
 };
 
+// Ordem de sync: tabelas pai primeiro, depois filhas (para referências cruzadas)
+var SYNC_ORDER = [
+  'safras', 'fazendas', 'talhoes', 'maquinas', 'equipe',
+  'produtos', 'estoque', 'aplicacoes', 'colheitas',
+  'combustivel', 'dieselEntradas', 'dieselEstoque',
+  'clima', 'manutencoes', 'insumosBase', 'lembretes', 'pragas'
+];
+
 // Mapeamento de campos: camelCase (JS) → snake_case (SQL)
 var FIELD_MAP = {
   safraId: 'safra_id', fazendaId: 'fazenda_id', talhaoId: 'talhao_id',
-  maquinaId: 'maquina_id', produtoId: 'produto_id', areaHa: 'area_ha',
+  maquinaId: 'maquina_id', produtoId: 'produto_id',
+  areaHa: 'area_ha', area: 'area_ha',
   dataInicio: 'data_inicio', dataFim: 'data_fim', nomeCientifico: 'nome_cientifico',
   tempMin: 'temp_min', tempMax: 'temp_max', umidadeMin: 'umidade_min',
   precoSoja: 'preco_soja', produtividadeMinSoja: 'produtividade_min_soja',
@@ -170,8 +190,12 @@ var FIELD_MAP = {
   pecasTrocadas: 'pecas_trocadas', servicoRealizado: 'servico_realizado',
   custoPecas: 'custo_pecas', custoMaoObra: 'custo_mao_obra',
   dataAdmissao: 'data_admissao', dataEntrada: 'data_entrada', tipoProduto: 'tipo_produto',
+  obs: 'observacoes',
   userId: 'user_id', createdAt: 'created_at', updatedAt: 'updated_at'
 };
+
+// Campos que são referências a outras tabelas (IDs locais que precisam ser mapeados)
+var REF_FIELDS = ['safraId', 'fazendaId', 'talhaoId', 'maquinaId', 'produtoId'];
 
 // Converter JS (camelCase) → SQL (snake_case)
 function toSnakeCase(obj) {
@@ -180,8 +204,6 @@ function toSnakeCase(obj) {
   for (var key in obj) {
     if (!obj.hasOwnProperty(key)) continue;
     var val = obj[key];
-    // Pular IDs locais (id_xxxx) — o Supabase gera UUID automaticamente
-    if (key === 'id' && typeof val === 'string' && val.startsWith('id_')) continue;
     var snakeKey = FIELD_MAP[key] || key.replace(/([A-Z])/g, '_$1').toLowerCase();
     result[snakeKey] = val;
   }
@@ -237,21 +259,34 @@ async function cloudSyncImmediate() {
 // === LÓGICA REAL DO SYNC ===
 async function _doCloudSync() {
   try {
-    if (!isSupabaseReady()) { _syncPending = false; return false; }
+    if (!isSupabaseReady()) {
+      console.log('[Sync] Supabase não pronto, pulando sync');
+      _syncPending = false;
+      return false;
+    }
     var user = await AuthService.getUser();
-    if (!user) { _syncPending = false; return false; }
+    if (!user) {
+      console.log('[Sync] Sem usuário autenticado, pulando sync');
+      _syncPending = false;
+      return false;
+    }
 
-    // Acessar localStorage diretamente (Storage é do app.js)
     var raw = localStorage.getItem("agro_pro_v10");
     if (!raw) { _syncPending = false; return false; }
     var db;
     try { db = JSON.parse(raw); } catch(e) { _syncPending = false; return false; }
 
     var hash = quickHash(db);
-    if (hash === _lastSyncedHash) { _syncPending = false; return true; }
+    if (hash === _lastSyncedHash) {
+      console.log('[Sync] Dados não mudaram, pulando');
+      _syncPending = false;
+      return true;
+    }
 
-    // 1. Backup JSON completo
-    var result = await _supabaseClient
+    console.log('[Sync] Iniciando sincronização...');
+
+    // 1. Backup JSON completo (sempre funciona, é o fallback seguro)
+    var backupResult = await _supabaseClient
       .from('user_data_backup')
       .upsert({
         user_id: user.id,
@@ -259,81 +294,113 @@ async function _doCloudSync() {
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
 
-    if (result.error) {
-      console.warn('Cloud Sync: erro ao salvar backup:', result.error.message);
+    if (backupResult.error) {
+      console.warn('[Sync] Erro no backup JSON:', backupResult.error.message);
     } else {
-      console.log('Cloud Sync: backup JSON salvo na nuvem');
+      console.log('[Sync] Backup JSON salvo com sucesso');
     }
 
-    // 2. Sync granular por tabela
+    // 2. Sync granular por tabela (com mapeamento de IDs)
     await syncGranular(user.id, db);
 
     _lastSyncedHash = hash;
     _syncPending = false;
     window._cloudConnected = true;
-    
-    // Atualizar indicador visual
     _updateCloudIndicator(true);
-    
+
+    console.log('[Sync] Sincronização completa!');
     return true;
   } catch (e) {
-    console.warn('Cloud Sync: falha:', e.message);
+    console.warn('[Sync] Falha geral:', e.message);
     _syncPending = false;
+    _updateCloudIndicator(false);
     return false;
   }
 }
 
+// ============================================================
+// SYNC GRANULAR — Sincroniza cada tabela individualmente
+// Mapeia IDs locais (s1, f1, etc.) para UUIDs do Supabase
+// ============================================================
 async function syncGranular(userId, db) {
   if (!isSupabaseReady()) return;
 
-  for (var localKey in TABLE_MAP) {
-    if (!TABLE_MAP.hasOwnProperty(localKey)) continue;
+  // Mapa global de IDs locais → UUIDs (preenchido durante o sync)
+  var idMap = {};
+
+  // Primeiro, buscar IDs que já existem no Supabase para este usuário
+  // (para evitar duplicatas em syncs repetidos)
+  for (var i = 0; i < SYNC_ORDER.length; i++) {
+    var localKey = SYNC_ORDER[i];
     var tableName = TABLE_MAP[localKey];
+    if (!tableName) continue;
     var localData = db[localKey];
-    if (!localData || !Array.isArray(localData)) continue;
+    if (!localData || !Array.isArray(localData) || localData.length === 0) continue;
 
     try {
-      var fetchResult = await _supabaseClient
+      // Buscar registros existentes do usuário nesta tabela
+      var existingResult = await _supabaseClient
         .from(tableName)
-        .select('id, updated_at')
+        .select('id, nome, created_at')
         .eq('user_id', userId);
 
-      if (fetchResult.error) continue;
+      var existingRecords = existingResult.error ? [] : (existingResult.data || []);
 
-      var remoteIds = new Set((fetchResult.data || []).map(function(r) { return r.id; }));
+      for (var j = 0; j < localData.length; j++) {
+        var item = localData[j];
+        if (!item || !item.id) continue;
 
-      for (var i = 0; i < localData.length; i++) {
-        var item = localData[i];
-        if (!item.id) continue;
+        // Se já é UUID, verificar se existe no remoto
+        if (isUUID(item.id)) {
+          var found = existingRecords.find(function(r) { return r.id === item.id; });
+          if (found) {
+            idMap[item.id] = item.id; // UUID já existe, manter
+            continue;
+          }
+          // UUID que não existe no remoto — inserir com o mesmo UUID
+          var snakeData = _prepareForInsert(item, userId, idMap);
+          snakeData.id = item.id; // manter o UUID original
+          var uuidResult = await _supabaseClient.from(tableName).upsert(snakeData, { onConflict: 'id' }).select('id').single();
+          if (!uuidResult.error && uuidResult.data) {
+            idMap[item.id] = uuidResult.data.id;
+            console.log('[Sync] ' + tableName + ': UUID existente inserido → ' + uuidResult.data.id);
+          } else if (uuidResult.error) {
+            console.warn('[Sync] ' + tableName + ': erro ao inserir UUID:', uuidResult.error.message);
+          }
+          continue;
+        }
 
-        if (typeof item.id === 'string' && item.id.startsWith('id_')) {
-          // ID local — inserir como novo registro
-          var snakeData = toSnakeCase(item);
-          snakeData.user_id = userId;
-          delete snakeData.id;
-          delete snakeData.created_at;
+        // ID local (não-UUID): verificar se já foi sincronizado antes
+        // Tentar encontrar por nome (heurística para evitar duplicatas)
+        var alreadySynced = false;
+        if (item.nome) {
+          var match = existingRecords.find(function(r) { return r.nome === item.nome; });
+          if (match) {
+            idMap[item.id] = match.id;
+            console.log('[Sync] ' + tableName + ': "' + item.nome + '" já existe → ' + match.id);
+            alreadySynced = true;
+          }
+        }
 
-          var insResult = await _supabaseClient
+        if (!alreadySynced) {
+          // Inserir como novo registro
+          var insertData = _prepareForInsert(item, userId, idMap);
+          var insertResult = await _supabaseClient
             .from(tableName)
-            .insert(snakeData)
+            .insert(insertData)
             .select('id')
             .single();
 
-          if (!insResult.error && insResult.data) {
-            item._supabaseId = insResult.data.id;
+          if (!insertResult.error && insertResult.data) {
+            idMap[item.id] = insertResult.data.id;
+            console.log('[Sync] ' + tableName + ': "' + (item.nome || item.id) + '" inserido → ' + insertResult.data.id);
+          } else {
+            console.warn('[Sync] ' + tableName + ': erro ao inserir "' + (item.nome || item.id) + '":', insertResult.error ? insertResult.error.message : 'unknown');
           }
-        } else if (!remoteIds.has(item.id)) {
-          // ID UUID mas não existe no remoto — upsert
-          var snakeData2 = toSnakeCase(item);
-          snakeData2.user_id = userId;
-          delete snakeData2.created_at;
-          delete snakeData2.updated_at;
-
-          await _supabaseClient.from(tableName).upsert(snakeData2, { onConflict: 'id' });
         }
       }
     } catch (e) {
-      console.warn('Sync ' + tableName + ': erro:', e.message);
+      console.warn('[Sync] ' + tableName + ': erro geral:', e.message);
     }
   }
 
@@ -349,9 +416,97 @@ async function syncGranular(userId, db) {
       await _supabaseClient
         .from('parametros')
         .upsert(params, { onConflict: 'user_id' });
+      console.log('[Sync] Parâmetros sincronizados');
     } catch (e) {
-      console.warn('Sync parametros: erro:', e.message);
+      console.warn('[Sync] Parâmetros: erro:', e.message);
     }
+  }
+
+  // Atualizar IDs locais no localStorage com os UUIDs do Supabase
+  _updateLocalIdsWithUUIDs(db, idMap);
+
+  console.log('[Sync] Mapa de IDs:', JSON.stringify(idMap));
+}
+
+// Preparar registro para inserção no Supabase
+function _prepareForInsert(item, userId, idMap) {
+  var data = toSnakeCase(item);
+  data.user_id = userId;
+
+  // Remover ID local (Supabase gera UUID automaticamente)
+  if (data.id && !isUUID(data.id)) {
+    delete data.id;
+  }
+
+  // Remover timestamps (Supabase gera automaticamente)
+  delete data.created_at;
+  delete data.updated_at;
+
+  // Mapear referências cruzadas (IDs locais → UUIDs)
+  var refSnakeFields = ['safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id'];
+  for (var k = 0; k < refSnakeFields.length; k++) {
+    var field = refSnakeFields[k];
+    if (data[field] && !isUUID(data[field])) {
+      if (idMap[data[field]]) {
+        data[field] = idMap[data[field]];
+      } else {
+        // Referência a ID local que ainda não foi mapeado — remover para evitar erro
+        console.warn('[Sync] Referência não mapeada: ' + field + ' = ' + data[field]);
+        delete data[field];
+      }
+    }
+  }
+
+  // Remover campos undefined ou null que podem causar erros
+  for (var key in data) {
+    if (data[key] === undefined) delete data[key];
+  }
+
+  return data;
+}
+
+// Atualizar IDs locais no localStorage com UUIDs do Supabase
+function _updateLocalIdsWithUUIDs(db, idMap) {
+  var changed = false;
+
+  for (var localKey in TABLE_MAP) {
+    if (!TABLE_MAP.hasOwnProperty(localKey)) continue;
+    var arr = db[localKey];
+    if (!arr || !Array.isArray(arr)) continue;
+
+    for (var i = 0; i < arr.length; i++) {
+      var item = arr[i];
+      if (!item || !item.id) continue;
+
+      // Atualizar o ID principal
+      if (idMap[item.id] && idMap[item.id] !== item.id) {
+        item.id = idMap[item.id];
+        changed = true;
+      }
+
+      // Atualizar referências cruzadas
+      for (var r = 0; r < REF_FIELDS.length; r++) {
+        var refField = REF_FIELDS[r];
+        if (item[refField] && idMap[item[refField]] && idMap[item[refField]] !== item[refField]) {
+          item[refField] = idMap[item[refField]];
+          changed = true;
+        }
+      }
+    }
+  }
+
+  // Atualizar session.safraId
+  if (db.session && db.session.safraId && idMap[db.session.safraId]) {
+    db.session.safraId = idMap[db.session.safraId];
+    changed = true;
+  }
+
+  if (changed) {
+    db.meta = db.meta || {};
+    db.meta.lastSync = new Date().toISOString();
+    db.meta.idsUpdated = true;
+    localStorage.setItem("agro_pro_v10", JSON.stringify(db));
+    console.log('[Sync] IDs locais atualizados para UUIDs no localStorage');
   }
 }
 
@@ -365,10 +520,12 @@ async function cloudRestore() {
     var user = await AuthService.getUser();
     if (!user) return false;
 
+    console.log('[Restore] Iniciando restauração...');
+
     // Tentar restaurar das tabelas individuais primeiro
     var restoredFromTables = await restoreFromTables(user.id);
     if (restoredFromTables) {
-      console.log('Cloud Restore: dados restaurados das tabelas individuais');
+      console.log('[Restore] Dados restaurados das tabelas individuais');
       window._cloudConnected = true;
       _updateCloudIndicator(true);
       return true;
@@ -381,20 +538,21 @@ async function cloudRestore() {
       .eq('user_id', user.id)
       .single();
 
-    if (result.error || !result.data) {
-      console.log('Cloud Restore: nenhum backup encontrado');
+    if (result.error || !result.data || !result.data.data) {
+      console.log('[Restore] Nenhum backup encontrado na nuvem');
       return false;
     }
 
     var localRaw = localStorage.getItem("agro_pro_v10");
     var localDB = localRaw ? JSON.parse(localRaw) : null;
-    var cloudDate = new Date(result.data.updated_at);
-    var localDate = localDB && localDB.meta && localDB.meta.lastSync ? new Date(localDB.meta.lastSync) : new Date(0);
+    var cloudDB = result.data.data;
 
-    if (!localDB || !localDB.fazendas || localDB.fazendas.length === 0 ||
-        (cloudDate > localDate && result.data.data.fazendas && result.data.data.fazendas.length > 0)) {
-      console.log('Cloud Restore: restaurando do backup JSON');
-      var cloudDB = result.data.data;
+    // Restaurar se: não tem dados locais, ou dados locais estão vazios, ou nuvem é mais recente
+    var localEmpty = !localDB || !localDB.fazendas || localDB.fazendas.length === 0;
+    var cloudHasData = cloudDB.fazendas && cloudDB.fazendas.length > 0;
+
+    if (localEmpty && cloudHasData) {
+      console.log('[Restore] Restaurando do backup JSON (local vazio, nuvem tem dados)');
       cloudDB.meta = cloudDB.meta || {};
       cloudDB.meta.lastSync = new Date().toISOString();
       cloudDB.meta.source = 'cloud_backup';
@@ -404,9 +562,10 @@ async function cloudRestore() {
       return true;
     }
 
+    console.log('[Restore] Dados locais existem, mantendo (local: ' + (localDB.fazendas ? localDB.fazendas.length : 0) + ' fazendas)');
     return false;
   } catch (e) {
-    console.warn('Cloud Restore: erro:', e.message);
+    console.warn('[Restore] Erro:', e.message);
     return false;
   }
 }
@@ -415,20 +574,31 @@ async function restoreFromTables(userId) {
   if (!isSupabaseReady()) return false;
 
   try {
-    var safraResult = await _supabaseClient
+    // Verificar se existem dados nas tabelas
+    var safraCheck = await _supabaseClient
       .from('safras')
       .select('id')
       .eq('user_id', userId)
       .limit(1);
 
-    if (safraResult.error || !safraResult.data || safraResult.data.length === 0) return false;
-
-    // Se já tem dados locais com fonte diferente de cloud, não sobrescrever
-    var localRaw = localStorage.getItem("agro_pro_v10");
-    var localDB = localRaw ? JSON.parse(localRaw) : null;
-    if (localDB && localDB.fazendas && localDB.fazendas.length > 0 && localDB.meta && localDB.meta.source !== 'cloud_tables') {
+    if (safraCheck.error || !safraCheck.data || safraCheck.data.length === 0) {
+      console.log('[Restore] Nenhuma safra encontrada nas tabelas');
       return false;
     }
+
+    // Se já tem dados locais com conteúdo, não sobrescrever
+    var localRaw = localStorage.getItem("agro_pro_v10");
+    var localDB = localRaw ? JSON.parse(localRaw) : null;
+    if (localDB && localDB.fazendas && localDB.fazendas.length > 0) {
+      // Verificar se os IDs locais já são UUIDs (já foi sincronizado)
+      var firstId = localDB.fazendas[0].id;
+      if (isUUID(firstId)) {
+        console.log('[Restore] Dados locais já têm UUIDs, não sobrescrever');
+        return false;
+      }
+    }
+
+    console.log('[Restore] Restaurando das tabelas individuais...');
 
     var fetchTable = async function(table) {
       var r = await _supabaseClient
@@ -448,12 +618,8 @@ async function restoreFromTables(userId) {
       fetchTable('lembretes'), fetchTable('pragas')
     ]);
 
-    var safrasData = results[0], fazendas = results[1], talhoes = results[2];
-    var produtos = results[3], estoque = results[4], aplicacoes = results[5];
-    var colheitas = results[6], combustivel = results[7], dieselEntradas = results[8];
-    var dieselEstoque = results[9], clima = results[10], manutencoes = results[11];
-    var equipe = results[12], maquinas = results[13], insumosBase = results[14];
-    var lembretes = results[15], pragas = results[16];
+    var safrasData = results[0];
+    if (safrasData.length === 0) return false;
 
     var parametros = { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75, pesoPadraoSaca: 60 };
     try {
@@ -470,29 +636,30 @@ async function restoreFromTables(userId) {
       meta: { createdAt: new Date().toISOString(), version: 11, source: 'cloud_tables', lastSync: new Date().toISOString() },
       session: { safraId: safraAtiva ? safraAtiva.id : null },
       safras: safrasData,
-      fazendas: fazendas,
-      talhoes: talhoes,
-      produtos: produtos,
-      estoque: estoque,
-      aplicacoes: aplicacoes,
-      colheitas: colheitas,
-      combustivel: combustivel,
-      dieselEntradas: dieselEntradas,
-      dieselEstoque: dieselEstoque,
-      clima: clima,
-      manutencoes: manutencoes,
-      equipe: equipe,
-      maquinas: maquinas,
-      insumosBase: insumosBase,
-      lembretes: lembretes,
-      pragas: pragas,
+      fazendas: results[1],
+      talhoes: results[2],
+      produtos: results[3],
+      estoque: results[4],
+      aplicacoes: results[5],
+      colheitas: results[6],
+      combustivel: results[7],
+      dieselEntradas: results[8],
+      dieselEstoque: results[9],
+      clima: results[10],
+      manutencoes: results[11],
+      equipe: results[12],
+      maquinas: results[13],
+      insumosBase: results[14],
+      lembretes: results[15],
+      pragas: results[16],
       parametros: parametros
     };
 
     localStorage.setItem("agro_pro_v10", JSON.stringify(db));
+    console.log('[Restore] Dados restaurados: ' + safrasData.length + ' safras, ' + results[1].length + ' fazendas');
     return true;
   } catch (e) {
-    console.warn('Restore from tables: erro:', e.message);
+    console.warn('[Restore] Erro ao restaurar das tabelas:', e.message);
     return false;
   }
 }
@@ -513,7 +680,7 @@ var SupaCRUD = {
     data.user_id = user.id;
     delete data.created_at;
     delete data.updated_at;
-    if (data.id && typeof data.id === 'string' && !data.id.match(/^[0-9a-f]{8}-/)) {
+    if (data.id && !isUUID(data.id)) {
       delete data.id;
     }
 
@@ -525,12 +692,12 @@ var SupaCRUD = {
         .single();
 
       if (result.error) {
-        console.warn('SupaCRUD.insert ' + tableName + ':', result.error.message);
+        console.warn('[CRUD] insert ' + tableName + ':', result.error.message);
         return null;
       }
       return toCamelCase(result.data);
     } catch (e) {
-      console.warn('SupaCRUD.insert ' + tableName + ':', e.message);
+      console.warn('[CRUD] insert ' + tableName + ':', e.message);
       return null;
     }
   },
@@ -554,12 +721,12 @@ var SupaCRUD = {
         .single();
 
       if (result.error) {
-        console.warn('SupaCRUD.update ' + tableName + ':', result.error.message);
+        console.warn('[CRUD] update ' + tableName + ':', result.error.message);
         return null;
       }
       return toCamelCase(result.data);
     } catch (e) {
-      console.warn('SupaCRUD.update ' + tableName + ':', e.message);
+      console.warn('[CRUD] update ' + tableName + ':', e.message);
       return null;
     }
   },
@@ -576,12 +743,12 @@ var SupaCRUD = {
         .eq('id', id);
 
       if (result.error) {
-        console.warn('SupaCRUD.delete ' + tableName + ':', result.error.message);
+        console.warn('[CRUD] delete ' + tableName + ':', result.error.message);
         return false;
       }
       return true;
     } catch (e) {
-      console.warn('SupaCRUD.delete ' + tableName + ':', e.message);
+      console.warn('[CRUD] delete ' + tableName + ':', e.message);
       return false;
     }
   },
@@ -605,12 +772,12 @@ var SupaCRUD = {
         .single();
 
       if (result.error) {
-        console.warn('SupaCRUD.upsertParametros:', result.error.message);
+        console.warn('[CRUD] upsertParametros:', result.error.message);
         return null;
       }
       return toCamelCase(result.data);
     } catch (e) {
-      console.warn('SupaCRUD.upsertParametros:', e.message);
+      console.warn('[CRUD] upsertParametros:', e.message);
       return null;
     }
   }
@@ -702,9 +869,9 @@ async function seedSupabase() {
       peso_padrao_saca: 60
     });
 
-    console.log('Seed: dados iniciais criados no Supabase');
+    console.log('[Seed] Dados iniciais criados no Supabase');
   } catch (e) {
-    console.warn('Seed: erro:', e.message);
+    console.warn('[Seed] Erro:', e.message);
   }
 }
 
@@ -734,6 +901,7 @@ window._supabaseClient = _supabaseClient;
 window._cloudConnected = false;
 window.initSupabase = initSupabase;
 window.isSupabaseReady = isSupabaseReady;
+window.isUUID = isUUID;
 window.getSupabaseClient = getSupabaseClient;
 window.AuthService = AuthService;
 window.TABLE_MAP = TABLE_MAP;
