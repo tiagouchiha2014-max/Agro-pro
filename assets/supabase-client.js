@@ -7,7 +7,7 @@
 // CONFIGURAÇÃO — Preencha com as credenciais do seu projeto Supabase
 // ============================================================
 const SUPABASE_URL  = "https://cqckmitwbevwkkxlzxdl.supabase.co";       // Ex: https://xyzcompany.supabase.co
-const SUPABASE_ANON = "sb_publishable_Pp-YmHOV08QQs6lbCxA0gw_5n2UcUD5";  // Ex: eyJhbGciOiJIUzI1NiIs...
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxY2ttaXR3YmV2d2treGx6eGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NTY5NzUsImV4cCI6MjA4NzEzMjk3NX0.rzuZ3DjmoJY8KaKEOb62TP7E74h-pU1KO9ZGoYNYTYg";  // Ex: eyJhbGciOiJIUzI1NiIs...
 
 // ============================================================
 // INICIALIZAÇÃO DO CLIENTE SUPABASE
