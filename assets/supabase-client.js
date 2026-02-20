@@ -1,7 +1,3 @@
-/* ============================================================
-   AGRO PRO — supabase-client.js (v2.0 — MIGRAÇÃO COMPLETA)
-   Integração com Supabase: Auth + Sync Granular + CRUD
-   ============================================================ */
 
 // ============================================================
 // CONFIGURAÇÃO — Preencha com as credenciais do seu projeto Supabase
@@ -17,13 +13,11 @@ let _supabaseReady = false;
 
 function initSupabase() {
   if (supabase) return true;
-  // Verifica se as chaves foram preenchidas
-  if (!SUPABASE_URL || SUPABASE_URL.includes("COLE_SUA_URL") ||
-      !SUPABASE_ANON || SUPABASE_ANON.includes("COLE_SUA_ANON")) {
+  if (!SUPABASE_URL || SUPABASE_URL === "COLE_SUA_URL_AQUI" ||
+      !SUPABASE_ANON || SUPABASE_ANON === "COLE_SUA_ANON_KEY_AQUI") {
     console.warn("Supabase: credenciais não configuradas. Modo offline ativo.");
     return false;
   }
-
   try {
     // O Supabase JS SDK é carregado via CDN no HTML
     if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
