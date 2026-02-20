@@ -1,4 +1,7 @@
-
+/* ============================================================
+   AGRO PRO — supabase-client.js (v2.0 — MIGRAÇÃO COMPLETA)
+   Integração com Supabase: Auth + Sync Granular + CRUD
+   ============================================================ */
 // ============================================================
 // CONFIGURAÇÃO — Preencha com as credenciais do seu projeto Supabase
 // ============================================================
