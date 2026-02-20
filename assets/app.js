@@ -1777,9 +1777,7 @@ function pageCentralGestao() {
 
   `;
 
-  // Carregar API key salva (global)
-  const savedKey = localStorage.getItem("agro_pro_openai_key") || "";
-  if (savedKey) { window.__OPENAI_KEY = savedKey; }
+  // API Key removida do front-end — IA via Edge Function
 
   // Botão buscar cotação de grãos
   document.getElementById("btnBuscarPreco").addEventListener("click", async () => {
@@ -1847,9 +1845,8 @@ function pageCentralGestao() {
   };
 
   async function executarAnaliseIA(talhaoId) {
-    if (!window.__OPENAI_KEY) {
-      toast("Erro", "Configure sua chave da API OpenAI em Configurações.");
-      if (confirm("Deseja ir para Configurações para configurar a chave?")) { location.href = "configuracoes.html"; }
+    if (!isSupabaseReady()) {
+      toast("Erro", "Conecte-se à internet e faça login para usar a IA.");
       return;
     }
 
@@ -4137,13 +4134,9 @@ function pageConfiguracoes() {
       ${userRole === 'admin' ? '' : '</div>'}
 
       ${userRole !== 'funcionario' ? `<div class="config-card">
-        <h3>🔑 Configuração da IA (API Key)</h3>` : '<div style="display:none;">'}
-        <p style="color:#64748b; font-size:13px;">Para usar o Agro-Copilot e a IA Prescritiva, informe sua chave da API OpenAI. A chave é armazenada apenas localmente no seu navegador.</p>
-        <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
-          <input class="input" id="inputApiKeyConfig" type="password" placeholder="sk-..." style="max-width:400px;" value="">
-          <button class="btn primary" id="btnSalvarKeyConfig">Salvar Chave</button>
-        </div>
-        <div style="margin-top:8px; font-size:12px; color:#64748b;" id="statusKeyConfig"></div>
+        <h3>🤖 Inteligência Artificial</h3>` : '<div style="display:none;">'}
+        <p style="color:#64748b; font-size:13px;">A IA do Agro Pro é gerenciada de forma segura pelo servidor. Não é necessário configurar chaves.</p>
+        <div style="margin-top:8px; font-size:12px; color:#4ade80;" id="statusKeyConfig">✅ IA disponível — processada no servidor com segurança</div>
        </div>
       ${userRole === 'admin' ? `<div class="config-card">
         <h3>⚙️ Parâmetros de Mercado</h3>` : '<div style="display:none;">'}
@@ -4269,21 +4262,9 @@ function pageConfiguracoes() {
     setTimeout(() => location.reload(), 200);
   });
 
-  // Listeners da API Key na Configuração
-  const savedKeyConfig = localStorage.getItem("agro_pro_openai_key") || "";
-  if (savedKeyConfig) {
-    document.getElementById("inputApiKeyConfig").value = savedKeyConfig;
-    document.getElementById("statusKeyConfig").innerHTML = '✅ Chave configurada';
-    window.__OPENAI_KEY = savedKeyConfig;
-  }
-  document.getElementById("btnSalvarKeyConfig").addEventListener("click", () => {
-    const key = document.getElementById("inputApiKeyConfig").value.trim();
-    if (!key) { toast("Erro", "Informe uma chave válida."); return; }
-    localStorage.setItem("agro_pro_openai_key", key);
-    window.__OPENAI_KEY = key;
-    document.getElementById("statusKeyConfig").innerHTML = '✅ Chave salva com sucesso!';
-    toast("Chave salva", "API Key configurada.");
-  });
+  // API Key removida do front-end — IA processada via Edge Function no servidor
+  // Limpar chave antiga do localStorage se existir (migração de segurança)
+  localStorage.removeItem("agro_pro_openai_key");
 
   // Cloud Sync Manual
   document.getElementById("btnForceSync")?.addEventListener("click", async () => {
@@ -6171,11 +6152,15 @@ Com base nesses dados, forneça:
 Responda de forma objetiva e prática, como um consultor agronômico falaria com o produtor. Use linguagem clara e direta.`;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    // Chamar via Edge Function (chave protegida no servidor)
+    const session = await AuthService.getSession();
+    if (!session) throw new Error("Faça login para usar a IA.");
+    const response = await fetch(SUPABASE_URL + "/functions/v1/openai-proxy", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + window.__OPENAI_KEY
+        "Authorization": "Bearer " + session.access_token,
+        "apikey": SUPABASE_ANON
       },
       body: JSON.stringify({
         model: "gpt-4o",
@@ -6445,9 +6430,9 @@ function boot() {
     ajuda: ["Ajuda & Suporte", "Centro de Ajuda e Documentação"]
   };
 
-  // Carregar chave de IA (sessionStorage para menor persistência)
-  const savedApiKey = sessionStorage.getItem("agro_pro_openai_key") || localStorage.getItem("agro_pro_openai_key") || "";
-  if (savedApiKey) { window.__OPENAI_KEY = savedApiKey; }
+  // API Key removida do front-end — IA processada via Edge Function no servidor
+  localStorage.removeItem("agro_pro_openai_key");
+  sessionStorage.removeItem("agro_pro_openai_key");
 
   
   // Verificar Sessão (localStorage + Supabase)
