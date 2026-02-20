@@ -1,3 +1,7 @@
+/* ============================================================
+   AGRO PRO — app.js (v19 — SUPABASE CLOUD MIGRATION)
+   Migração completa: localStorage → Supabase
+   ============================================================ */
 
 let planoAtual = localStorage.getItem("agro_plano") || "Trial";
 let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;
@@ -483,7 +487,8 @@ function setDB(db) {
   Storage.save(db);
   // Disparar backup automático na nuvem (debounced)
   // cloudSync() está definido em supabase-client.js (sync granular + backup JSON)
-  if (typeof cloudSync === 'function') cloudSync();
+  // Usa debounce de 2s para não sobrecarregar o Supabase a cada alteração
+  if (typeof window.cloudSync === 'function') window.cloudSync();
 }
 
 function getSafraId() {
@@ -649,24 +654,29 @@ function renderShell(pageKey, title, subtitle) {
 
   document.getElementById("btnSairSidebar")?.addEventListener("click", async () => {
     if (confirm("Deseja realmente sair da conta?")) {
-      // Fazer sync final antes de sair
-      if (typeof cloudSync === 'function') cloudSync();
+      toast("Saindo...", "Salvando dados na nuvem...");
+      
+      // Fazer sync IMEDIATO antes de sair (sem debounce)
+      if (typeof cloudSyncImmediate === 'function') {
+        try { await cloudSyncImmediate(); } catch (e) { console.warn('Sync final:', e.message); }
+      }
       
       // SignOut do Supabase
       if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
         try { await AuthService.signOut(); } catch (e) { console.warn('Logout Supabase:', e.message); }
       }
       
-      // Limpar apenas dados da sessão atual, mas MANTER agro_team_accounts
+      // Limpar TODOS os dados locais (sessão + banco)
       localStorage.removeItem("agro_session");
       localStorage.removeItem("agro_role");
       localStorage.removeItem("agro_trial");
       localStorage.removeItem("agro_plano");
+      localStorage.removeItem("agro_pro_v10");
       // Importante: NÃO remover agro_team_accounts aqui, senão as contas de equipe somem!
       toast("Saindo...", "Até logo!");
       setTimeout(() => {
         window.location.href = "index.html";
-      }, 500);
+      }, 800);
     }
   });
 }
@@ -1273,16 +1283,22 @@ function pageLogin() {
         }
 
         // Restaurar dados da nuvem (tabelas individuais + backup JSON)
-        toast("Sincronizando", "Carregando seus dados da nuvem...");
+        toast("Sincronizando", "Carregando dados da nuvem...");
         try {
           const restored = await cloudRestore();
           if (restored) {
             console.log('Login: dados restaurados da nuvem');
+          } else {
+            // Se não há dados na nuvem, enviar dados locais
+            if (typeof cloudSyncImmediate === 'function') {
+              await cloudSyncImmediate();
+              console.log('Login: dados locais sincronizados com a nuvem');
+            }
           }
         } catch (restoreErr) {
-          console.warn('Login: erro ao restaurar da nuvem:', restoreErr.message);
+          console.warn('Login: erro ao restaurar dados:', restoreErr.message);
         }
-
+        
         toast("Bem-vindo", `Login realizado! Olá, ${userName}`);
         setTimeout(() => location.reload(), 500);
         return;
@@ -1338,6 +1354,14 @@ function pageLogin() {
           console.log('Signup: dados iniciais criados no Supabase');
         } catch (seedErr) {
           console.warn('Signup: erro ao criar dados iniciais:', seedErr.message);
+        }
+        
+        // Sincronizar dados locais para a nuvem IMEDIATAMENTE
+        try {
+          if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate();
+          console.log('Signup: dados locais sincronizados com a nuvem');
+        } catch (syncErr) {
+          console.warn('Signup: erro ao sincronizar:', syncErr.message);
         }
         
         toast("Sucesso", "Conta criada! Você tem 15 dias de teste grátis.");
@@ -4136,7 +4160,7 @@ function pageConfiguracoes() {
       <div class="config-card">
         <h3>☁️ Sincronização na Nuvem (Supabase)</h3>
         <div id="cloudSyncStatus" style="margin-bottom:12px;">
-          <p style="color:#64748b; font-size:13px;">Status: <b id="cloudStatusText">${typeof isSupabaseReady === 'function' && isSupabaseReady() ? '✅ Conectado ao Supabase' : '⚠️ Modo Offline (Supabase não configurado)'}</b></p>
+          <p style="color:#64748b; font-size:13px;">Status: <b id="cloudStatusText">${window._cloudConnected === true || (typeof isSupabaseReady === 'function' && isSupabaseReady()) ? '✅ Conectado ao Supabase' : '⚠️ Modo Offline (Supabase não configurado)'}</b></p>
         </div>
         <p style="color:#64748b; font-size:13px;">Seus dados são automaticamente sincronizados com a nuvem a cada alteração. Você também pode forçar uma sincronização manual.</p>
         <div class="row" style="gap:10px; margin-top:10px;">
@@ -4194,10 +4218,19 @@ function pageConfiguracoes() {
         if (!data.safras) { alert("Arquivo inválido (não contém safras)."); return; }
         if (!confirm("Importar vai SUBSTITUIR todos os dados locais. Continuar?")) return;
         Storage.save(data);
-        // Sincronizar com a nuvem após importação
-        if (typeof cloudSync === 'function') cloudSync();
-        toast("Importado", "Recarregando e sincronizando com a nuvem…");
-        setTimeout(() => location.reload(), 500);
+        // Sincronizar com a nuvem IMEDIATAMENTE após importação
+        toast("Importado", "Sincronizando com a nuvem...");
+        if (typeof cloudSyncImmediate === 'function') {
+          cloudSyncImmediate().then(() => {
+            toast("Sincronizado", "Backup enviado para a nuvem!");
+            setTimeout(() => location.reload(), 500);
+          }).catch(e => {
+            console.warn('Sync após import:', e.message);
+            setTimeout(() => location.reload(), 500);
+          });
+        } else {
+          setTimeout(() => location.reload(), 500);
+        }
       } catch (e) { alert("Não foi possível ler o arquivo JSON."); }
     };
     input.click();
@@ -4242,14 +4275,17 @@ function pageConfiguracoes() {
 
   // Cloud Sync Manual
   document.getElementById("btnForceSync")?.addEventListener("click", async () => {
-    if (typeof cloudSync !== 'function' || typeof isSupabaseReady !== 'function' || !isSupabaseReady()) {
+    if (typeof cloudSyncImmediate !== 'function' || typeof isSupabaseReady !== 'function' || !isSupabaseReady()) {
       toast("Offline", "Supabase não configurado. Configure as credenciais no supabase-client.js");
       return;
     }
     toast("Sincronizando", "Enviando dados para a nuvem...");
-    cloudSync();
-    // Aguardar o debounce
-    setTimeout(() => toast("Sincronizado", "Dados enviados para a nuvem!"), 3000);
+    try {
+      await cloudSyncImmediate();
+      toast("Sucesso", "Dados sincronizados com a nuvem!");
+    } catch(e) {
+      toast("Erro", "Falha ao sincronizar: " + e.message);
+    }
   });
 
   document.getElementById("btnForceRestore")?.addEventListener("click", async () => {
@@ -4275,18 +4311,23 @@ function pageConfiguracoes() {
   // Logout
   document.getElementById("btnLogout").addEventListener("click", async () => {
     if (!confirm("Deseja realmente sair da sua conta?")) return;
-    // Sync final
-    if (typeof cloudSync === 'function') cloudSync();
+    toast("Saindo...", "Salvando dados na nuvem...");
+    // Sync IMEDIATO final (sem debounce)
+    if (typeof cloudSyncImmediate === 'function') {
+      try { await cloudSyncImmediate(); } catch (e) { console.warn('Sync final:', e.message); }
+    }
     // SignOut Supabase
     if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
       try { await AuthService.signOut(); } catch (e) { console.warn('Logout:', e.message); }
     }
+    // Limpar TODOS os dados locais
     localStorage.removeItem("agro_session");
     localStorage.removeItem("agro_role");
     localStorage.removeItem("agro_trial");
     localStorage.removeItem("agro_plano");
+    localStorage.removeItem("agro_pro_v10");
     toast("Logout", "Você saiu da conta.");
-    setTimeout(() => location.reload(), 300);
+    setTimeout(() => location.reload(), 500);
   });
 }
 
@@ -6443,10 +6484,11 @@ function boot() {
 
   // === CLOUD SYNC: Restaurar dados da nuvem + Sincronizar dados locais ===
   // (executa de forma assíncrona, sem bloquear o carregamento)
-  if (typeof cloudRestore === 'function') {
+  if (typeof cloudRestore === 'function' && !sessionStorage.getItem('_cloudRestored')) {
     cloudRestore().then(restored => {
       if (restored) {
         console.log('Cloud Sync: dados restaurados da nuvem! Recarregando...');
+        sessionStorage.setItem('_cloudRestored', '1');
         location.reload();
       } else {
         // Se nenhum dado foi restaurado, sincronizar dados locais para a nuvem
@@ -6456,6 +6498,9 @@ function boot() {
         }
       }
     }).catch(e => console.warn('Cloud Restore boot:', e.message));
+  } else if (typeof cloudSync === 'function') {
+    // Já restaurou antes, apenas sincronizar
+    cloudSync();
   }
 
   // === CARREGAR ROLE DO USUÁRIO ===
@@ -6550,7 +6595,7 @@ function boot() {
   function updateCloudStatus() {
     var el = document.getElementById('cloudStatusIndicator');
     if (!el) return;
-    var ready = (typeof isSupabaseReady === 'function' && isSupabaseReady());
+    var ready = window._cloudConnected === true || (typeof isSupabaseReady === 'function' && isSupabaseReady());
     el.textContent = ready ? '☁️ Conectado' : '📴 Offline';
     el.style.color = ready ? '#4ade80' : '#f59e0b';
   }
