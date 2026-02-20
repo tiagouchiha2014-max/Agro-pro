@@ -18,7 +18,7 @@ let _supabaseReady = false;
 function initSupabase() {
   if (supabase) return true;
   if (!SUPABASE_URL || SUPABASE_URL === "https://cqckmitwbevwkkxlzxdl.supabase.co" ||
-      !SUPABASE_ANON || SUPABASE_ANON === "sb_publishable_Pp-YmHOV08QQs6lbCxA0gw_5n2UcUD5") {
+      !SUPABASE_ANON || SUPABASE_ANON === "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxY2ttaXR3YmV2d2treGx6eGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NTY5NzUsImV4cCI6MjA4NzEzMjk3NX0.rzuZ3DjmoJY8KaKEOb62TP7E74h-pU1KO9ZGoYNYTYg") {
     console.warn("Supabase: credenciais não configuradas. Modo offline ativo.");
     return false;
   }
