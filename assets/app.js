@@ -1,7 +1,3 @@
-/* ============================================================
-   AGRO PRO — app.js (v19 — SUPABASE CLOUD MIGRATION)
-   Migração completa: localStorage → Supabase
-   ============================================================ */
 
 let planoAtual = localStorage.getItem("agro_plano") || "Trial";
 let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;
@@ -6538,15 +6534,22 @@ function boot() {
   else if (pageKey === "ajuda") pageAjuda();
   else if (pageKey === "config") pageConfiguracoes();
 
-  // === STATUS DE CONEXÃO COM A NUVEM ===
-  const cloudStatus = (typeof isSupabaseReady === 'function' && isSupabaseReady()) ? '☁️ Conectado' : '📴 Offline';
-  const cloudColor = (typeof isSupabaseReady === 'function' && isSupabaseReady()) ? '#4ade80' : '#f59e0b';
+  // === STATUS DE CONEXÃO COM A NUVEM (Atualização dinâmica) ===
   const sidebarBottom = document.querySelector('.sidebar > div:last-child');
   if (sidebarBottom) {
     sidebarBottom.insertAdjacentHTML('beforeend', `
-      <div style="margin-top: 8px; font-size: 10px; color: ${cloudColor}; text-align: center;">${cloudStatus}</div>
+      <div id="cloudStatusIndicator" style="margin-top: 8px; font-size: 10px; text-align: center;"></div>
     `);
   }
+  function updateCloudStatus() {
+    var el = document.getElementById('cloudStatusIndicator');
+    if (!el) return;
+    var ready = (typeof isSupabaseReady === 'function' && isSupabaseReady());
+    el.textContent = ready ? '☁️ Conectado' : '📴 Offline';
+    el.style.color = ready ? '#4ade80' : '#f59e0b';
+  }
+  updateCloudStatus();
+  setInterval(updateCloudStatus, 5000);
 
   toast("Agro Pro", "Sistema carregado.");
 
