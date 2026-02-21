@@ -1,6 +1,12 @@
 /* =====================================================
-   Agro Pro — Layout Oficial com Tema Azul
-   Compatível com classes reais: sidebar, main, kpi...
+   Agro Pro — Layout Oficial com Tema Azul (REVISADO)
+   Ajustes aplicados:
+   - Hover do .btn agora coerente com o tema azul (brandSoft)
+   - .pill padrão agora azul/neutro (verde só no .ok)
+   - :focus-visible para acessibilidade (teclado) em links, botões e inputs
+   - Topbar sticky com separador sutil (borda inferior)
+   - Tap targets melhores (min-height) em botões e links
+   - (Opcional premium) main com largura máxima para telas muito largas
    ===================================================== */
 
 :root{
@@ -21,11 +27,22 @@
 }
 
 *{box-sizing:border-box}
+
 body{
   margin:0;
   font-family:system-ui,-apple-system,Segoe UI,Roboto;
   background:var(--bg);
   color:var(--text);
+}
+
+/* ===== Acessibilidade: foco visível (teclado) ===== */
+.nav a:focus-visible,
+.btn:focus-visible,
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible{
+  outline:3px solid rgba(59,130,246,.35);
+  outline-offset:2px;
 }
 
 /* ===== Layout ===== */
@@ -86,6 +103,11 @@ body{
   font-size:14px;
   opacity:.85;
   transition:.2s;
+
+  /* Melhor tap target */
+  min-height:40px;
+  display:flex;
+  align-items:center;
 }
 
 .nav a:hover{
@@ -104,6 +126,11 @@ body{
 .main{
   flex:1;
   padding:28px;
+
+  /* Premium: limita largura em telas muito largas */
+  max-width:1200px;
+  margin:0 auto;
+  width:100%;
 }
 
 .topbar{
@@ -116,6 +143,9 @@ body{
   z-index:100;
   background:var(--bg);
   padding:15px 0;
+
+  /* Separador sutil quando sticky */
+  border-bottom:1px solid rgba(0,0,0,.06);
 }
 
 .topbar h2{
@@ -173,10 +203,14 @@ body{
   background:#fff;
   cursor:pointer;
   transition:.2s;
+
+  /* Melhor tap target */
+  min-height:40px;
 }
 
 .btn:hover{
-  background:#f0fdf4;
+  /* Coerente com tema azul */
+  background:var(--brandSoft);
 }
 
 .btn.primary{
@@ -260,7 +294,10 @@ tr:hover{
   border-radius:999px;
   font-size:12px;
   background:var(--brandSoft);
-  color:#065f46;
+
+  /* Antes estava verde; agora padrão é azul/neutro */
+  color:var(--sidebar);
+
   display:inline-block;
 }
 
@@ -406,17 +443,47 @@ tr:hover{
   }
   .main{
     padding:15px;
+
+    /* Mantém o container responsivo */
+    max-width:none;
+    margin:0;
   }
   .menu-toggle{
     display:block!important;
   }
+
   /* Tabelas responsivas com data-label */
   .tableWrap{ border:none; box-shadow:none; }
   table, thead, tbody, th, td, tr{ display:block; }
   thead tr{ position:absolute; top:-9999px; left:-9999px; }
-  tr{ border:1px solid var(--line); border-radius:8px; margin-bottom:10px; background:#fff; padding:10px; }
-  td{ border:none; position:relative; padding-left:50%; text-align:right; min-height:30px; display:flex; align-items:center; justify-content:flex-end; }
-  td:before{ content:attr(data-label); position:absolute; left:10px; width:45%; padding-right:10px; white-space:nowrap; text-align:left; font-weight:bold; color:var(--muted); }
+  tr{
+    border:1px solid var(--line);
+    border-radius:8px;
+    margin-bottom:10px;
+    background:#fff;
+    padding:10px;
+  }
+  td{
+    border:none;
+    position:relative;
+    padding-left:50%;
+    text-align:right;
+    min-height:30px;
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+  }
+  td:before{
+    content:attr(data-label);
+    position:absolute;
+    left:10px;
+    width:45%;
+    padding-right:10px;
+    white-space:nowrap;
+    text-align:left;
+    font-weight:bold;
+    color:var(--muted);
+  }
 }
 
 /* Overlay para fechar sidebar mobile */
