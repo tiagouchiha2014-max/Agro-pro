@@ -1,29 +1,41 @@
 /* =====================================================
-   Agro Pro — Layout Oficial com Tema Azul (REVISADO)
-   Ajustes aplicados:
-   - Hover do .btn agora coerente com o tema azul (brandSoft)
-   - .pill padrão agora azul/neutro (verde só no .ok)
-   - :focus-visible para acessibilidade (teclado) em links, botões e inputs
-   - Topbar sticky com separador sutil (borda inferior)
-   - Tap targets melhores (min-height) em botões e links
-   - (Opcional premium) main com largura máxima para telas muito largas
+   Agro Pro — Layout Oficial (PREMIUM)
+   Mantém as mesmas classes do seu layout atual.
+   Premium pack:
+   - Cards com borda + brilho azul leve
+   - Hover nos cards com elevação suave
+   - Sidebar com separadores e ícones mais destacados
+   - Botões com sombra + microanimação
+   - Topbar com blur (glass effect)
    ===================================================== */
 
 :root{
   --bg:#f5f7f6;
-  --sidebar:#1e3a8a;        /* azul escuro */
-  --sidebar2:#2563eb;       /* azul médio */
+  --sidebar:#1e3a8a;
+  --sidebar2:#2563eb;
 
-  --brand:#3b82f6;          /* azul claro (itens ativos, botões) */
-  --brand2:#2563eb;         /* azul médio para hover */
-  --brandSoft:#dbeafe;      /* azul muito claro para fundos suaves */
+  --brand:#3b82f6;
+  --brand2:#2563eb;
+  --brandSoft:#dbeafe;
 
   --text:#0f172a;
   --muted:#64748b;
-  --line:rgba(0,0,0,0.15);  /* bordas mais escuras para melhor contraste */
+
+  /* borda base e borda premium azul */
+  --line:rgba(2,6,23,.10);
+  --lineSoft:rgba(59,130,246,.22);
 
   --radius:16px;
-  --shadow:0 12px 30px rgba(0,0,0,.08);
+
+  /* sombras premium */
+  --shadow:0 12px 30px rgba(2,6,23,.08);
+  --shadow2:0 18px 45px rgba(2,6,23,.12);
+
+  /* brilho azul (glow) */
+  --glow:0 0 0 1px rgba(59,130,246,.18), 0 12px 30px rgba(59,130,246,.08);
+
+  /* transições */
+  --t:.18s ease;
 }
 
 *{box-sizing:border-box}
@@ -35,7 +47,7 @@ body{
   color:var(--text);
 }
 
-/* ===== Acessibilidade: foco visível (teclado) ===== */
+/* ===== Acessibilidade: foco visível ===== */
 .nav a:focus-visible,
 .btn:focus-visible,
 .input:focus-visible,
@@ -46,14 +58,14 @@ body{
 }
 
 /* ===== Layout ===== */
-
 .app{
   display:flex;
   min-height:100vh;
 }
 
-/* ===== Sidebar ===== */
-
+/* =======================
+   Sidebar (PREMIUM)
+   ======================= */
 .sidebar{
   width:260px;
   background:linear-gradient(180deg,var(--sidebar),var(--sidebar2));
@@ -62,12 +74,19 @@ body{
   display:flex;
   flex-direction:column;
   gap:18px;
+
+  /* detalhe premium */
+  box-shadow: 8px 0 30px rgba(2,6,23,.14);
+  border-right:1px solid rgba(255,255,255,.10);
 }
 
 .brand{
   display:flex;
   gap:10px;
   align-items:center;
+  padding-bottom:14px;
+  margin-bottom:4px;
+  border-bottom:1px solid rgba(255,255,255,.12); /* separador */
 }
 
 .logo{
@@ -75,6 +94,7 @@ body{
   height:40px;
   border-radius:12px;
   background:linear-gradient(135deg,var(--brand),var(--brand2));
+  box-shadow: 0 10px 24px rgba(59,130,246,.35);
 }
 
 .brand h1{
@@ -86,48 +106,70 @@ body{
 .brand p{
   font-size:12px;
   margin:0;
-  opacity:.8;
+  opacity:.82;
 }
 
+/* Separadores de seção (quando você usa <hr class="hr"> já ajuda, mas aqui reforça) */
+.hr{
+  height:1px;
+  background:rgba(255,255,255,.14);
+  margin:12px 0;
+}
+
+/* Menu */
 .nav{
   display:flex;
   flex-direction:column;
   gap:6px;
 }
 
+/* Ícones mais destacados: assume que você usa emoji/ícone no começo do texto */
 .nav a{
   color:#fff;
   text-decoration:none;
-  padding:8px 10px;
-  border-radius:10px;
+  padding:10px 12px;
+  border-radius:12px;
   font-size:14px;
-  opacity:.85;
-  transition:.2s;
+  opacity:.88;
+  transition: transform var(--t), background var(--t), opacity var(--t), box-shadow var(--t);
 
-  /* Melhor tap target */
-  min-height:40px;
+  min-height:42px;
   display:flex;
   align-items:center;
+  gap:10px;
+
+  /* leve fundo para dar “tile” premium */
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.06);
+}
+
+/* dá brilho sutil no ícone (primeiro caractere tende a ser emoji) */
+.nav a::first-letter{
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,.25));
 }
 
 .nav a:hover{
-  background:rgba(255,255,255,.08);
+  background:rgba(255,255,255,.10);
   opacity:1;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(2,6,23,.18);
 }
 
+/* ativo (mantém azul, evita “verde fora do tema”) */
 .nav a.active{
-  background:var(--brand);
+  background:linear-gradient(135deg, rgba(59,130,246,.95), rgba(37,99,235,.95));
   color:#fff;
   opacity:1;
+  border:1px solid rgba(255,255,255,.22);
+  box-shadow: 0 16px 32px rgba(2,6,23,.18), 0 0 0 1px rgba(255,255,255,.10) inset;
 }
 
-/* ===== Main ===== */
-
+/* =======================
+   Main + Topbar (GLASS)
+   ======================= */
 .main{
   flex:1;
   padding:28px;
-
-  /* Premium: limita largura em telas muito largas */
   max-width:1200px;
   margin:0 auto;
   width:100%;
@@ -138,34 +180,43 @@ body{
   justify-content:space-between;
   align-items:center;
   margin-bottom:20px;
+
   position:sticky;
   top:0;
   z-index:100;
-  background:var(--bg);
-  padding:15px 0;
 
-  /* Separador sutil quando sticky */
-  border-bottom:1px solid rgba(0,0,0,.06);
+  /* GLASS */
+  background: rgba(245,247,246,.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+
+  padding:14px 0;
+  border-bottom:1px solid rgba(2,6,23,.08);
 }
 
-.topbar h2{
-  margin:0;
-}
+.topbar h2{ margin:0; }
+.topbar p{ margin:0; color:var(--muted); font-size:14px; }
 
-.topbar p{
-  margin:0;
-  color:var(--muted);
-  font-size:14px;
-}
-
-/* ===== Cards ===== */
-
+/* =======================
+   Cards (PREMIUM)
+   ======================= */
 .card{
   background:#fff;
   border-radius:var(--radius);
   padding:18px;
-  box-shadow:var(--shadow);
+
+  /* borda + brilho azul sutil */
   border:1px solid var(--line);
+  box-shadow: var(--shadow), var(--glow);
+
+  transition: transform var(--t), box-shadow var(--t), border-color var(--t);
+}
+
+/* hover com elevação suave */
+.card:hover{
+  transform: translateY(-2px);
+  border-color: var(--lineSoft);
+  box-shadow: var(--shadow2), 0 0 0 1px rgba(59,130,246,.18), 0 18px 40px rgba(59,130,246,.10);
 }
 
 .section{
@@ -174,8 +225,9 @@ body{
   margin-bottom:18px;
 }
 
-/* ===== KPI ===== */
-
+/* =======================
+   KPI
+   ======================= */
 .kpi{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
@@ -185,7 +237,8 @@ body{
 
 .big{
   font-size:28px;
-  font-weight:700;
+  font-weight:750;
+  letter-spacing:-.02em;
   margin-top:6px;
 }
 
@@ -194,58 +247,84 @@ body{
   color:var(--muted);
 }
 
-/* ===== Buttons ===== */
-
+/* =======================
+   Buttons (PREMIUM)
+   ======================= */
 .btn{
-  padding:8px 14px;
-  border-radius:10px;
+  padding:9px 14px;
+  border-radius:12px;
   border:1px solid var(--line);
   background:#fff;
   cursor:pointer;
-  transition:.2s;
 
-  /* Melhor tap target */
-  min-height:40px;
+  min-height:42px;
+
+  /* microanimação + sombra */
+  transition: transform var(--t), box-shadow var(--t), background var(--t), border-color var(--t);
+  box-shadow: 0 10px 22px rgba(2,6,23,.08);
 }
 
 .btn:hover{
-  /* Coerente com tema azul */
   background:var(--brandSoft);
+  transform: translateY(-1px);
+  border-color: rgba(59,130,246,.22);
+  box-shadow: 0 16px 30px rgba(2,6,23,.12);
+}
+
+.btn:active{
+  transform: translateY(0);
+  box-shadow: 0 10px 22px rgba(2,6,23,.08);
 }
 
 .btn.primary{
-  background:var(--brand);
+  background:linear-gradient(135deg,var(--brand),var(--brand2));
   color:#fff;
-  border:none;
+  border:1px solid rgba(255,255,255,.12);
+  box-shadow: 0 16px 30px rgba(37,99,235,.25);
 }
 
 .btn.primary:hover{
-  background:var(--brand2);
+  background:linear-gradient(135deg,var(--brand2),#1d4ed8);
+  box-shadow: 0 22px 40px rgba(37,99,235,.32);
 }
 
 .btn.danger{
-  background:#ef4444;
+  background:linear-gradient(135deg,#ef4444,#dc2626);
   color:#fff;
   border:none;
+  box-shadow: 0 16px 30px rgba(239,68,68,.22);
 }
 
-/* ===== Form ===== */
+.btn.danger:hover{
+  box-shadow: 0 22px 40px rgba(239,68,68,.28);
+}
 
+/* =======================
+   Form
+   ======================= */
 .formGrid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
   gap:12px;
 }
 
-.formGrid .full{
-  grid-column:1/-1;
-}
+.formGrid .full{ grid-column:1/-1; }
 
 .input, .select, .textarea{
   width:100%;
-  padding:8px 10px;
-  border-radius:8px;
+  padding:9px 10px;
+  border-radius:10px;
   border:1px solid var(--line);
+  background:#fff;
+  transition: border-color var(--t), box-shadow var(--t);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus{
+  border-color: rgba(59,130,246,.35);
+  box-shadow: 0 0 0 4px rgba(59,130,246,.14);
+  outline:none;
 }
 
 .textarea{
@@ -253,76 +332,73 @@ body{
   resize:vertical;
 }
 
-/* ===== Table ===== */
-
+/* =======================
+   Table (PREMIUM)
+   ======================= */
 .tableWrap{
   background:#fff;
   border-radius:var(--radius);
   overflow:hidden;
-  box-shadow:var(--shadow);
+
   border:1px solid var(--line);
+  box-shadow: var(--shadow), var(--glow);
+
+  transition: transform var(--t), box-shadow var(--t), border-color var(--t);
 }
 
-table{
-  width:100%;
-  border-collapse:collapse;
+.tableWrap:hover{
+  transform: translateY(-2px);
+  border-color: var(--lineSoft);
+  box-shadow: var(--shadow2), 0 0 0 1px rgba(59,130,246,.18), 0 18px 40px rgba(59,130,246,.10);
 }
+
+table{ width:100%; border-collapse:collapse; }
 
 th{
   text-align:left;
   padding:12px;
-  background:var(--brandSoft);
-  font-weight:600;
+  background: linear-gradient(180deg, var(--brandSoft), rgba(219,234,254,.55));
+  font-weight:650;
   font-size:14px;
-  border-bottom:2px solid #cbd5e1; /* linha mais forte */
+  border-bottom:1px solid rgba(2,6,23,.10);
 }
 
 td{
   padding:12px;
-  border-bottom:1px solid #e2e8f0; /* cinza sólido, mais visível */
+  border-bottom:1px solid rgba(2,6,23,.06);
   font-size:14px;
 }
 
-tr:hover{
-  background:#f9fafb;
-}
+tr:hover{ background: rgba(219,234,254,.30); }
 
-/* ===== Pills ===== */
-
+/* =======================
+   Pills (coerentes)
+   ======================= */
 .pill{
   padding:4px 10px;
   border-radius:999px;
   font-size:12px;
   background:var(--brandSoft);
-
-  /* Antes estava verde; agora padrão é azul/neutro */
   color:var(--sidebar);
-
   display:inline-block;
+  border:1px solid rgba(59,130,246,.18);
 }
 
-.pill.ok{ background:#dcfce7; color:#065f46; }
-.pill.warn{ background:#fef9c3; color:#854d0e; }
-.pill.info{ background:#e0f2fe; color:#0369a1; }
+.pill.ok{ background:#dcfce7; color:#065f46; border-color: rgba(34,197,94,.22); }
+.pill.warn{ background:#fef9c3; color:#854d0e; border-color: rgba(234,179,8,.22); }
+.pill.info{ background:#e0f2fe; color:#0369a1; border-color: rgba(56,189,248,.24); }
 
-/* ===== Misc ===== */
-
-.hr{
-  height:1px;
-  background:var(--line);
-  margin:12px 0;
-}
-
-.help{
-  font-size:13px;
-  color:var(--muted);
-}
+/* =======================
+   Misc
+   ======================= */
+.help{ font-size:13px; color:var(--muted); }
 
 .badge{
   background:var(--brandSoft);
   padding:4px 10px;
   border-radius:999px;
   font-size:12px;
+  border:1px solid rgba(59,130,246,.16);
 }
 
 .row{
@@ -331,104 +407,114 @@ tr:hover{
   align-items:center;
 }
 
-/* ===== Classes específicas para KPIs ===== */
-.clima-kpi-grid, .combustivel-grid, .ops-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 18px;
-  margin-bottom: 20px;
+/* ===== Classes específicas para KPIs (mantidas, com premium) ===== */
+.clima-kpi-grid, .combustivel-grid, .ops-kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:18px;
+  margin-bottom:20px;
 }
 
-.clima-kpi-card, .combustivel-card, .ops-kpi-card {
-  background: #fff;
-  border-radius: var(--radius);
-  padding: 20px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--line);
+.clima-kpi-card, .combustivel-card, .ops-kpi-card{
+  background:#fff;
+  border-radius:var(--radius);
+  padding:20px;
+
+  border:1px solid var(--line);
   border-left: 4px solid var(--brand);
+
+  box-shadow: var(--shadow), var(--glow);
+  transition: transform var(--t), box-shadow var(--t), border-color var(--t);
 }
 
-.clima-kpi-card h3, .combustivel-card h3, .ops-kpi-card h3 {
-  margin: 0 0 10px 0;
-  color: var(--brand);
-  font-size: 16px;
+.clima-kpi-card:hover, .combustivel-card:hover, .ops-kpi-card:hover{
+  transform: translateY(-2px);
+  border-color: var(--lineSoft);
+  box-shadow: var(--shadow2), 0 0 0 1px rgba(59,130,246,.18), 0 18px 40px rgba(59,130,246,.10);
 }
 
-.clima-kpi-valor, .combustivel-valor, .ops-kpi-valor {
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--text);
+.clima-kpi-card h3, .combustivel-card h3, .ops-kpi-card h3{
+  margin:0 0 10px 0;
+  color:var(--brand2);
+  font-size:16px;
+  font-weight:700;
 }
 
-.clima-kpi-unidade {
-  font-size: 16px;
-  color: var(--muted);
-  margin-left: 5px;
+.clima-kpi-valor, .combustivel-valor, .ops-kpi-valor{
+  font-size:32px;
+  font-weight:800;
+  letter-spacing:-.02em;
+  color:var(--text);
 }
 
-.clima-kpi-label, .combustivel-label, .ops-kpi-label {
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 8px;
+.clima-kpi-unidade{
+  font-size:16px;
+  color:var(--muted);
+  margin-left:5px;
+}
+
+.clima-kpi-label, .combustivel-label, .ops-kpi-label{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:8px;
 }
 
 /* ===== Formulário de clima ===== */
-.form-clima {
-  background: #fff;
-  border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 30px;
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
+.form-clima{
+  background:#fff;
+  border-radius:var(--radius);
+  padding:20px;
+  margin-bottom:30px;
+
+  border:1px solid var(--line);
+  box-shadow: var(--shadow), var(--glow);
+  transition: transform var(--t), box-shadow var(--t), border-color var(--t);
 }
 
-.form-clima h3 {
-  margin-top: 0;
-  color: var(--brand);
+.form-clima:hover{
+  transform: translateY(-2px);
+  border-color: var(--lineSoft);
+  box-shadow: var(--shadow2), 0 0 0 1px rgba(59,130,246,.18), 0 18px 40px rgba(59,130,246,.10);
+}
+
+.form-clima h3{
+  margin-top:0;
+  color:var(--brand2);
 }
 
 /* ===== Gráficos ===== */
-.grafico-barras {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  height: 200px;
-  margin: 20px 0;
+.grafico-barras{
+  display:flex;
+  align-items:flex-end;
+  gap:8px;
+  height:200px;
+  margin:20px 0;
 }
 
-.barra {
-  flex: 1;
-  background: var(--brand);
-  border-radius: 4px 4px 0 0;
-  min-height: 20px;
-  transition: height 0.3s;
+.barra{
+  flex:1;
+  background:linear-gradient(180deg,var(--brand),var(--brand2));
+  border-radius:6px 6px 0 0;
+  min-height:20px;
+  transition: height .3s;
+  box-shadow: 0 14px 24px rgba(37,99,235,.18);
 }
 
-.barra-label {
-  text-align: center;
-  font-size: 11px;
-  margin-top: 5px;
-  color: var(--muted);
+.barra-label{
+  text-align:center;
+  font-size:11px;
+  margin-top:5px;
+  color:var(--muted);
 }
 
-/* ===== Seções de tabela ===== */
-.secao-tabela {
-  margin-top: 30px;
-}
+.secao-tabela{ margin-top:30px; }
 
-/* ===== Valores com unidade ===== */
-.valor-com-unidade {
-  font-weight: 600;
-  color: var(--text);
-}
+.valor-com-unidade{ font-weight:650; color:var(--text); }
+.unidade-tabela{ color:var(--muted); font-size:11px; margin-left:4px; }
 
-.unidade-tabela {
-  color: var(--muted);
-  font-size: 11px;
-  margin-left: 4px;
-}
-
-/* ===== Responsividade ===== */
+/* =======================
+   Responsividade
+   ======================= */
 @media(max-width:900px){
   .sidebar{
     position:fixed;
@@ -438,30 +524,27 @@ tr:hover{
     transition:transform .3s ease;
     z-index:1000;
   }
-  .sidebar.active{
-    transform:translateX(0);
-  }
+  .sidebar.active{ transform:translateX(0); }
+
   .main{
     padding:15px;
-
-    /* Mantém o container responsivo */
     max-width:none;
     margin:0;
   }
-  .menu-toggle{
-    display:block!important;
-  }
 
-  /* Tabelas responsivas com data-label */
+  .menu-toggle{ display:block!important; }
+
+  /* tabelas responsivas */
   .tableWrap{ border:none; box-shadow:none; }
   table, thead, tbody, th, td, tr{ display:block; }
   thead tr{ position:absolute; top:-9999px; left:-9999px; }
   tr{
     border:1px solid var(--line);
-    border-radius:8px;
+    border-radius:12px;
     margin-bottom:10px;
     background:#fff;
     padding:10px;
+    box-shadow: 0 10px 22px rgba(2,6,23,.08);
   }
   td{
     border:none;
@@ -481,7 +564,7 @@ tr:hover{
     padding-right:10px;
     white-space:nowrap;
     text-align:left;
-    font-weight:bold;
+    font-weight:700;
     color:var(--muted);
   }
 }
@@ -494,6 +577,4 @@ tr:hover{
   background:rgba(0,0,0,.5);
   z-index:999;
 }
-.sidebar-overlay.active{
-  display:block;
-}
+.sidebar-overlay.active{ display:block; }
