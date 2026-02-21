@@ -562,45 +562,9 @@ var SupaCRUD = {
 // SEED
 // ============================================================
 async function seedSupabase() {
-  if (!isSupabaseReady()) return;
-  var user = await AuthService.getUser();
-  if (!user) return;
-  try {
-    var check = await _supabaseClient.from('safras').select('id').eq('user_id', user.id).limit(1);
-    if (check.data && check.data.length > 0) return;
-
-    var ano = new Date().getFullYear();
-    var safraRes = await _supabaseClient.from('safras').insert({
-      user_id: user.id, nome: 'Safra ' + ano + '/' + (ano + 1).toString().slice(-2),
-      data_inicio: ano + '-09-01', data_fim: (ano + 1) + '-08-31', ativa: true
-    }).select().single();
-
-    if (!safraRes.data) return;
-    var safra = safraRes.data;
-
-    var fazRes = await _supabaseClient.from('fazendas').insert({
-      user_id: user.id, safra_id: safra.id, nome: 'Fazenda de Demonstração',
-      cidade: 'Cidade', uf: 'UF', area_ha: 100
-    }).select().single();
-
-    if (fazRes.data) {
-      await _supabaseClient.from('talhoes').insert({
-        user_id: user.id, safra_id: safra.id, fazenda_id: fazRes.data.id,
-        nome: 'Talhão Exemplo', area_ha: 50, cultura: 'Soja', solo: 'Argiloso'
-      });
-    }
-
-    await _supabaseClient.from('diesel_estoque').insert({
-      user_id: user.id, safra_id: safra.id, deposito: 'Tanque Principal', litros: 0, preco_vigente: 0
-    });
-
-    await _supabaseClient.from('parametros').insert({
-      user_id: user.id, preco_soja: 120, produtividade_min_soja: 65, produtividade_max_soja: 75,
-      preco_milho: 60, produtividade_min_milho: 100, produtividade_max_milho: 130,
-      preco_algodao: 150, produtividade_min_algodao: 250, produtividade_max_algodao: 300,
-      peso_padrao_saca: 60
-    });
-  } catch (e) {}
+  // Dados de demonstração removidos a pedido do usuário.
+  // O banco inicia limpo para cada novo usuário.
+  return;
 }
 
 // ============================================================

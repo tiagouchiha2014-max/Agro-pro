@@ -393,25 +393,29 @@ function getProdutosBase() {
 }
 
 function seedDB() {
-  const safraId = uid("saf");
-  const fazendaId = uid("faz");
-  const talhaoId = uid("tal");
-
+  // Criamos apenas a estrutura básica vazia, sem dados de demonstração.
+  // O usuário deve cadastrar sua própria safra e fazenda para começar.
   const db = {
     meta: { createdAt: new Date().toISOString(), version: 10 },
-    session: { safraId },
+    session: { safraId: null, fazendaId: null },
 
-    safras: [
-      {
-        id: safraId,
-        nome: "Safra " + (new Date().getFullYear()) + "/" + (new Date().getFullYear() + 1).toString().slice(-2),
-        dataInicio: new Date().getFullYear() + "-09-01",
-        dataFim: (new Date().getFullYear() + 1) + "-08-31",
-        ativa: true,
-        observacoes: "Safra inicial"
-      }
-    ],
-
+    safras: [],
+    fazendas: [],
+    talhoes: [],
+    produtos: [],
+    estoque: [],
+    equipe: [],
+    maquinas: [],
+    clima: [],
+    dieselEntradas: [],
+    dieselEstoque: [],
+    combustivel: [],
+    aplicacoes: [],
+    colheitas: [],
+    lembretes: [],
+    pragas: [],
+    manutencoes: [],
+    insumosBase: [],
     parametros: {
       precoSoja: 120.00,
       produtividadeMinSoja: 65,
@@ -423,33 +427,7 @@ function seedDB() {
       produtividadeMinAlgodao: 250,
       produtividadeMaxAlgodao: 300,
       pesoPadraoSaca: 60
-    },
-
-    // Iniciamos com uma fazenda de demonstração para o usuário conhecer o sistema
-    fazendas: [
-      { id: fazendaId, safraId, nome: "Fazenda de Demonstração", cidade: "Cidade", uf: "UF", areaHa: 100, latitude: "0", longitude: "0", observacoes: "Dados de exemplo para demonstração." }
-    ],
-
-    talhoes: [
-      { id: talhaoId, safraId, fazendaId, nome: "Talhão Exemplo", areaHa: 50, cultura: "Soja", safra: "Atual", solo: "Argiloso", coordenadas: "", observacoes: "Talhão de demonstração" }
-    ],
-
-    produtos: [],
-    estoque: [],
-    equipe: [],
-    maquinas: [],
-    clima: [],
-    dieselEntradas: [],
-    dieselEstoque: [
-      { id: uid("dsl"), safraId, deposito: "Tanque Principal", litros: 0, precoVigente: 0, obs: "Estoque inicial" }
-    ],
-    combustivel: [],
-    aplicacoes: [],
-    colheitas: [],
-    lembretes: [],
-    pragas: [],
-    manutencoes: [],
-    insumosBase: []
+    }
   };
 
   Storage.save(db);
@@ -1361,13 +1339,8 @@ function pageLogin() {
         }));
         localStorage.setItem("agro_role", "admin");
         
-        // Criar dados iniciais no Supabase (safra, fazenda demo, parâmetros)
-        try {
-          await seedSupabase();
-          console.log('Signup: dados iniciais criados no Supabase');
-        } catch (seedErr) {
-          console.warn('Signup: erro ao criar dados iniciais:', seedErr.message);
-        }
+        // Dados iniciais de demonstração removidos a pedido do usuário.
+        // O banco inicia limpo e o usuário cadastra seus próprios dados.
         
         // Sincronizar dados locais para a nuvem IMEDIATAMENTE
         try {
