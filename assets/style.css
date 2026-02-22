@@ -255,3 +255,151 @@ tr:hover{background:rgba(219,234,254,.35)}
   .sidebar.active{transform:translateX(0)}
   .main{padding:15px}
 }
+/* =====================================================
+   AGRO PRO — PREMIUM OVERRIDE TOTAL
+   Cola no FINAL do CSS atual
+   ===================================================== */
+
+/* ===== FUNDO PREMIUM ===== */
+body{
+  background:
+    radial-gradient(800px 400px at 10% -10%, rgba(59,130,246,.20), transparent 60%),
+    radial-gradient(900px 600px at 100% 0%, rgba(37,99,235,.15), transparent 60%),
+    linear-gradient(180deg,#f6f9ff,#eef3fb);
+}
+
+/* ===== SIDEBAR PREMIUM ===== */
+.sidebar{
+  background: linear-gradient(180deg,#0f172a,#1e293b) !important;
+  box-shadow: 12px 0 40px rgba(2,6,23,.35) !important;
+  border-right:1px solid rgba(255,255,255,.10) !important;
+}
+
+.nav a{
+  border-radius:12px !important;
+  background:rgba(255,255,255,.04) !important;
+  border:1px solid rgba(255,255,255,.05) !important;
+  transition:all .18s ease !important;
+}
+
+.nav a:hover{
+  background:rgba(255,255,255,.12) !important;
+  transform:translateY(-1px) !important;
+  box-shadow:0 12px 30px rgba(0,0,0,.35) !important;
+}
+
+.nav a.active{
+  background:linear-gradient(135deg,#3b82f6,#2563eb) !important;
+  box-shadow:0 16px 36px rgba(37,99,235,.45) !important;
+  border:1px solid rgba(255,255,255,.22) !important;
+}
+
+/* ===== TOPBAR GLASS ===== */
+.topbar{
+  background:rgba(255,255,255,.75) !important;
+  backdrop-filter: blur(10px);
+  border-bottom:1px solid rgba(2,6,23,.08) !important;
+  box-shadow:0 8px 30px rgba(2,6,23,.08) !important;
+}
+
+/* ===== CARDS PREMIUM ===== */
+.card,
+.kpi-card,
+.tableWrap,
+.form-clima{
+  border-radius:16px !important;
+  border:1px solid rgba(2,6,23,.06) !important;
+  background:#fff !important;
+
+  box-shadow:
+    0 16px 45px rgba(2,6,23,.12),
+    0 0 0 1px rgba(59,130,246,.15) !important;
+
+  transition:all .2s ease !important;
+}
+
+.card:hover,
+.kpi-card:hover,
+.tableWrap:hover{
+  transform:translateY(-3px) !important;
+  box-shadow:
+    0 22px 60px rgba(2,6,23,.18),
+    0 0 0 1px rgba(59,130,246,.28) !important;
+}
+
+/* ===== BOTÕES PREMIUM ===== */
+.btn{
+  border-radius:12px !important;
+  box-shadow:0 12px 28px rgba(2,6,23,.12) !important;
+  transition:all .18s ease !important;
+}
+
+.btn:hover{
+  transform:translateY(-1px) !important;
+  box-shadow:0 18px 40px rgba(2,6,23,.18) !important;
+}
+
+.btn.primary{
+  background:linear-gradient(135deg,#3b82f6,#2563eb) !important;
+  color:white !important;
+  border:none !important;
+  box-shadow:0 18px 44px rgba(37,99,235,.45) !important;
+}
+
+.btn.primary:hover{
+  box-shadow:0 22px 60px rgba(37,99,235,.55) !important;
+}
+
+.btn.danger{
+  background:linear-gradient(135deg,#ef4444,#dc2626) !important;
+  color:white !important;
+}
+
+/* ===== TABELAS PREMIUM ===== */
+.tableWrap{
+  overflow:hidden !important;
+}
+
+th{
+  background:linear-gradient(180deg,#eaf2ff,#dbeafe) !important;
+  border-bottom:1px solid rgba(2,6,23,.06) !important;
+}
+
+tr:hover{
+  background:rgba(219,234,254,.35) !important;
+}
+
+/* ===== INPUTS PREMIUM ===== */
+.input,.select,.textarea{
+  border-radius:10px !important;
+  border:1px solid rgba(2,6,23,.08) !important;
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus{
+  box-shadow:0 0 0 4px rgba(59,130,246,.18) !important;
+  border-color:#3b82f6 !important;
+}
+
+/* ===== KPI DESTAQUE ===== */
+.big{
+  font-size:32px !important;
+  font-weight:800 !important;
+}
+
+.sub{
+  color:#64748b !important;
+}
+
+/* ===== BANNER TRIAL PREMIUM ===== */
+.trial-banner{
+  background:linear-gradient(90deg,#3b82f6,#2563eb) !important;
+  color:white !important;
+  box-shadow:0 12px 28px rgba(37,99,235,.35) !important;
+}
+
+/* ===== SOMBRA GLOBAL MAIS SOFT ===== */
+.card, .tableWrap, .btn{
+  backdrop-filter: saturate(120%);
+}
