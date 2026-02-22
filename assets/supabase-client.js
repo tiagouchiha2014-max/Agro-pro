@@ -147,6 +147,7 @@ var FIELD_MAP = {
   precoAlgodao: 'preco_algodao', produtividadeMinAlgodao: 'produtividade_min_algodao',
   produtividadeMaxAlgodao: 'produtividade_max_algodao', pesoPadraoSaca: 'peso_padrao_saca',
   doseHa: 'dose_ha', areaAplicada: 'area_aplicada', quantidadeTotal: 'quantidade_total',
+  quantidade: 'quantidade_atual', quantidadeAtual: 'quantidade_atual',
   custoUnitario: 'custo_unitario', custoTotal: 'custo_total', volumeCalda: 'volume_calda',
   condicaoClima: 'condicao_clima', areaColhida: 'area_colhida', producaoTotal: 'producao_total',
   pesoLiquido: 'peso_liquido', sacasHa: 'sacas_ha',
@@ -164,8 +165,8 @@ var FIELD_MAP = {
   userId: 'user_id', createdAt: 'created_at', updatedAt: 'updated_at'
 };
 
-var REF_FIELDS = ['safraId', 'fazendaId', 'talhaoId', 'maquinaId', 'produtoId'];
-var REF_SNAKE  = ['safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id'];
+var REF_FIELDS = ['safraId', 'fazendaId', 'talhaoId', 'maquinaId', 'produtoId', 'safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id'];
+var REF_SNAKE  = ['safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id', 'safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id'];
 
 // ============================================================
 // CONVERSORES

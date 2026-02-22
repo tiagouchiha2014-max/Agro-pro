@@ -291,7 +291,15 @@ const Storage = {
 };
 
 function uid(prefix = "id") {
-  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+  // Se o navegador suportar crypto.randomUUID (maioria dos modernos), usamos ele.
+  // Caso contrário, usamos um fallback compatível com o formato UUID v4.
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 function nowISO() {
@@ -660,7 +668,8 @@ function renderShell(pageKey, title, subtitle) {
 /* ------------------ Helpers ------------------ */
 function onlySafra(arr) {
   const sid = getSafraId();
-  return (arr || []).filter(x => x.safraId === sid);
+  if (!sid) return arr || [];
+  return (arr || []).filter(x => (x.safra_id === sid || x.safraId === sid));
 }
 
 function findNameById(arr, id, fallback = "-") {
@@ -2043,20 +2052,20 @@ function pageEstoque() {
     );
 
     if (existente) {
-      existente.qtd = Number(existente.qtd || 0) + qtd;
+      existente.quantidade_atual = Number(existente.quantidade_atual || 0) + qtd;
       existente.obs = obs || existente.obs;
       if (lote) existente.lote = lote;
       if (validade) existente.validade = validade;
-      toast("Reabastecido", `${produto.nome} agora tem ${existente.qtd} ${existente.unidade}`);
+      toast("Reabastecido", `${produto.nome} agora tem ${existente.quantidade_atual} ${existente.unidade}`);
     } else {
       db2.estoque.push({
         id: uid("stk"),
-        safraId: getSafraId(),
-        produtoId,
+        safra_id: getSafraId(),
+        produto_id: produtoId,
         deposito,
         lote: lote || "",
         validade: validade || "",
-        qtd,
+        quantidade_atual: qtd,
         unidade: produto.unidade,
         obs: obs || ""
       });
@@ -2094,7 +2103,7 @@ function pageEstoque() {
           <td>${escapeHtml(r.deposito || "Central")}</td>
           <td>${escapeHtml(r.lote || "")}</td>
           <td>${escapeHtml(r.validade || "")}</td>
-          <td><b>${num(r.qtd || 0, 2)}</b></td>
+          <td><b>${num(r.quantidade_atual || 0, 2)}</b></td>
           <td>${escapeHtml(r.unidade || "")}</td>
           <td>${escapeHtml(r.obs || "")}</td>
           <td class="noPrint">
@@ -2120,7 +2129,7 @@ function pageEstoque() {
       return;
     }
 
-    item.qtd = Number(item.qtd || 0) + qtdNum;
+    item.quantidade_atual = Number(item.quantidade_atual || 0) + qtdNum;
     setDB(db2);
     toast("Reabastecido", `+${qtdNum} ${item.unidade} adicionados`);
     renderTable();
@@ -2163,20 +2172,20 @@ function pageEstoque() {
     );
 
     if (existente) {
-      existente.qtd = Number(existente.qtd || 0) + qtd;
+      existente.quantidade_atual = Number(existente.quantidade_atual || 0) + qtd;
       existente.obs = obs || existente.obs;
       if (lote) existente.lote = lote;
       if (validade) existente.validade = validade;
-      toast("Estoque atualizado", `${produto.nome} agora tem ${existente.qtd} ${existente.unidade}`);
+      toast("Estoque atualizado", `${produto.nome} agora tem ${existente.quantidade_atual} ${existente.unidade}`);
     } else {
       db2.estoque.push({
         id: uid("stk"),
-        safraId: getSafraId(),
-        produtoId,
+        safra_id: getSafraId(),
+        produto_id: produtoId,
         deposito,
         lote,
         validade,
-        qtd,
+        quantidade_atual: qtd,
         unidade: produto.unidade,
         obs
       });
