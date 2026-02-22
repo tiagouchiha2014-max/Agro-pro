@@ -25,6 +25,11 @@
   --line:rgba(2,6,23,.10);
   --lineSoft:rgba(59,130,246,.22);
 
+  --success:#4ade80;
+  --warning:#f59e0b;
+  --danger:#ef4444;
+  --info:#3b82f6;
+
   --radius:16px;
 
   /* sombras premium */
@@ -36,6 +41,34 @@
 
   /* transições */
   --t:.18s ease;
+}
+
+/* Classes de Estado (Refatoração Visual) */
+.hidden { display: none !important; }
+.visible { display: block !important; }
+.flex { display: flex !important; }
+.grid { display: grid !important; }
+
+.text-success { color: var(--success) !important; }
+.text-warning { color: var(--warning) !important; }
+.text-danger { color: var(--danger) !important; }
+.text-muted { color: var(--muted) !important; }
+
+.opacity-0 { opacity: 0; }
+.opacity-100 { opacity: 1; }
+
+.translate-y-6 { transform: translateY(6px); }
+.translate-y-0 { transform: translateY(0); }
+
+.transition-all { transition: all 0.3s ease; }
+
+/* Grid específica para linhas dinâmicas */
+.grid-dynamic-row {
+  display: grid !important;
+  grid-template-columns: 3fr 1fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: center;
 }
 
 *{box-sizing:border-box}

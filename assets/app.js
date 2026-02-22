@@ -331,8 +331,7 @@ function toast(title, msg) {
   host.appendChild(el);
 
   setTimeout(() => {
-    el.style.opacity = "0";
-    el.style.transform = "translateY(6px)";
+    el.classList.add('opacity-0', 'translate-y-6');
   }, 3200);
   setTimeout(() => {
     el.remove();
@@ -1175,14 +1174,14 @@ function pageLogin() {
 
   document.getElementById("linkCadastro").onclick = (e) => {
     e.preventDefault();
-    document.getElementById("loginForm").style.display = "none";
-    document.getElementById("signupForm").style.display = "block";
+    document.getElementById("loginForm").classList.add('hidden');
+    document.getElementById("signupForm").classList.remove('hidden');
   };
 
   document.getElementById("linkLogin").onclick = (e) => {
     e.preventDefault();
-    document.getElementById("signupForm").style.display = "none";
-    document.getElementById("loginForm").style.display = "block";
+    document.getElementById("signupForm").classList.add('hidden');
+    document.getElementById("loginForm").classList.remove('hidden');
   };
 
   // === LOGIN ===
@@ -2017,7 +2016,7 @@ function pageEstoque() {
   content.innerHTML = `<div class="section">${formHtml}${tableHtml}</div>`;
 
   window.fecharModalReabastecer = () => {
-    document.getElementById('modalReabastecer').style.display = 'none';
+    document.getElementById('modalReabastecer').classList.add('hidden');
   };
 
   window.confirmarReabastecer = () => {
@@ -2070,7 +2069,8 @@ function pageEstoque() {
   };
 
   document.getElementById("btnReabastecer").addEventListener("click", () => {
-    document.getElementById('modalReabastecer').style.display = 'flex';
+    document.getElementById('modalReabastecer').classList.remove('hidden');
+    document.getElementById('modalReabastecer').classList.add('flex');
   });
 
   document.querySelector('select[name="produtoId"]').addEventListener('change', (e) => {
@@ -3816,11 +3816,7 @@ function pageAplicacoes() {
     const container = document.getElementById("produtos-container");
     const novaLinha = document.createElement("div");
     novaLinha.className = "produto-linha";
-    novaLinha.style.display = "grid";
-    novaLinha.style.gridTemplateColumns = "3fr 1fr 1fr 1fr";
-    novaLinha.style.gap = "10px";
-    novaLinha.style.marginBottom = "10px";
-    novaLinha.style.alignItems = "center";
+    novaLinha.classList.add('grid-dynamic-row');
 
     novaLinha.innerHTML = `
       <select class="select" name="produtoId[]" onchange="window.atualizarPrecoUnit(this, ${produtoCount})">
@@ -3872,14 +3868,14 @@ function pageAplicacoes() {
 
         total += custoLinha;
         linha.querySelector(`#custo-${idx}`).innerText = kbrl(custoLinha);
-        linha.querySelector(`#custo-${idx}`).style.color = '#4CAF50';
+        linha.querySelector(`#custo-${idx}`).classList.add('text-success');
 
         detalhes.push(`${produtoNome}: ${num(dose,2)} ${opt.dataset.unidade || ''} × ${num(area,1)} ha = ${kbrl(custoLinha)}`);
       } else {
         const custoEl = linha.querySelector(`#custo-${idx}`);
         if (custoEl) {
           custoEl.innerText = 'R$ 0,00';
-          custoEl.style.color = '#888';
+          custoEl.classList.add('text-muted');
         }
       }
     });
@@ -6550,7 +6546,7 @@ function boot() {
     if (!el) return;
     var ready = window._cloudConnected === true || (typeof isSupabaseReady === 'function' && isSupabaseReady());
     el.textContent = ready ? '☁️ Conectado' : '📴 Offline';
-    el.style.color = ready ? '#4ade80' : '#f59e0b';
+    if (ready) { el.classList.add('text-success'); el.classList.remove('text-warning'); } else { el.classList.add('text-warning'); el.classList.remove('text-success'); }
   }
   updateCloudStatus();
   setInterval(updateCloudStatus, 5000);
