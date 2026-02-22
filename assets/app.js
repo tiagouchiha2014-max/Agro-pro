@@ -1,8 +1,3 @@
-<meta name='viewport' content='width=device-width, initial-scale=1'/>
-<!-- CSP: bloqueia scripts inline não autorizados e restringe origens -->
-<meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://api.openai.com;">
-
 /* ============================================================
    AGRO PRO — app.js (v21 — SEGURANÇA + PERFORMANCE + PADRÕES)
    CORREÇÕES:
