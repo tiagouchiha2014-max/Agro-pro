@@ -1,111 +1,193 @@
-/* =====================================================
-   Agro Pro — Layout Clean & Premium (Equilibrado)
-   ===================================================== */
-
 :root {
+    /* Cores Base */
     --bg: #f4f7f6;
-    --sidebar: #101d3f; /* Azul marinho sóbrio */
-    --brand: #2563eb;
+    --surface: #ffffff;
     --text: #1e293b;
-    --muted: #64748b;
-    --line: rgba(0,0,0,0.08);
+    --text-muted: #64748b;
+    
+    /* Brand */
+    --brand: #2563eb;
+    --brand-dark: #1d4ed8;
+    
+    /* Layout */
+    --sidebar-bg: #1e293b;
+    --border: rgba(0,0,0,0.08);
+    
+    /* Elevação */
+    --shadow-sm: 0 2px 4px rgba(0,0,0,0.02);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --shadow-brand: 0 4px 12px rgba(37, 99, 235, 0.2);
+    
+    /* Espaçamento */
     --radius: 12px;
+    --radius-sm: 8px;
+    
+    /* Transições */
+    --transition-fast: 0.15s ease;
+    --transition-base: 0.2s ease;
+}
+
+/* Reset Básico */
+* {
+    box-sizing: border-box;
 }
 
 body {
     margin: 0;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: var(--bg);
     color: var(--text);
+    line-height: 1.5;
 }
 
-/* Sidebar com fundo azul profundo e profissional */
+/* Layout */
+.app {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar */
 .sidebar {
     width: 260px;
-    background: #1e293b; /* Um azul marinho bem escuro e moderno */
+    background: var(--sidebar-bg);
     color: #fff;
     padding: 20px;
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    transition: transform var(--transition-base);
 }
 
-/* O item selecionado agora em Azul Premium em vez de verde */
+.nav a {
+    display: block;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+    transition: background var(--transition-fast), 
+                color var(--transition-fast);
+}
+
+.nav a:hover {
+    background: rgba(255,255,255,0.05);
+    color: #fff;
+}
+
 .nav a.active {
-    background: #2563eb !important; /* Azul Royal Premium */
-    color: #fff !important;
+    background: var(--brand);
+    color: #fff;
     font-weight: 600;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+    box-shadow: var(--shadow-brand);
 }
 
-/* Ajuste sutil no hover para combinar */
-.nav a:hover:not(.active) {
-    background: rgba(255, 255, 255, 0.05);
-}
-
-
-/* ===== CARDS (ESTRUTURA FIXA) ===== */
+/* Cards */
 .card {
-    background: #fff;
+    background: var(--surface);
     border-radius: var(--radius);
     padding: 20px;
-    border: 1px solid var(--line);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
     margin-bottom: 20px;
 }
 
-/* Títulos dentro dos cards com a divisória que você queria */
 .card h3 {
-    margin: 0 0 15px 0;
+    margin: 0 0 15px;
     font-size: 16px;
+    font-weight: 600;
     padding-bottom: 10px;
-    border-bottom: 1px solid var(--line);
-    color: var(--sidebar);
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
 }
 
-/* ===== FORMULÁRIOS (O QUE ESTAVA BAGUNÇADO) ===== */
+/* Forms */
 .formGrid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 15px;
+    grid-template-columns: 1fr;
 }
 
-/* Alinhamento dos Labels e Inputs */
+@media (min-width: 640px) {
+    .formGrid {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 6px;
 }
 
 .label {
     font-size: 13px;
     font-weight: 600;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
-.input, .select {
-    height: 40px;
-    padding: 0 12px;
+.input,
+.select {
+    min-height: 40px;
+    padding: 8px 12px;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     font-size: 14px;
     width: 100%;
-    background: #fff;
+    background: var(--surface);
+    transition: border-color var(--transition-fast),
+                box-shadow var(--transition-fast);
 }
 
-.input:focus {
+.input:focus,
+.select:focus {
     border-color: var(--brand);
     outline: none;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-/* BOTÕES */
+/* Botões */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background var(--transition-fast),
+                transform var(--transition-fast);
+    border: none;
+}
+
 .btn.primary {
     background: var(--brand);
     color: #fff;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
+}
+
+.btn.primary:hover {
+    background: var(--brand-dark);
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        height: 100vh;
+        transform: translateX(-100%);
+        z-index: 100;
+    }
+    
+    .sidebar.open {
+        transform: translateX(0);
+    }
+    
+    .main {
+        margin-left: 0;
+    }
 }
