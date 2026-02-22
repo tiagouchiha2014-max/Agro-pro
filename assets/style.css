@@ -3,7 +3,7 @@
    Visual SaaS refinado e performático
    ===================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
 
 /* =====================
    TOKENS
@@ -48,7 +48,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   color: var(--text);
   background:
     radial-gradient(ellipse 800px 500px at 0% -5%,  rgba(59,130,246,.15), transparent 65%),
@@ -260,7 +260,7 @@ body {
   gap: 8px;
   padding: 10px 18px;
   border-radius: var(--radiusSm);
-  font-family: inherit;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -312,7 +312,7 @@ body {
   padding: 10px 13px;
   border-radius: var(--radiusSm);
   border: 1px solid rgba(2,6,23,.10);
-  font-family: inherit;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   font-size: 14px;
   color: var(--text);
   background: #fff;
