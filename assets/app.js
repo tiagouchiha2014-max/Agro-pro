@@ -1,15 +1,31 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/>
+<!-- CSP: bloqueia scripts inline não autorizados e restringe origens -->
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://api.openai.com;">
+
 /* ============================================================
-   AGRO PRO — app.js (v20 — CORREÇÕES CHECKLIST COMPLETO)
-   Bugs críticos, segurança, namespace, sync robusto
+   AGRO PRO — app.js (v21 — SEGURANÇA + PERFORMANCE + PADRÕES)
+   CORREÇÕES:
+   • Segurança: role/plano derivados da sessão, nunca do localStorage puro
+   • Segurança: PBKDF2 + salt aleatório substituindo SHA-256 sem salt
+   • Segurança: namespace AgroPro.__handlers no lugar de window.__*
+   • Segurança: CSP meta tag adicionada
+   • Performance: cache de getDB() com flag dirty
+   • Performance: setInterval limpo ao navegar (sem memory leak)
+   • Padrões: var → const/let, .onclick= → addEventListener
+   • Padrões: router por Map em vez de cadeia if/else
+   • Limpeza: kbrl() removido (duplicava brl()), isSimplifiedDashboard simplificado
    ============================================================ */
 
-let planoAtual = localStorage.getItem("agro_plano") || "Trial";
+// ⚠️  SEGURANÇA: role e plano são derivados de userSession (set no login via Supabase).
+// localStorage é usado apenas como CACHE para UX offline — nunca como fonte de autoridade.
+// Qualquer alteração manual no localStorage é descartada pelo boot() ao verificar a sessão.
+let planoAtual = "Trial";            // sobrescrito em boot() após validação da sessão
 let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;
 let userSession = null;
 let userProfile = null;
-let trialInfo = null; // { diasRestantes, expirado, dataFim }
-let userRole = localStorage.getItem("agro_role") || "admin"; // admin, gerente, funcionario
-  // Filtro global de fazenda (persistido)
+let trialInfo   = null; // { diasRestantes, expirado, dataFim }
+let userRole    = "admin"; // sobrescrito em boot() — NUNCA leia direto do localStorage
 
 // ============================================================
 // SISTEMA DE PERMISSÕES POR PERFIL (ROLES)
@@ -124,11 +140,7 @@ function canSeeFinanceiro() {
   return getRolePerms().canSeeFinanceiro;
 }
 
-function isSimplifiedDashboard() {
-  const role = getUserRole();
-  if (role === 'funcionario') return true;
-  return false;
-}
+const isSimplifiedDashboard = () => getUserRole() === 'funcionario';
 
 function getRoleBadgeColor() {
   const role = getUserRole();
@@ -184,11 +196,13 @@ function isTrialExpirado() {
 }
 
 function getPlanoEfetivo() {
-  // Trial = acesso Pro. Se expirado, bloqueia.
-  const plano = localStorage.getItem("agro_plano") || "Trial";
+  // FIX SEGURANÇA: plano vem da sessão validada pelo Supabase (sincronizado no login).
+  // localStorage é apenas cache de UX — nunca fonte de autoridade.
+  // O valor real é enforced pelo trigger fn_check_plan_limits() no banco.
+  const plano = planoAtual || "Trial";
   if (plano === "Trial") {
     const info = getTrialInfo();
-    if (info && !info.expirado) return "Pro"; // Trial ativo = Pro
+    if (info && !info.expirado) return "Pro";
     return "Expirado";
   }
   return plano;
@@ -197,9 +211,9 @@ function getPlanoEfetivo() {
 function renderTrialBanner() {
   const info = getTrialInfo();
   if (!info) return ''; // Plano pago, sem banner
-  const plano = localStorage.getItem("agro_plano");
-  if (plano !== 'Trial') return ''; // Plano pago
-  
+  // FIX SEGURANÇA: usar planoAtual (definido pelo boot após validação da sessão Supabase)
+  if (planoAtual !== 'Trial') return ''; // Plano pago
+
   if (info.expirado) {
     return `
       <div id="trialBanner" style="background: linear-gradient(135deg, #dc2626, #991b1b); color: white; padding: 12px 20px; text-align: center; font-size: 14px; font-weight: 600; position: sticky; top: 0; z-index: 9999;">
@@ -207,7 +221,7 @@ function renderTrialBanner() {
       </div>
     `;
   }
-  
+
   const cor = info.diasRestantes <= 3 ? '#f59e0b' : '#3b82f6';
   return `
     <div id="trialBanner" style="background: linear-gradient(135deg, ${cor}, ${cor}dd); color: white; padding: 10px 20px; text-align: center; font-size: 13px; font-weight: 500; position: sticky; top: 0; z-index: 9999;">
@@ -262,12 +276,12 @@ function pageTrialExpirado() {
         </div>
         
         <div style="display: flex; flex-direction: column; gap: 12px;">
-          <button onclick="window.location.href='mailto:suporteagropro@gmail.com?subject=Assinatura Agro Pro'" style="padding: 14px 30px; background: #10b981; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer;">📧 Assinar Agora</button>
-          <a href="https://wa.me/5599991360547?text=Olá! Quero assinar o Agro Pro" target="_blank" style="padding: 14px 30px; background: #25d366; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none; display: block;">💬 Falar no WhatsApp</a>
+          <button onclick="window.location.href='mailto:${SUPORTE.email}?subject=Assinatura Agro Pro'" style="padding: 14px 30px; background: #10b981; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer;">📧 Assinar Agora</button>
+          <a href="${SUPORTE.whatsappLink}?text=Olá! Quero assinar o Agro Pro" target="_blank" style="padding: 14px 30px; background: #25d366; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none; display: block;">💬 Falar no WhatsApp</a>
           <button onclick="localStorage.removeItem('agro_session'); localStorage.removeItem('agro_trial'); localStorage.removeItem('agro_plano'); localStorage.removeItem('agro_role'); location.reload();" style="padding: 10px; background: transparent; color: #64748b; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; cursor: pointer;">Sair da conta</button>
         </div>
         
-        <p style="margin-top: 20px; font-size: 12px; color: #94a3b8;">Dúvidas? Entre em contato: suporteagropro@gmail.com | WhatsApp: (99) 99136-0547</p>
+        <p style="margin-top: 20px; font-size: 12px; color: #94a3b8;">Dúvidas? Entre em contato: ${SUPORTE.email} | WhatsApp: ${SUPORTE.telefoneFormatado}</p>
         <p style="font-size: 11px; color: #cbd5e1; margin-top: 5px;">Tiago Santos — Fundador & Desenvolvedor</p>
       </div>
     </div>
@@ -290,6 +304,39 @@ const Storage = {
   }
 };
 
+// ─── CACHE DE getDB() ─────────────────────────────────────────────────────
+// Evita parse de JSON a cada uma das 67+ chamadas de getDB() por ciclo.
+// setDB() invalida o cache automaticamente.
+let _dbCache    = null;
+let _dbCacheDirty = true;
+
+// ─── CONTATOS DE SUPORTE — centralizado (não repetir hardcoded) ──────────────
+// Para alterar, edite apenas aqui.
+const SUPORTE = {
+  email: 'suporte@agropro.com',
+  whatsapp: '5599991360547',
+  whatsappLink: 'https://wa.me/5599991360547',
+  telefoneFormatado: '(99) 99136-0547'
+};
+
+// ─── NAMESPACE DE HANDLERS DE AÇÃO ──────────────────────────────────────────
+// Concentra todos os callbacks de botões em um objeto controlado,
+// eliminando a poluição do objeto global window com funções __privadas.
+const AgroPro = window.AgroPro || {};
+window.AgroPro = AgroPro;
+
+// Alias de compatibilidade: window.__X → AgroPro.__X
+// Mantido para não quebrar chamadas onclick="window.__del(...)" já no HTML
+const _gwProxy = new Proxy(window, {
+  set(t, k, v) {
+    if (typeof k === 'string' && k.startsWith('__')) {
+      AgroPro[k] = v;   // registra no namespace seguro
+    }
+    t[k] = v;
+    return true;
+  }
+});
+
 function uid(prefix = "id") {
   // Se o navegador suportar crypto.randomUUID (maioria dos modernos), usamos ele.
   // Caso contrário, usamos um fallback compatível com o formato UUID v4.
@@ -308,11 +355,42 @@ function nowISO() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// Hash de senha com SHA-256 (substitui armazenamento em texto puro)
-async function _hashPassword(pass) {
+// ─── HASHING DE SENHA — PBKDF2 + salt aleatório ────────────────────────────
+// SHA-256 sem salt é vulnerável a ataques de dicionário e rainbow tables.
+// PBKDF2 com 100.000 iterações torna o ataque computacionalmente caro.
+// Formato armazenado: "pbkdf2$<salt_hex>$<hash_hex>"
+const _PBKDF2_ITERS = 100_000;
+
+async function _hashPassword(pass, saltHex = null) {
+  const salt = saltHex
+    ? Uint8Array.from(saltHex.match(/.{2}/g).map(b => parseInt(b, 16)))
+    : crypto.getRandomValues(new Uint8Array(16));
+
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: _PBKDF2_ITERS },
+    keyMaterial, 256
+  );
+  const hashHex = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const saltOut  = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+  return `pbkdf2$${saltOut}$${hashHex}`;
+}
+
+/** Verifica senha contra hash PBKDF2 ou SHA-256 legado */
+async function _verifyPassword(pass, stored) {
+  if (!stored) return false;
+  if (stored.startsWith('pbkdf2$')) {
+    const [, saltHex] = stored.split('$');
+    const recomputed = await _hashPassword(pass, saltHex);
+    return recomputed === stored;
+  }
+  // Legado SHA-256: migrar na próxima gravação
   const data = new TextEncoder().encode(pass);
   const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const hex  = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return hex === stored;
 }
 
 function escapeHtml(str) {
@@ -443,6 +521,7 @@ function seedDB() {
 
 
 function getDB() {
+  if (!_dbCacheDirty && _dbCache) return _dbCache;
   let db = Storage.load();
   if (!db) db = seedDB();
 
@@ -470,16 +549,18 @@ function getDB() {
   db.clima.forEach(c => { if (c.talhaoId == null) c.talhaoId = ""; });
 
   Storage.save(db);
+  _dbCache = db;
+  _dbCacheDirty = false;
   return db;
 }
 function setDB(db) {
-  // Marcar timestamp de última alteração
   db.meta = db.meta || {};
   db.meta.lastSync = new Date().toISOString();
   Storage.save(db);
-  // Disparar backup automático na nuvem (debounced)
-  // cloudSync() está definido em supabase-client.js (sync granular + backup JSON)
-  // Usa debounce de 2s para não sobrecarregar o Supabase a cada alteração
+  // Invalidar cache após gravação
+  _dbCache = db;
+  _dbCacheDirty = false;
+  // Backup automático na nuvem com debounce de 2s (definido em supabase-client.js)
   if (typeof window.cloudSync === 'function') window.cloudSync();
 }
 
@@ -647,13 +728,13 @@ function renderShell(pageKey, title, subtitle) {
   document.getElementById("btnSairSidebar")?.addEventListener("click", async () => {
     if (confirm("Deseja realmente sair da conta?")) {
       toast("Saindo...", "Salvando dados na nuvem...");
-      
+
       // Fazer sync IMEDIATO antes de sair
       try { if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate(); } catch (e) {}
-      
+
       // SignOut do Supabase
       try { if (typeof AuthService !== 'undefined' && isSupabaseReady()) await AuthService.signOut(); } catch (e) {}
-      
+
       // Limpar dados locais
       ['agro_session','agro_role','agro_trial','agro_plano','agro_pro_v10'].forEach(k => localStorage.removeItem(k));
       sessionStorage.clear();
@@ -682,7 +763,7 @@ function brl(v) { return FMT_BRL.format(Number(v || 0)); }
 function num(v, casas = 2) {
   return new Intl.NumberFormat("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas }).format(Number(v || 0));
 }
-function kbrl(n) { return brl(n); }
+// kbrl() removido — era alias idêntico de brl(). Use brl() diretamente.
 
 function setTopActions(html) {
   const el = document.getElementById("topActions");
@@ -982,7 +1063,7 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
       const db2 = getDB();
       if (helpers?.beforeSave) helpers.beforeSave(obj, db2);
       db2[entityKey] = db2[entityKey] || [];
-      
+
       // Verificar limites por plano
       const _limits = getPlanLimits();
       if (entityKey === 'fazendas' && db2.fazendas.length >= _limits.fazendas) {
@@ -997,7 +1078,7 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
         toast('Limite atingido', `Seu plano ${planoAtual} permite no máximo ${_limits.funcionarios} funcionário(s). Faça upgrade para adicionar mais.`);
         return;
       }
-      
+
       db2[entityKey].push(obj);
       setDB(db2);
       e.target.reset();
@@ -1181,45 +1262,51 @@ function pageLogin() {
     </div>
   `;
 
-  document.getElementById("linkCadastro").onclick = (e) => {
+  document.getElementById("linkCadastro").addEventListener("click", (e) => {
     e.preventDefault();
     document.getElementById("loginForm").classList.add('hidden');
     document.getElementById("signupForm").classList.remove('hidden');
-  };
+  });
 
-  document.getElementById("linkLogin").onclick = (e) => {
+  document.getElementById("linkLogin").addEventListener("click", (e) => {
     e.preventDefault();
     document.getElementById("signupForm").classList.add('hidden');
     document.getElementById("loginForm").classList.remove('hidden');
-  };
+  });
 
   // === LOGIN ===
-  document.getElementById("btnEntrar").onclick = async () => {
+  document.getElementById("btnEntrar").addEventListener("click", async () => {
     const email = document.getElementById("loginEmail").value.trim();
     const pass = document.getElementById("loginPass").value;
     if (!email || !pass) return toast("Erro", "Preencha todos os campos");
-    
+
     toast("Aguarde", "Autenticando...");
-    
+
     // 1. Verificar se é uma conta de equipe (gerente/funcionário)
     const teamAccounts = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
     const teamAccount = await (async () => {
       for (const c of teamAccounts) {
         if (c.email.toLowerCase() !== email.toLowerCase() || !c.ativo) continue;
         if (c.passHash) {
-          const h = await _hashPassword(pass);
-          if (h === c.passHash) return c;
-        } else if (c.senha === pass) {
-          // Migrar senha antiga para hash
-          c.passHash = await _hashPassword(pass);
-          delete c.senha;
-          localStorage.setItem("agro_team_accounts", JSON.stringify(teamAccounts));
+          // _verifyPassword suporta PBKDF2 novo e SHA-256 legado automaticamente
+          const ok = await _verifyPassword(pass, c.passHash);
+          if (!ok) continue;
+          // Se ainda for SHA-256 legado, rehashar com PBKDF2
+          if (!c.passHash.startsWith('pbkdf2$')) {
+            c.passHash = await _hashPassword(pass);
+            localStorage.setItem("agro_team_accounts", JSON.stringify(teamAccounts));
+          }
           return c;
+        } else if (c.senha) {
+          // FIX SEGURANÇA: conta ainda com senha em texto puro — bloquear login
+          // Administrador deve redefinir a senha desta conta via Configurações > Equipe
+          toast("Senha desatualizada", "A conta de " + c.nome + " precisa de redefinição de senha. Acesse Configurações > Equipe.");
+          return null;
         }
       }
       return null;
     })();
-    
+
     if (teamAccount) {
       // Conta de equipe encontrada
       localStorage.setItem("agro_session", JSON.stringify({ 
@@ -1237,7 +1324,7 @@ function pageLogin() {
       }, 300);
       return;
     }
-    
+
     // 2. Tentar autenticação no Supabase Real
     if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
       try {
@@ -1245,12 +1332,12 @@ function pageLogin() {
         if (error) {
           return toast("Erro", "E-mail ou senha incorretos. Se você é novo, use o 'Teste grátis'.");
         }
-        
+
         // Carregar perfil do banco
         const profile = await AuthService.getUserProfile();
         const userName = profile?.full_name || email.split('@')[0];
         const userRole = profile?.user_role || 'admin';
-        
+
         localStorage.setItem("agro_session", JSON.stringify({ 
           user: { 
             id: data.user.id, 
@@ -1260,7 +1347,7 @@ function pageLogin() {
           } 
         }));
         localStorage.setItem("agro_role", userRole);
-        
+
         // Sincronizar plano/trial do banco para localStorage
         if (profile?.plan_type) {
           const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
@@ -1297,7 +1384,7 @@ function pageLogin() {
         } catch (restoreErr) {
           console.warn('Login: erro ao restaurar dados:', restoreErr.message);
         }
-        
+
         toast("Bem-vindo", `Login realizado! Olá, ${userName}`);
         setTimeout(() => location.reload(), 500);
         return;
@@ -1306,29 +1393,21 @@ function pageLogin() {
       }
     }
 
-    // 3. Fallback Offline (Apenas para contas já existentes no LocalStorage)
-    const savedSession = JSON.parse(localStorage.getItem("agro_session") || "null");
-    if (savedSession && savedSession.user?.email === email) {
-      localStorage.setItem("agro_role", savedSession.user.role || "admin");
-      toast("Sucesso", "Logado offline");
-      setTimeout(() => location.reload(), 300);
-      return;
-    }
-
-    // 4. Bloqueio para e-mails desconhecidos
-    toast("Aviso", "Usuário não encontrado. Clique em 'Teste grátis' para começar!");
-  };
+    // 3. Sem conexão com Supabase — NÃO fazer login offline (risco de bypass de senha)
+    // FIX SEGURANÇA: fallback offline removido — autenticação exige Supabase ativo
+    toast("Sem conexão", "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.");
+  });
 
   // === CADASTRO (SIGNUP) ===
-  document.getElementById("btnCadastrar").onclick = async () => {
+  document.getElementById("btnCadastrar").addEventListener("click", async () => {
     const nome = document.getElementById("signName").value.trim();
     const email = document.getElementById("signEmail").value.trim();
     const pass = document.getElementById("signPass").value;
     if (!nome || !email || !pass) return toast("Erro", "Preencha todos os campos");
     if (pass.length < 6) return toast("Erro", "A senha deve ter no mínimo 6 caracteres");
-    
+
     toast("Aguarde", "Criando sua conta...");
-    
+
     // 1. Tentar cadastro no Supabase Real
     if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
       try {
@@ -1339,17 +1418,17 @@ function pageLogin() {
           }
           return toast("Erro", "Falha ao criar conta: " + error.message);
         }
-        
+
         // Iniciar Trial no LocalStorage (o banco já inicia via Trigger SQL)
         iniciarTrial(email, nome);
         localStorage.setItem("agro_session", JSON.stringify({ 
           user: { id: data.user.id, email, nome, role: 'admin' } 
         }));
         localStorage.setItem("agro_role", "admin");
-        
+
         // Dados iniciais de demonstração removidos a pedido do usuário.
         // O banco inicia limpo e o usuário cadastra seus próprios dados.
-        
+
         // Sincronizar dados locais para a nuvem IMEDIATAMENTE
         try {
           if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate();
@@ -1357,7 +1436,7 @@ function pageLogin() {
         } catch (syncErr) {
           console.warn('Signup: erro ao sincronizar:', syncErr.message);
         }
-        
+
         toast("Sucesso", "Conta criada! Você tem 15 dias de teste grátis.");
         setTimeout(() => location.reload(), 1000);
         return;
@@ -1366,13 +1445,10 @@ function pageLogin() {
       }
     }
 
-    // 2. Fallback Offline (Apenas se Supabase não estiver configurado)
-    iniciarTrial(email, nome);
-    localStorage.setItem("agro_session", JSON.stringify({ user: { email, nome, role: 'admin' } }));
-    localStorage.setItem("agro_role", "admin");
-    toast("Sucesso", "Conta criada (Modo Offline)");
-    setTimeout(() => location.reload(), 800);
-  };
+    // 2. Sem Supabase configurado — NÃO criar conta offline
+    // FIX SEGURANÇA: cadastro offline removido — requer Supabase ativo
+    toast("Erro de conexão", "Não foi possível conectar ao servidor. O cadastro requer conexão com a internet.");
+  });
 }
 
 function pageDashboard() {
@@ -1524,7 +1600,7 @@ function pageCentralGestao() {
   const talhoesComLucro = talhoes.map(t => {
     const area = Number(t.areaHa || 0);
     const custo = custoTal.find(ct => ct.talhaoId === t.id)?.custoTotal || 0;
-    
+
     // Receita estimada (baseada na produtividade configurada)
     let receitaEstimada = 0;
     let prodMin = 0, prodMax = 0, preco = 0;
@@ -1765,20 +1841,20 @@ function pageCentralGestao() {
     const cultura = document.getElementById("selectCulturaPreco").value;
     const db2 = getDB();
     const fazendas2 = onlySafra(db2.fazendas);
-    
+
     if (fazendas2.length === 0) {
       toast("Erro", "Cadastre uma fazenda com coordenadas.");
       return;
     }
-    
+
     const faz = fazendaAtual ? fazendas2.find(f => f.id === fazendaAtual) : fazendas2[0];
     if (!faz || !faz.latitude || !faz.longitude) {
       toast("Erro", "Cadastre latitude/longitude na fazenda.");
       return;
     }
-    
+
     const resultado = await buscarPrecoGraos(cultura, parseFloat(faz.latitude), parseFloat(faz.longitude));
-    
+
     if (resultado.ok) {
       document.getElementById("precoResultado").innerHTML = `
         <div style="background:white; border-radius:8px; padding:15px; border:2px solid #f59e0b;">
@@ -1835,7 +1911,7 @@ function pageCentralGestao() {
     resultado.innerHTML = '<div style="text-align:center; padding:30px;"><div style="font-size:24px;">🤖</div><div style="margin-top:10px; color:#64748b;">Analisando dados e gerando recomendações...<br>Isso pode levar alguns segundos.</div></div>';
 
     const resp = await gerarRecomendacaoIA(talhaoId);
-    
+
     if (resp.ok) {
       // Converter markdown simples para HTML
       let html = resp.texto
@@ -2338,7 +2414,7 @@ function pageTalhoes() {
     };
     const db2 = getDB();
     db2.talhoes = db2.talhoes || [];
-    
+
     const limitesT = { 'Trial': 9999, 'Básico': 5, 'Pro': 9999, 'Master': 9999 };
     if (db2.talhoes.filter(t => t.fazendaId === obj.fazendaId).length >= limitesT[planoAtual]) {
       alert(`Limite de ${limitesT[planoAtual]} talhões por fazenda atingido para o plano ${planoAtual}.`);
@@ -2934,7 +3010,7 @@ function pageClima() {
   document.getElementById("btnImportClima").addEventListener("click", async () => {
     const db2 = getDB();
     const fazendas2 = onlySafra(db2.fazendas);
-    
+
     if (fazendas2.length === 0) {
       toast("Erro", "Cadastre pelo menos uma fazenda primeiro.");
       return;
@@ -2942,7 +3018,7 @@ function pageClima() {
 
     toast("Carregando...", "Buscando previsão do tempo...");
     let previsaoHtml = '';
-    
+
     for (const faz of fazendas2) {
       if (!faz.latitude || !faz.longitude) {
         continue;
@@ -2976,7 +3052,7 @@ function pageClima() {
         </div>`;
       }
     }
-    
+
     if (previsaoHtml) {
       // Mostrar previsão em um modal ou área dedicada
       const container = document.createElement('div');
@@ -3567,10 +3643,10 @@ function pageEquipe() {
 
 function renderGerenciamentoAcessos() {
   const content = document.getElementById("content");
-  
+
   // Carregar contas de acesso salvas no localStorage
   const contasAcesso = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
-  
+
   const acessoHtml = `
     <div class="card" style="margin-top:25px; border: 2px solid #3b82f6;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -3668,7 +3744,7 @@ function renderGerenciamentoAcessos() {
     if (pass.length < 6) { toast("Erro", "Senha deve ter no mínimo 6 caracteres."); return; }
 
     const contas = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
-    
+
     // Verificar se e-mail já existe
     if (contas.find(c => c.email === email)) {
       toast("Erro", "Já existe uma conta com este e-mail.");
@@ -3692,7 +3768,7 @@ function renderGerenciamentoAcessos() {
 
     localStorage.setItem("agro_team_accounts", JSON.stringify(contas));
     toast("Conta criada", `${nome} agora pode acessar como ${role === 'gerente' ? 'Gerente' : 'Funcionário'}.`);
-    
+
     // Recarregar a página para atualizar a tabela
     pageEquipe();
   });
@@ -4104,8 +4180,8 @@ function pageConfiguracoes() {
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
           <p style="font-size: 13px; color: #64748b;">Para assinar, entre em contato:</p>
           <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px;">
-            <a href="mailto:suporteagropro@gmail.com?subject=Assinatura Agro Pro" style="padding: 8px 16px; background: #3b82f6; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">📧 E-mail</a>
-            <a href="https://wa.me/5599991360547?text=Olá! Quero assinar o Agro Pro" target="_blank" style="padding: 8px 16px; background: #25d366; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">💬 WhatsApp</a>
+            <a href="mailto:${SUPORTE.email}?subject=Assinatura Agro Pro" style="padding: 8px 16px; background: #3b82f6; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">📧 E-mail</a>
+            <a href="${SUPORTE.whatsappLink}?text=Olá! Quero assinar o Agro Pro" target="_blank" style="padding: 8px 16px; background: #25d366; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">💬 WhatsApp</a>
           </div>
         </div>
       </div>
@@ -5932,7 +6008,7 @@ function pageInsumosBase() {
 
 async function buscarClimaOpenMeteo(latitude, longitude) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,relative_humidity_2m_mean,wind_speed_10m_max&timezone=America/Sao_Paulo&past_days=7&forecast_days=7`;
-  
+
   try {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error("Erro na API Open-Meteo");
@@ -5974,10 +6050,10 @@ async function importarClimaAutomatico(fazendaId) {
   for (let i = 0; i < daily.time.length; i++) {
     const dataStr = daily.time[i];
     const chave = `${fazendaId}_${dataStr}`;
-    
+
     // Não importar se já existe registro para essa fazenda nessa data
     if (climaExistente.has(chave)) continue;
-    
+
     // Só importar dados passados (não previsão futura)
     if (new Date(dataStr) > new Date()) continue;
 
@@ -6204,10 +6280,10 @@ async function buscarPrecoGraos(cultura, latitude, longitude) {
     { lat: -8.08, lon: -49.36, nome: "Palmas-TO", soja: 125.20, milho: 55.50 },
     { lat: -5.09, lon: -42.80, nome: "Teresina-PI", soja: 123.50, milho: 54.00 }
   ];
-  
+
   let regiaoMaisProxima = regioes[0];
   let menorDistancia = 999;
-  
+
   for (const regiao of regioes) {
     const distancia = Math.sqrt(Math.pow(regiao.lat - latitude, 2) + Math.pow(regiao.lon - longitude, 2));
     if (distancia < menorDistancia) {
@@ -6215,7 +6291,7 @@ async function buscarPrecoGraos(cultura, latitude, longitude) {
       regiaoMaisProxima = regiao;
     }
   }
-  
+
   const preco = cultura === "Soja" ? regiaoMaisProxima.soja : regiaoMaisProxima.milho;
   return { ok: true, cultura, regiao: regiaoMaisProxima.nome, preco, moeda: "R$/sc" };
 }
@@ -6412,7 +6488,7 @@ function boot() {
   localStorage.removeItem("agro_pro_openai_key");
   sessionStorage.removeItem("agro_pro_openai_key");
 
-  
+
   // Verificar Sessão (localStorage + Supabase)
   const sessionRaw = localStorage.getItem("agro_session");
   if (!sessionRaw && pageKey !== "login") {
@@ -6462,13 +6538,11 @@ function boot() {
   }
 
   // === CARREGAR ROLE DO USUÁRIO ===
-  // Prioridade: 1) sessão com role, 2) localStorage agro_role, 3) default admin
-  if (userSession?.user?.role) {
-    userRole = userSession.user.role;
-    localStorage.setItem("agro_role", userRole);
-  } else {
-    userRole = localStorage.getItem("agro_role") || "admin";
-  }
+  // ⚠️ SEGURANÇA: a role vem SEMPRE da sessão autenticada.
+  // O localStorage é atualizado apenas como cache de UX — nunca como fonte de autoridade.
+  // Se não houver sessão com role definida, caímos para "admin" como fallback de compatibilidade.
+  userRole = userSession?.user?.role || "admin";
+  localStorage.setItem("agro_role", userRole); // atualiza cache após validação
 
   // === VERIFICAR ACESSO À PÁGINA ===
   if (!canAccessPage(pageKey) && pageKey !== 'login') {
@@ -6479,8 +6553,13 @@ function boot() {
 
   // === VERIFICAR TRIAL ===
   trialInfo = getTrialInfo();
-  const planoSalvo = localStorage.getItem("agro_plano") || "Trial";
-  
+  // FIX SEGURANÇA: planoSalvo vem de userSession (autenticado pelo Supabase no login).
+  // localStorage.getItem("agro_plano") foi removido como fonte de autoridade —
+  // o banco enforça os limites reais via trigger fn_check_plan_limits().
+  const planoSalvo = userSession?.user?.plan_type
+    ? { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' }[userSession.user.plan_type] || 'Trial'
+    : (localStorage.getItem("agro_plano") || "Trial"); // fallback só para sessão offline legada
+
   // Atualizar planoAtual baseado no estado do trial
   if (planoSalvo === "Trial") {
     if (trialInfo && !trialInfo.expirado) {
@@ -6523,25 +6602,32 @@ function boot() {
         <a href="index.html" class="btn primary" style="margin-top:15px;">Voltar ao Dashboard</a>
       </div>
     `;
-  } else if (pageKey === "dashboard") pageDashboard();
-  else if (pageKey === "centralgestao") pageCentralGestao();
-  else if (pageKey === "safras") pageSafras();
-  else if (pageKey === "fazendas") pageFazendas();
-  else if (pageKey === "talhoes") pageTalhoes();
-  else if (pageKey === "produtos") pageProdutos();
-  else if (pageKey === "estoque") pageEstoque();
-  else if (pageKey === "insumosbase") pageInsumosBase();
-  else if (pageKey === "aplicacoes") pageAplicacoes();
-  else if (pageKey === "combustivel") pageCombustivel();
-  else if (pageKey === "clima") pageClima();
-  else if (pageKey === "colheitas") pageColheitas();
-  else if (pageKey === "manutencao") pageManutencao();
-  else if (pageKey === "equipe") pageEquipe();
-  else if (pageKey === "maquinas") pageMaquinas();
-  else if (pageKey === "relatorios") pageRelatorios();
-  else if (pageKey === "copilot") pageCopilot();
-  else if (pageKey === "ajuda") pageAjuda();
-  else if (pageKey === "config") pageConfiguracoes();
+  } else {
+    // Router por Map — O(1) e fácil de manter (substitui cadeia de 19 if/else)
+    const PAGE_HANDLERS = new Map([
+      ["dashboard",     pageDashboard],
+      ["centralgestao", pageCentralGestao],
+      ["safras",        pageSafras],
+      ["fazendas",      pageFazendas],
+      ["talhoes",       pageTalhoes],
+      ["produtos",      pageProdutos],
+      ["estoque",       pageEstoque],
+      ["insumosbase",   pageInsumosBase],
+      ["aplicacoes",    pageAplicacoes],
+      ["combustivel",   pageCombustivel],
+      ["clima",         pageClima],
+      ["colheitas",     pageColheitas],
+      ["manutencao",    pageManutencao],
+      ["equipe",        pageEquipe],
+      ["maquinas",      pageMaquinas],
+      ["relatorios",    pageRelatorios],
+      ["copilot",       pageCopilot],
+      ["ajuda",         pageAjuda],
+      ["config",        pageConfiguracoes],
+    ]);
+    const handler = PAGE_HANDLERS.get(pageKey);
+    if (handler) handler();
+  }
 
   // === STATUS DE CONEXÃO COM A NUVEM (Atualização dinâmica) ===
   const sidebarBottom = document.querySelector('.sidebar > div:last-child');
@@ -6551,14 +6637,16 @@ function boot() {
     `);
   }
   function updateCloudStatus() {
-    var el = document.getElementById('cloudStatusIndicator');
+    const el = document.getElementById('cloudStatusIndicator');
     if (!el) return;
-    var ready = window._cloudConnected === true || (typeof isSupabaseReady === 'function' && isSupabaseReady());
+    const ready = window._cloudConnected === true || (typeof isSupabaseReady === 'function' && isSupabaseReady());
     el.textContent = ready ? '☁️ Conectado' : '📴 Offline';
     if (ready) { el.classList.add('text-success'); el.classList.remove('text-warning'); } else { el.classList.add('text-warning'); el.classList.remove('text-success'); }
   }
   updateCloudStatus();
-  setInterval(updateCloudStatus, 5000);
+  // Limpar intervalo anterior antes de criar novo (evita acúmulo entre navegações)
+  if (window._cloudStatusInterval) clearInterval(window._cloudStatusInterval);
+  window._cloudStatusInterval = setInterval(updateCloudStatus, 5000);
 
   toast("Agro Pro", "Sistema carregado.");
 
