@@ -1,6 +1,6 @@
 /* =====================================================
-   AGRO PRO — CSS PREMIUM COMPLETO
-   Visual SaaS profissional
+   AGRO PRO — CSS PREMIUM
+   Base original + melhorias visuais aplicadas
    ===================================================== */
 
 :root{
@@ -11,8 +11,9 @@
   --brand2:#2563eb;
   --brandSoft:#dbeafe;
 
-  --sidebar:#0f172a;
-  --sidebar2:#1e293b;
+  /* SIDEBAR: azul médio (era #0f172a quase preto) */
+  --sidebar:#1e40af;
+  --sidebar2:#1d4ed8;
 
   --text:#0f172a;
   --muted:#64748b;
@@ -51,7 +52,7 @@ body{
 .app{display:flex;min-height:100vh}
 
 /* =====================
-   Sidebar PREMIUM
+   Sidebar — AZUL MÉDIO
    ===================== */
 .sidebar{
   width:260px;
@@ -61,7 +62,7 @@ body{
   display:flex;
   flex-direction:column;
   gap:18px;
-  box-shadow: 8px 0 40px rgba(2,6,23,.25);
+  box-shadow: 8px 0 40px rgba(29,78,216,.35);
 }
 
 .brand{
@@ -69,7 +70,7 @@ body{
   gap:10px;
   align-items:center;
   padding-bottom:14px;
-  border-bottom:1px solid rgba(255,255,255,.12);
+  border-bottom:1px solid rgba(255,255,255,.18);
 }
 
 .logo{
@@ -78,26 +79,51 @@ body{
   box-shadow:0 10px 24px rgba(59,130,246,.45);
 }
 
-.nav{display:flex;flex-direction:column;gap:6px}
+/* NAV com separadores entre itens */
+.nav{display:flex;flex-direction:column;gap:0}
 
 .nav a{
-  color:#fff;text-decoration:none;
-  padding:11px 12px;border-radius:12px;
-  font-size:14px;display:flex;gap:10px;align-items:center;
-  background:rgba(255,255,255,.04);
-  border:1px solid rgba(255,255,255,.06);
+  color:rgba(255,255,255,.88);
+  text-decoration:none;
+  padding:11px 12px;
+  border-radius:12px;
+  font-size:14px;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  border:1px solid transparent;
   transition:all var(--t);
+  position:relative;
+  margin-bottom:2px;
 }
+
+/* Separador fino entre itens */
+.nav a:not(:last-child)::after{
+  content:'';
+  position:absolute;
+  bottom:-2px;
+  left:12px;right:12px;
+  height:1px;
+  background:rgba(255,255,255,.15);
+}
+
 .nav a:hover{
-  transform:translateY(-1px);
-  background:rgba(255,255,255,.10);
-  box-shadow:0 14px 30px rgba(2,6,23,.30);
+  transform:translateX(2px);
+  background:rgba(255,255,255,.15);
+  border-color:rgba(255,255,255,.12);
 }
-.nav a.active{
-  background:linear-gradient(135deg,var(--brand),var(--brand2));
-  border:1px solid rgba(255,255,255,.25);
-  box-shadow:0 16px 34px rgba(2,6,23,.35);
+.nav a:hover::after{ opacity:0; }
+
+/* ATIVO: azul mais escuro + !important para sobrescrever inline-style verde */
+.nav a.active,
+.nav a.active:visited,
+.nav a.active:focus{
+  background:linear-gradient(135deg,#1e3a8a,#1e40af) !important;
+  border:1px solid rgba(255,255,255,.28) !important;
+  box-shadow:0 8px 24px rgba(0,0,0,.30) !important;
+  color:#fff !important;
 }
+.nav a.active::after{ opacity:0; }
 
 /* =====================
    Main
@@ -121,14 +147,14 @@ body{
   align-items:center;
   padding:14px 0;
   margin-bottom:20px;
-
   background:rgba(255,255,255,.70);
-  backdrop-filter: blur(10px);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
   border-bottom:1px solid var(--line);
 }
 
 /* =====================
-   CARDS PREMIUM
+   CARDS
    ===================== */
 .card{
   background:#fff;
@@ -136,7 +162,7 @@ body{
   padding:20px;
   border:1px solid var(--line);
   box-shadow:var(--shadow),var(--glow);
-  transition:all var(--t);
+  transition:transform var(--t), box-shadow var(--t), border-color var(--t);
 }
 .card:hover{
   transform:translateY(-3px);
@@ -155,11 +181,27 @@ body{
   gap:18px;
 }
 
+/* KPI card — borda esquerda AZUL (substitui o verde) */
+.kpi-card{
+  background:#fff;
+  border-radius:var(--radius);
+  padding:20px;
+  border:1px solid var(--line);
+  border-left:3px solid var(--brand);
+  box-shadow:var(--shadow),var(--glow);
+  transition:transform var(--t), box-shadow var(--t);
+}
+.kpi-card:hover{
+  transform:translateY(-3px);
+  box-shadow:var(--shadow2);
+  border-left-color:var(--brand2);
+}
+
 .big{font-size:30px;font-weight:800;margin-top:6px}
 .sub{font-size:13px;color:var(--muted)}
 
 /* =====================
-   BUTTONS PREMIUM
+   BUTTONS
    ===================== */
 .btn{
   padding:10px 16px;border-radius:12px;
@@ -208,26 +250,69 @@ body{
 }
 
 /* =====================
-   TABLE PREMIUM
+   TABELA — AZUL DEGRADÊ
    ===================== */
 .tableWrap{
   background:#fff;
   border-radius:var(--radius);
   overflow:hidden;
-  border:1px solid var(--line);
+  border:1px solid rgba(59,130,246,.18);
   box-shadow:var(--shadow),var(--glow);
 }
 
 table{width:100%;border-collapse:collapse}
+
+thead{
+  background:linear-gradient(135deg,#1d4ed8,#3b82f6,#60a5fa);
+}
+
 th{
-  background:linear-gradient(180deg,var(--brandSoft),rgba(219,234,254,.55));
-  padding:12px;font-weight:700;
-  border-bottom:1px solid var(--line);
+  padding:12px 14px;
+  font-weight:700;
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  color:#fff;
+  text-align:left;
+  position:relative;
 }
+
+/* Separador vertical entre colunas do header */
+th:not(:last-child)::after{
+  content:'';
+  position:absolute;
+  right:0;top:25%;bottom:25%;
+  width:1px;
+  background:rgba(255,255,255,.25);
+}
+
+tbody tr:nth-child(even) td{
+  background:rgba(219,234,254,.20);
+}
+
 td{
-  padding:12px;border-bottom:1px solid rgba(2,6,23,.05);
+  padding:12px 14px;
+  border-bottom:1px solid rgba(59,130,246,.07);
+  position:relative;
 }
-tr:hover{background:rgba(219,234,254,.35)}
+
+/* Separador vertical entre colunas do body */
+td:not(:last-child)::after{
+  content:'';
+  position:absolute;
+  right:0;top:20%;bottom:20%;
+  width:1px;
+  background:rgba(59,130,246,.10);
+}
+
+tr:last-child td{border-bottom:none}
+
+tbody tr:hover td{
+  background:rgba(59,130,246,.08) !important;
+}
+tbody tr:hover td:first-child{
+  box-shadow:inset 3px 0 0 var(--brand);
+}
 
 /* =====================
    PILLS
@@ -235,12 +320,33 @@ tr:hover{background:rgba(219,234,254,.35)}
 .pill{
   padding:4px 10px;border-radius:999px;
   font-size:12px;background:var(--brandSoft);
-  color:var(--sidebar);
+  color:var(--brand2);
   border:1px solid rgba(59,130,246,.20);
 }
-.pill.ok{background:#dcfce7;color:#065f46}
-.pill.warn{background:#fef9c3;color:#854d0e}
-.pill.info{background:#e0f2fe;color:#0369a1}
+.pill.ok{background:#dcfce7;color:#065f46;border-color:rgba(34,197,94,.20)}
+.pill.warn{background:#fef9c3;color:#854d0e;border-color:rgba(245,158,11,.20)}
+.pill.info{background:#e0f2fe;color:#0369a1;border-color:rgba(14,165,233,.20)}
+
+/* =====================
+   TRIAL BANNER
+   ===================== */
+.trial-banner{
+  background:linear-gradient(90deg,var(--brand),var(--brand2));
+  color:#fff;
+  padding:12px 18px;
+  border-radius:12px;
+  font-weight:600;
+  font-size:14px;
+  box-shadow:0 8px 28px rgba(37,99,235,.30);
+}
+
+/* =====================
+   SCROLLBAR CUSTOM
+   ===================== */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(59,130,246,.30);border-radius:99px}
+::-webkit-scrollbar-thumb:hover{background:rgba(59,130,246,.50)}
 
 /* =====================
    RESPONSIVO
