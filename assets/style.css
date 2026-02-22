@@ -19,43 +19,30 @@ body {
     color: var(--text);
 }
 
-/* ===== SIDEBAR (AJUSTADA) ===== */
+/* Sidebar com fundo azul profundo e profissional */
 .sidebar {
-    width: 250px;
-    background: var(--sidebar);
+    width: 260px;
+    background: #1e293b; /* Um azul marinho bem escuro e moderno */
     color: #fff;
-    min-height: 100vh;
-    padding: 20px 15px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
+    min-height: 100vh;
 }
 
-.brand {
-    padding-bottom: 20px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-
-.nav a {
-    color: rgba(255,255,255,0.7);
-    text-decoration: none;
-    padding: 10px 15px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    border-radius: 8px;
-    font-size: 14px;
-    transition: 0.2s;
-}
-
-.nav a:hover, .nav a.active {
-    background: rgba(255,255,255,0.1);
-    color: #fff;
-}
-
+/* O item selecionado agora em Azul Premium em vez de verde */
 .nav a.active {
-    background: var(--brand);
+    background: #2563eb !important; /* Azul Royal Premium */
+    color: #fff !important;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
 }
+
+/* Ajuste sutil no hover para combinar */
+.nav a:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.05);
+}
+
 
 /* ===== CARDS (ESTRUTURA FIXA) ===== */
 .card {
