@@ -104,8 +104,9 @@ body {
   flex-shrink: 0;
 }
 
-.nav { display: flex; flex-direction: column; gap: 4px; }
+.nav { display: flex; flex-direction: column; gap: 0; }
 
+/* Separador entre cada item do nav */
 .nav a {
   color: rgba(255,255,255,.80);
   text-decoration: none;
@@ -118,7 +119,24 @@ body {
   align-items: center;
   transition: all var(--t);
   border: 1px solid transparent;
+  position: relative;
+  margin-bottom: 2px;
 }
+
+/* Linha separadora entre itens (não aparece no active nem no hover) */
+.nav a:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 14px;
+  right: 14px;
+  height: 1px;
+  background: rgba(255,255,255,.07);
+  border-radius: 1px;
+}
+
+.nav a.active::after,
+.nav a:hover::after { opacity: 0; }
 
 .nav a:hover {
   color: #fff;
@@ -300,39 +318,82 @@ body {
 .input::placeholder, .textarea::placeholder { color: var(--muted); }
 
 /* =====================
-   TABELA PREMIUM
+   TABELA PREMIUM — AZUL DEGRADÊ
    ===================== */
 .tableWrap {
   background: #fff;
   border-radius: var(--radius);
   overflow: hidden;
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
+  border: 1px solid rgba(59,130,246,.18);
+  box-shadow: var(--shadow), 0 0 0 1px rgba(59,130,246,.08);
   transition: box-shadow var(--t);
 }
 .tableWrap:hover {
-  box-shadow: var(--shadow2);
+  box-shadow: var(--shadow2), 0 0 0 1px rgba(59,130,246,.18);
 }
 
 table { width: 100%; border-collapse: collapse; }
+
+/* Cabeçalho: degradê azul rico */
+thead {
+  background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 50%, #60a5fa 100%);
+}
+
 th {
-  background: linear-gradient(180deg, #eef5ff, #dbeafe);
-  padding: 13px 14px;
-  font-size: 12px;
+  padding: 14px 16px;
+  font-size: 11.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--brand2);
-  border-bottom: 1px solid var(--line);
+  letter-spacing: .08em;
+  color: #fff;
   text-align: left;
+  position: relative;
 }
+
+/* Separador vertical entre colunas do header */
+th:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 25%; bottom: 25%;
+  width: 1px;
+  background: rgba(255,255,255,.25);
+}
+
+/* Linhas zebradas em azul muito suave */
+tbody tr:nth-child(even) td {
+  background: rgba(219,234,254,.25);
+}
+
 td {
-  padding: 13px 14px;
+  padding: 13px 16px;
   font-size: 14px;
-  border-bottom: 1px solid rgba(2,6,23,.04);
+  color: var(--text);
+  border-bottom: 1px solid rgba(59,130,246,.07);
+  position: relative;
 }
+
+/* Separador vertical entre colunas do body */
+td:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 20%; bottom: 20%;
+  width: 1px;
+  background: rgba(59,130,246,.10);
+}
+
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: rgba(219,234,254,.28); }
+
+/* Hover azul vibrante */
+tbody tr:hover td {
+  background: rgba(59,130,246,.10) !important;
+  color: var(--brand2);
+}
+
+/* Acento azul na linha hover no lado esquerdo */
+tbody tr { position: relative; transition: background var(--t); }
+tbody tr:hover td:first-child {
+  box-shadow: inset 3px 0 0 var(--brand);
+}
 
 /* =====================
    PILLS / BADGES
