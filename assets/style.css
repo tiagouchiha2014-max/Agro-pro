@@ -611,3 +611,168 @@ tr:hover{ background: rgba(219,234,254,.30); }
   z-index:999;
 }
 .sidebar-overlay.active{ display:block; }
+/* =====================================================
+   PREMIUM PACK V2 — cole no FINAL do seu CSS
+   (efeito mais caro: textura, glow inteligente, shine e microinterações)
+   ===================================================== */
+
+/* ---- Fundo premium com gradiente + noise sutil ---- */
+body{
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(59,130,246,.14), transparent 60%),
+    radial-gradient(900px 500px at 100% 10%, rgba(37,99,235,.10), transparent 55%),
+    linear-gradient(180deg, #f6f8f7 0%, #f2f6f5 100%);
+  position: relative;
+}
+
+body::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  pointer-events:none;
+  opacity: .06; /* ajuste 0.04–0.10 */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+/* ---- Tokens extras (não quebra nada) ---- */
+:root{
+  --glass: rgba(255,255,255,.68);
+  --glassBorder: rgba(2,6,23,.08);
+  --ring: 0 0 0 4px rgba(59,130,246,.14);
+  --shine: linear-gradient(120deg, transparent 0%, rgba(255,255,255,.35) 18%, transparent 36%);
+}
+
+/* ---- Topbar mais “glass” e elegante ---- */
+.topbar{
+  background: var(--glass);
+  border-bottom: 1px solid var(--glassBorder);
+  box-shadow: 0 10px 30px rgba(2,6,23,.06);
+}
+
+/* ---- Cards com highlight interno (luxo) ---- */
+.card,
+.tableWrap,
+.clima-kpi-card, .combustivel-card, .ops-kpi-card,
+.form-clima{
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before,
+.tableWrap::before,
+.clima-kpi-card::before, .combustivel-card::before, .ops-kpi-card::before,
+.form-clima::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    radial-gradient(600px 200px at 20% 0%, rgba(59,130,246,.16), transparent 55%),
+    radial-gradient(500px 220px at 110% 10%, rgba(37,99,235,.10), transparent 60%);
+  opacity: .55;
+}
+
+/* brilho fino na borda (parece “produto premium”) */
+.card::after,
+.tableWrap::after,
+.clima-kpi-card::after, .combustivel-card::after, .ops-kpi-card::after,
+.form-clima::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius: inherit;
+  pointer-events:none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.75);
+  opacity: .55;
+}
+
+/* ---- Hover mais refinado (menos “pulo”, mais “flutua”) ---- */
+.card:hover,
+.tableWrap:hover,
+.clima-kpi-card:hover, .combustivel-card:hover, .ops-kpi-card:hover,
+.form-clima:hover{
+  transform: translateY(-3px);
+}
+
+/* ---- Botões: shine + press real ---- */
+.btn{
+  position: relative;
+  overflow: hidden;
+}
+
+.btn::after{
+  content:"";
+  position:absolute;
+  top:0; left:-120%;
+  width:120%;
+  height:100%;
+  background: var(--shine);
+  transform: skewX(-20deg);
+  opacity: .0;
+  transition: left .55s ease, opacity .25s ease;
+}
+
+.btn:hover::after{
+  left: 120%;
+  opacity: .9;
+}
+
+.btn:active{
+  transform: translateY(1px);
+}
+
+/* botão primary com highlight interno */
+.btn.primary{
+  box-shadow:
+    0 18px 38px rgba(37,99,235,.30),
+    inset 0 1px 0 rgba(255,255,255,.25);
+}
+
+/* ---- Inputs com “ring premium” ---- */
+.input:focus,
+.select:focus,
+.textarea:focus{
+  box-shadow: var(--ring);
+}
+
+/* ---- Sidebar: itens mais “premium” com indicador lateral ---- */
+.nav a{
+  position: relative;
+}
+
+.nav a.active::before{
+  content:"";
+  position:absolute;
+  left:-6px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.85);
+  box-shadow: 0 10px 20px rgba(0,0,0,.18);
+}
+
+/* ---- Scrollbar bonita (Chrome/Edge/Safari) ---- */
+.sidebar::-webkit-scrollbar{
+  width: 10px;
+}
+.sidebar::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,.18);
+  border-radius: 999px;
+  border: 2px solid rgba(0,0,0,0);
+  background-clip: padding-box;
+}
+.sidebar::-webkit-scrollbar-thumb:hover{
+  background: rgba(255,255,255,.28);
+}
+
+/* ---- Motion: premium + acessível ---- */
+@media (prefers-reduced-motion: reduce){
+  *{
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
