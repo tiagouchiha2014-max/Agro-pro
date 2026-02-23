@@ -1201,42 +1201,8 @@ function pageLogin() {
     
     toast("Aguarde", "Autenticando...");
     
-    // 1. Verificar se é uma conta de equipe (gerente/funcionário)
-    const teamAccounts = JSON.parse(localStorage.getItem("agro_team_accounts") || "[]");
-    const teamAccount = await (async () => {
-      for (const c of teamAccounts) {
-        if (c.email.toLowerCase() !== email.toLowerCase() || !c.ativo) continue;
-        if (c.passHash) {
-          const h = await _hashPassword(pass);
-          if (h === c.passHash) return c;
-        } else if (c.senha === pass) {
-          // Migrar senha antiga para hash
-          c.passHash = await _hashPassword(pass);
-          delete c.senha;
-          localStorage.setItem("agro_team_accounts", JSON.stringify(teamAccounts));
-          return c;
-        }
-      }
-      return null;
-    })();
-    
-    if (teamAccount) {
-      // Conta de equipe encontrada
-      localStorage.setItem("agro_session", JSON.stringify({ 
-        user: { 
-          email: teamAccount.email, 
-          nome: teamAccount.nome, 
-          role: teamAccount.role,
-          owner_id: teamAccount.owner_id 
-        } 
-      }));
-      localStorage.setItem("agro_role", teamAccount.role);
-      toast("Bem-vindo", `Logado como ${teamAccount.role.charAt(0).toUpperCase() + teamAccount.role.slice(1)}`);
-      setTimeout(() => {
-        window.location.href = "index.html";
-      }, 300);
-      return;
-    }
+    // Contas de equipe agora devem ser gerenciadas via Supabase Auth.
+    // O login offline via localStorage foi removido por segurança.
     
     // 2. Tentar autenticação no Supabase Real
     if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
@@ -1306,17 +1272,8 @@ function pageLogin() {
       }
     }
 
-    // 3. Fallback Offline (Apenas para contas já existentes no LocalStorage)
-    const savedSession = JSON.parse(localStorage.getItem("agro_session") || "null");
-    if (savedSession && savedSession.user?.email === email) {
-      localStorage.setItem("agro_role", savedSession.user.role || "admin");
-      toast("Sucesso", "Logado offline");
-      setTimeout(() => location.reload(), 300);
-      return;
-    }
-
-    // 4. Bloqueio para e-mails desconhecidos
-    toast("Aviso", "Usuário não encontrado. Clique em 'Teste grátis' para começar!");
+    // O fallback offline foi removido. A autenticação agora é 100% via Supabase.
+    toast("Aviso", "Não foi possível realizar o login. Verifique sua conexão e tente novamente.");
   };
 
   // === CADASTRO (SIGNUP) ===
@@ -6412,43 +6369,127 @@ function boot() {
   localStorage.removeItem("agro_pro_openai_key");
   sessionStorage.removeItem("agro_pro_openai_key");
 
-  
-  // Verificar Sessão (localStorage + Supabase)
-  const sessionRaw = localStorage.getItem("agro_session");
-  if (!sessionRaw && pageKey !== "login") {
-    // Verificar se tem sessão ativa no Supabase antes de redirecionar para login
+   // Verificar Sessão Real (Sempre valida com o Supabase)
+  if (pageKey !== "login") {
     if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
       AuthService.getSession().then(async (session) => {
-        if (session && session.user) {
-          // Tem sessão no Supabase mas não no localStorage — restaurar
-          const profile = await AuthService.getUserProfile();
-          const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
-          localStorage.setItem("agro_session", JSON.stringify({ 
-            user: { id: session.user.id, email: session.user.email, nome: profile?.full_name || '', role: profile?.user_role || 'admin' } 
-          }));
-          localStorage.setItem("agro_role", profile?.user_role || 'admin');
-          if (profile?.plan_type) localStorage.setItem("agro_plano", planMap[profile.plan_type] || 'Trial');
-          if (profile?.trial_ends_at) {
-            const fim = new Date(profile.trial_ends_at);
-            const dias = Math.ceil((fim - new Date()) / (1000*60*60*24));
-            localStorage.setItem("agro_trial", JSON.stringify({ trial_ends_at: profile.trial_ends_at, created_at: profile.created_at, expirado: dias <= 0 }));
-          }
-          // Restaurar dados da nuvem
-          await cloudRestore();
-          location.reload();
-        } else {
+        if (!session || !session.user) {
+          localStorage.removeItem("agro_session");
           pageLogin();
+          return;
         }
-      }).catch(() => pageLogin());
+        
+        // Sincronizar dados da sessão para o localStorage (apenas cache)
+        const profile = await AuthService.getUserProfile();
+        const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
+        
+        userSession = { 
+          user: { id: session.user.id, email: session.user.email, nome: profile?.full_name || '', role: profile?.user_role || 'admin' } 
+        };
+        localStorage.setItem("agro_session", JSON.stringify(userSession));
+        
+        userRole = profile?.user_role || 'admin';
+        localStorage.setItem("agro_role", userRole);
+        
+        if (profile?.plan_type) {
+          planoAtual = planMap[profile.plan_type] || 'Trial';
+          localStorage.setItem("agro_plano", planoAtual);
+        }
+        
+        if (profile?.trial_ends_at) {
+          const fim = new Date(profile.trial_ends_at);
+          const dias = Math.ceil((fim - new Date()) / (1000*60*60*24));
+          trialInfo = { trial_ends_at: profile.trial_ends_at, created_at: profile.created_at, expirado: dias <= 0, diasRestantes: dias };
+          localStorage.setItem("agro_trial", JSON.stringify(trialInfo));
+        }
+
+        // Continuar renderização
+        _renderPageAfterAuth(pageKey, titles);
+      }).catch(() => {
+        localStorage.removeItem("agro_session");
+        pageLogin();
+      });
+      return;
+    } else {
+      // Sem Supabase disponível, não podemos garantir segurança
+      pageLogin();
+      return;
+    }
+  }
+
+  // Se estiver na página de login e já tiver sessão, vai para home
+  if (pageKey === "login") {
+    const sessionRaw = localStorage.getItem("agro_session");
+    if (sessionRaw) {
+      window.location.href = "index.html";
       return;
     }
     pageLogin();
     return;
   }
-  userSession = sessionRaw ? JSON.parse(sessionRaw) : null;
+}
 
-  // === CLOUD SYNC: Restaurar dados da nuvem + Sincronizar dados locais ===
-  if (typeof cloudRestore === 'function' && !sessionStorage.getItem('_cloudRestored')) {
+// Nova função auxiliar para renderizar após a confirmação da autenticação
+function _renderPageAfterAuth(pageKey, titles) {
+  const [t, s] = titles[pageKey] || ["Agro Pro", ""];
+  renderShell(pageKey, t, s);
+
+  const trialBannerHTML = renderTrialBanner();
+  if (trialBannerHTML) {
+    const mainEl = document.querySelector('.main');
+    if (mainEl) mainEl.insertAdjacentHTML('afterbegin', trialBannerHTML);
+  }
+
+  if (!canAccessPage(pageKey)) {
+    document.getElementById('content').innerHTML = `
+      <div class="card" style="text-align:center; padding:40px;">
+        <h2>🚫 Acesso Restrito</h2>
+        <p style="color:#64748b;">Seu perfil de <b>${getRoleLabel()}</b> não tem permissão para acessar esta página.</p>
+        <a href="index.html" class="btn primary" style="margin-top:15px;">Voltar ao Dashboard</a>
+      </div>
+    `;
+  } else {
+    // Renderizar página específica
+    if (pageKey === "dashboard") pageDashboard();
+    else if (pageKey === "centralgestao") pageCentralGestao();
+    else if (pageKey === "safras") pageSafras();
+    else if (pageKey === "fazendas") pageFazendas();
+    else if (pageKey === "talhoes") pageTalhoes();
+    else if (pageKey === "produtos") pageProdutos();
+    else if (pageKey === "estoque") pageEstoque();
+    else if (pageKey === "insumosbase") pageInsumosBase();
+    else if (pageKey === "aplicacoes") pageAplicacoes();
+    else if (pageKey === "combustivel") pageCombustivel();
+    else if (pageKey === "clima") pageClima();
+    else if (pageKey === "colheitas") pageColheitas();
+    else if (pageKey === "manutencao") pageManutencao();
+    else if (pageKey === "equipe") pageEquipe();
+    else if (pageKey === "maquinas") pageMaquinas();
+    else if (pageKey === "relatorios") pageRelatorios();
+    else if (pageKey === "copilot") pageCopilot();
+    else if (pageKey === "ajuda") pageAjuda();
+    else if (pageKey === "config") pageConfiguracoes();
+  }
+
+  // Status da nuvem
+  const sidebarBottom = document.querySelector('.sidebar > div:last-child');
+  if (sidebarBottom) {
+    sidebarBottom.insertAdjacentHTML('beforeend', `
+      <div id="cloudStatusIndicator" style="margin-top: 8px; font-size: 10px; text-align: center;"></div>
+    `);
+  }
+  function updateCloudStatus() {
+    var el = document.getElementById('cloudStatusIndicator');
+    if (!el) return;
+    var ready = window._cloudConnected === true || (typeof isSupabaseReady === 'function' && isSupabaseReady());
+    el.textContent = ready ? '☁️ Conectado' : '📴 Offline';
+    if (ready) { el.classList.add('text-success'); el.classList.remove('text-warning'); } else { el.classList.add('text-warning'); el.classList.remove('text-success'); }
+  }
+  updateCloudStatus();
+  setInterval(updateCloudStatus, 5000);
+  
+  if (typeof cloudSync === 'function') cloudSync();
+})) {
     cloudRestore().then(restored => {
       if (restored) {
         sessionStorage.setItem('_cloudRestored', '1');
