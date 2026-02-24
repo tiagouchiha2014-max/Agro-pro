@@ -921,6 +921,7 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
     </div>
   ` : `<div class="card" style="background:#f8fafc; border: 1px dashed #cbd5e1; text-align:center; padding:15px;"><p style="color:#64748b; margin:0;">🔒 Modo visualização — Seu perfil de <b>${getRoleLabel()}</b> não permite criar registros nesta página.</p></div>`;
 
+  let limit = 30;
   const tableHtml = `
     <div class="tableWrap">
       <table>
@@ -933,6 +934,9 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
         <tbody id="tbody"></tbody>
       </table>
     </div>
+    <div id="pagination" class="row" style="justify-content:center; margin-top:15px; display:none;">
+      <button class="btn" id="btnCarregarMais">Carregar Mais</button>
+    </div>
   `;
 
   content.innerHTML = `<div class="section">${formHtml}${tableHtml}</div>`;
@@ -940,23 +944,38 @@ function crudPage({ entityKey, subtitle, fields, columns, helpers }) {
   function renderTable() {
     const db2 = getDB();
     const rows0 = onlySafra(db2[entityKey] || []);
-    const rows = helpers?.filter ? helpers.filter(rows0, db2) : rows0;
+    const rowsFiltered = helpers?.filter ? helpers.filter(rows0, db2) : rows0;
+    const total = rowsFiltered.length;
+    
+    // Paginação
+    const rows = rowsFiltered.slice().reverse().slice(0, limit);
 
     const tb = document.getElementById("tbody");
-    tb.innerHTML = rows.slice().reverse().map(r => {
+    tb.innerHTML = rows.map(r => {
       const tds = columns.map(c => {
         const v = c.render ? c.render(r, db2) : r[c.key];
-        return `<td>${escapeHtml(v ?? "")}</td>`;
+        return `<td data-label="${escapeHtml(c.label)}">${escapeHtml(v ?? "")}</td>`;
       }).join("");
       return `
         <tr>
           ${tds}
-          <td class="noPrint">
+          <td class="noPrint" data-label="Ações">
             ${_canDel ? `<button class="btn danger" onclick="window.__del('${r.id}')">Excluir</button>` : '<span style="color:#94a3b8; font-size:12px;">—</span>'}
           </td>
         </tr>
       `;
     }).join("") || `<tr><td colspan="${columns.length + 1}">Sem registros.</td></tr>`;
+
+    const pg = document.getElementById("pagination");
+    if (total > limit) {
+      pg.style.display = "flex";
+      document.getElementById("btnCarregarMais").onclick = () => {
+        limit += 30;
+        renderTable();
+      };
+    } else {
+      pg.style.display = "none";
+    }
   }
 
   window.__del = (id) => {
@@ -3774,6 +3793,9 @@ function pageAplicacoes() {
           <tbody id="tbody"></tbody>
         </table>
       </div>
+      <div id="pagination" class="row" style="justify-content:center; margin-top:15px; display:none;">
+        <button class="btn" id="btnCarregarMais">Carregar Mais</button>
+      </div>
     </div>
   `;
 
@@ -3853,20 +3875,35 @@ function pageAplicacoes() {
 
   document.querySelector('input[name="areaHaAplicada"]').addEventListener('input', window.calcularCustoTotal);
 
+  let limit = 30;
   function render() {
     const db2 = getDB();
-    let rows = onlySafra(db2.aplicacoes || []);
+    let rowsFiltered = onlySafra(db2.aplicacoes || []);
     // Filtrar aplicações pelos talhões da fazenda selecionada
     if (fazendaAtual) {
       const talhoesFazenda = onlySafra(db2.talhoes || []).filter(t => t.fazendaId === fazendaAtual).map(t => t.id);
-      rows = rows.filter(a => talhoesFazenda.includes(a.talhaoId));
+      rowsFiltered = rowsFiltered.filter(a => talhoesFazenda.includes(a.talhaoId));
     }
+    const total = rowsFiltered.length;
+    const rows = rowsFiltered.slice().reverse().slice(0, limit);
+
     const tb = document.getElementById("tbody");
-    tb.innerHTML = rows.slice().reverse().map(a => {
+    tb.innerHTML = rows.map(a => {
       const tal = findNameById(talhoes, a.talhaoId);
       const prds = (a.produtos || []).map(p => p.produtoNome).join(' + ');
       return `<tr><td>${a.data}</td><td><b>${escapeHtml(tal)}</b></td><td>${num(a.areaHaAplicada,1)} ha</td><td>${escapeHtml(prds||'—')}</td>${canSeeFinanceiro() ? `<td style="color:#4CAF50;">${kbrl(a.custoTotal)}</td>` : ''}<td style="text-align:center;">${canDeleteOnPage('aplicacoes') ? `<button class="btn danger" style="padding:4px 8px;" onclick="window.__delA('${a.id}')">Excluir</button>` : '—'}</td></tr>`;
     }).join('') || '<tr><td colspan="6" style="text-align:center;">Nenhuma aplicação registrada</td></tr>';
+
+    const pg = document.getElementById("pagination");
+    if (total > limit) {
+      pg.style.display = "flex";
+      document.getElementById("btnCarregarMais").onclick = () => {
+        limit += 30;
+        render();
+      };
+    } else {
+      pg.style.display = "none";
+    }
   }
 
   window.__delA = (id) => {
@@ -6600,8 +6637,6 @@ function _renderPageAfterAuth(pageKey, titles) {
   }
   updateCloudStatus();
   setInterval(updateCloudStatus, 5000);
-
-  toast("Agro Pro", "Sistema carregado.");
 
   // === CLOUD SYNC: Fazer backup inicial na nuvem ===
   if (typeof cloudSync === 'function') cloudSync();
