@@ -165,17 +165,32 @@ var SYNC_ORDER = [
 
 var FIELD_MAP = {
   safraId: 'safra_id', fazendaId: 'fazenda_id', talhaoId: 'talhao_id',
-  maquinaId: 'maquina_id', produtoId: 'produto_id',
+  maquinaId: 'maquina_id', produtoId: 'produto_id', operadorId: 'operador_id',
   areaHa: 'area_ha', area: 'area_ha',
   dataInicio: 'data_inicio', dataFim: 'data_fim', nomeCientifico: 'nome_cientifico',
   tempMin: 'temp_min', tempMax: 'temp_max', umidadeMin: 'umidade_min',
   precoSoja: 'preco_soja', produtividadeMinSoja: 'produtividade_min_soja',
   produtividadeMaxSoja: 'produtividade_max_soja', precoMilho: 'preco_milho',
   produtividadeMinMilho: 'produtividade_min_milho', produtividadeMaxMilho: 'produtividade_max_milho',
-  precoAlgodao: 'preco_algodao', produtividadeMinAlgodao: 'produtividade_min_algodao',
-  produtividadeMaxAlgodao: 'produtividade_max_algodao', pesoPadraoSaca: 'peso_padrao_saca',
+  precoSorgo: 'preco_sorgo', produtividadeMinSorgo: 'produtividade_min_sorgo',
+  produtividadeMaxSorgo: 'produtividade_max_sorgo',
+  precoFeijao: 'preco_feijao', produtividadeMinFeijao: 'produtividade_min_feijao',
+  produtividadeMaxFeijao: 'produtividade_max_feijao',
+  precoTrigo: 'preco_trigo', produtividadeMinTrigo: 'produtividade_min_trigo',
+  produtividadeMaxTrigo: 'produtividade_max_trigo',
+  precoArroz: 'preco_arroz', produtividadeMinArroz: 'produtividade_min_arroz',
+  produtividadeMaxArroz: 'produtividade_max_arroz',
+  precoCafe: 'preco_cafe', produtividadeMinCafe: 'produtividade_min_cafe',
+  produtividadeMaxCafe: 'produtividade_max_cafe',
+  precoCanola: 'preco_canola', produtividadeMinCanola: 'produtividade_min_canola',
+  produtividadeMaxCanola: 'produtividade_max_canola',
+  precoGirassol: 'preco_girassol', produtividadeMinGirassol: 'produtividade_min_girassol',
+  produtividadeMaxGirassol: 'produtividade_max_girassol',
+  precoAmendoim: 'preco_amendoim', produtividadeMinAmendoim: 'produtividade_min_amendoim',
+  produtividadeMaxAmendoim: 'produtividade_max_amendoim',
+  pesoPadraoSaca: 'peso_padrao_saca',
   doseHa: 'dose_ha', areaAplicada: 'area_aplicada', quantidadeTotal: 'quantidade_total',
-  quantidade: 'quantidade_atual', quantidadeAtual: 'quantidade_atual',
+  quantidade: 'quantidade', quantidadeAtual: 'quantidade_atual',
   custoUnitario: 'custo_unitario', custoTotal: 'custo_total', volumeCalda: 'volume_calda',
   condicaoClima: 'condicao_clima', areaColhida: 'area_colhida', producaoTotal: 'producao_total',
   pesoLiquido: 'peso_liquido', sacasHa: 'sacas_ha',
@@ -191,14 +206,16 @@ var FIELD_MAP = {
   pecasTrocadas: 'pecas_trocadas', servicoRealizado: 'servico_realizado',
   custoPecas: 'custo_pecas', custoMaoObra: 'custo_mao_obra', outrosCustos: 'outros_custos',
   tempoParada: 'tempo_parada', tipoInsumo: 'tipo_insumo',
-  fazendaId: 'fazenda_id', operadorId: 'operador_id', kmOuHora: 'km_ou_hora',
+  kmOuHora: 'km_ou_hora',
   dataAdmissao: 'data_admissao', dataEntrada: 'data_entrada', tipoProduto: 'tipo_produto',
   obs: 'observacoes',
   userId: 'user_id', createdAt: 'created_at', updatedAt: 'updated_at'
 };
 
-var REF_FIELDS = ['safraId', 'fazendaId', 'talhaoId', 'maquinaId', 'produtoId', 'operadorId', 'safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id', 'operador_id'];
-var REF_SNAKE  = ['safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id', 'operador_id', 'safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id', 'operador_id'];
+// REF_FIELDS: campos camelCase que são referências cruzadas (IDs que precisam ser mapeados)
+var REF_FIELDS = ['safraId', 'fazendaId', 'talhaoId', 'maquinaId', 'produtoId', 'operadorId'];
+// REF_SNAKE: versão snake_case de cada campo acima (sem duplicatas)
+var REF_SNAKE  = ['safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id', 'operador_id'];
 
 // ============================================================
 // CONVERSORES
@@ -306,25 +323,32 @@ function _prepareForInsert(item, userId, idMap) {
   data.user_id = userId;
   data.updated_at = new Date().toISOString();
 
-  // Remover ID local
+  // Remover ID local (não-UUID)
   if (data.id && !isUUID(data.id)) delete data.id;
 
   // Remover timestamps gerados pelo Supabase
   delete data.created_at;
 
-  // Mapear referências cruzadas
+  // Mapear referências cruzadas: se o campo referência é um ID local (não-UUID),
+  // substituir pelo UUID do servidor via idMap; se não encontrado, remover o campo
+  // (sem deletar safra_id se ele JÁ É um UUID válido)
   for (var k = 0; k < REF_SNAKE.length; k++) {
     var field = REF_SNAKE[k];
-    if (data[field] && !isUUID(data[field])) {
-      if (idMap[data[field]]) {
-        data[field] = idMap[data[field]];
+    var val = data[field];
+    if (!val) continue;
+    if (!isUUID(val)) {
+      // ID local — tentar resolver via idMap
+      if (idMap[val]) {
+        data[field] = idMap[val]; // substituído pelo UUID do servidor
       } else {
+        // Não foi sincronizado ainda — remover para não quebrar FK constraint
         delete data[field];
       }
     }
+    // UUID válido: manter como está
   }
 
-  // Limpar undefined
+  // Limpar undefined e null desnecessários
   for (var key in data) { if (data[key] === undefined) delete data[key]; }
   return data;
 }

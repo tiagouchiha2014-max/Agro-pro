@@ -430,9 +430,21 @@ function seedDB() {
       precoMilho: 60.00,
       produtividadeMinMilho: 100,
       produtividadeMaxMilho: 130,
-      precoAlgodao: 150.00,
-      produtividadeMinAlgodao: 250,
-      produtividadeMaxAlgodao: 300,
+      precoSorgo: 42.00,
+      produtividadeMinSorgo: 70,
+      produtividadeMaxSorgo: 100,
+      precoFeijao: 280.00,
+      produtividadeMinFeijao: 25,
+      produtividadeMaxFeijao: 40,
+      precoTrigo: 85.00,
+      produtividadeMinTrigo: 40,
+      produtividadeMaxTrigo: 60,
+      precoArroz: 60.00,
+      produtividadeMinArroz: 60,
+      produtividadeMaxArroz: 80,
+      precoCafe: 1200.00,
+      produtividadeMinCafe: 20,
+      produtividadeMaxCafe: 40,
       pesoPadraoSaca: 60
     }
   };
@@ -449,7 +461,7 @@ function getDB() {
   db.meta = db.meta || { createdAt: new Date().toISOString(), version: 9 };
   db.session = db.session || {};
   db.safras = db.safras || [];
-  db.parametros = db.parametros || { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75, pesoPadraoSaca: 60 };
+  db.parametros = db.parametros || { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75, precoMilho: 60, produtividadeMinMilho: 100, produtividadeMaxMilho: 130, precoSorgo: 42, produtividadeMinSorgo: 70, produtividadeMaxSorgo: 100, precoFeijao: 280, produtividadeMinFeijao: 25, produtividadeMaxFeijao: 40, precoTrigo: 85, produtividadeMinTrigo: 40, produtividadeMaxTrigo: 60, precoArroz: 60, produtividadeMinArroz: 60, produtividadeMaxArroz: 80, precoCafe: 1200, produtividadeMinCafe: 20, produtividadeMaxCafe: 40, pesoPadraoSaca: 60 };
   db.fazendas = db.fazendas || [];
   db.talhoes = db.talhoes || [];
   db.produtos = db.produtos || [];
@@ -3726,24 +3738,282 @@ function renderGerenciamentoAcessos() {
 }
 
 function pageMaquinas() {
-  crudPage({
-    entityKey: "maquinas",
-    subtitle: "Equipamentos disponíveis na safra atual.",
-    fields: [
-      { key: "nome", label: "Máquina/equipamento", type: "text", placeholder: "Pulverizador / Trator / Drone..." },
-      { key: "placa", label: "Placa/Identificação", type: "text" },
-      { key: "horimetro", label: "Horímetro", type: "number" },
-      { key: "capacidadeL", label: "Capacidade (L)", type: "number" },
-      { key: "bicos", label: "Bicos/Barra", type: "text", placeholder: "Leque 11002 / Cone..." },
-      { key: "obs", label: "Observações", type: "textarea", full: true }
-    ],
-    columns: [
-      { key: "nome", label: "Máquina" },
-      { key: "placa", label: "ID/Placa" },
-      { key: "horimetro", label: "Horímetro" },
-      { key: "capacidadeL", label: "Capacidade (L)" },
-      { key: "bicos", label: "Bicos" }
-    ]
+  const db = getDB();
+  const maquinas = onlySafra(db.maquinas || []);
+
+  setTopActions(`<button class="btn" id="btnExportMaq">Exportar CSV</button>`);
+
+  const TIPOS_MAQUINA = [
+    { grupo: "🚜 Tratores", itens: [
+      { nome: "Trator de Pneu 4x2", marca: "John Deere", modelo: "5075E", cap: 0, obs: "75 cv, tração simples" },
+      { nome: "Trator de Pneu 4x4", marca: "New Holland", modelo: "TL5.90", cap: 0, obs: "90 cv, tração dupla" },
+      { nome: "Trator de Esteira", marca: "Case IH", modelo: "Quadtrac 500", cap: 0, obs: "500 cv, alta tração" },
+      { nome: "Trator Compacto / Fruticultura", marca: "Massey Ferguson", modelo: "MF 4275", cap: 0, obs: "75 cv, baixo perfil" }
+    ]},
+    { grupo: "🌾 Colheitadeiras", itens: [
+      { nome: "Colheitadeira de Soja", marca: "John Deere", modelo: "S780", cap: 0, obs: "Plataforma flexível 35 pés" },
+      { nome: "Colheitadeira de Milho", marca: "New Holland", modelo: "CR10.90", cap: 0, obs: "Plataforma milho 8 linhas" },
+      { nome: "Colheitadeira de Trigo/Arroz", marca: "AGCO", modelo: "Ideal 9T", cap: 0, obs: "Plataforma 30 pés" },
+      { nome: "Colheitadeira de Algodão", marca: "Case IH", modelo: "Module Express 635", cap: 0, obs: "Stripper / picker" },
+      { nome: "Colheitadeira de Cana", marca: "John Deere", modelo: "CH570", cap: 0, obs: "Colheita inteira/picada" },
+      { nome: "Colheitadeira de Café", marca: "JACTO", modelo: "K3 Plus", cap: 0, obs: "Derriçadeira autopropelida" }
+    ]},
+    { grupo: "💧 Pulverizadores", itens: [
+      { nome: "Pulverizador Autopropelido", marca: "JACTO", modelo: "Uniport 4530", cap: 4530, obs: "4530L, barra 30m" },
+      { nome: "Pulverizador Autopropelido", marca: "Stara", modelo: "Imperador 3.0", cap: 3000, obs: "3000L, barra 36m" },
+      { nome: "Pulverizador de Arrasto", marca: "Vicon", modelo: "VX1000", cap: 1000, obs: "1000L, barra 18m" },
+      { nome: "Pulverizador de 3 Pontos", marca: "Jacto", modelo: "AD-13", cap: 400, obs: "400L, barra 13m" },
+      { nome: "Drone Pulverizador", marca: "DJI", modelo: "Agras T40", cap: 40, obs: "40L, área 8ha/h" }
+    ]},
+    { grupo: "🌱 Plantio & Preparo", itens: [
+      { nome: "Plantadeira de Soja", marca: "Stara", modelo: "Absoluta 48", cap: 0, obs: "48 linhas, disco duplo" },
+      { nome: "Plantadeira de Milho", marca: "Precision Planting", modelo: "vSet2 20 linhas", cap: 0, obs: "20 linhas, dose variável" },
+      { nome: "Grade Aradora", marca: "Baldan", modelo: "GAR 28x26", cap: 0, obs: "28 discos 26\"" },
+      { nome: "Grade Niveladora", marca: "Baldan", modelo: "GNV 48x22", cap: 0, obs: "48 discos 22\"" },
+      { nome: "Subsolador", marca: "Tatu", modelo: "Titan 7 hastes", cap: 0, obs: "7 hastes, prof. 50cm" },
+      { nome: "Semeadeira Direta", marca: "Marchesan", modelo: "Presert III 15 linhas", cap: 0, obs: "15 linhas, sulcador haste" }
+    ]},
+    { grupo: "🚚 Transporte & Logística", itens: [
+      { nome: "Caminhão Graneleiro", marca: "Mercedes-Benz", modelo: "Atron 2729", cap: 0, obs: "Carga 15t, graneleiro" },
+      { nome: "Traçado / Truck Graneleiro", marca: "Scania", modelo: "R450", cap: 0, obs: "Carga 25t, rodotrem" },
+      { nome: "Carreta Graneleira", marca: "Randon", modelo: "SR BA", cap: 0, obs: "34.000L, eixo duplo" },
+      { nome: "Vagão Graneleiro (Tracionado)", marca: "Incomagri", modelo: "VG 8000", cap: 8000, obs: "8t, tração p/ trator" },
+      { nome: "Toco Boiadeiro", marca: "Volkswagen", modelo: "Constellation 24.280", cap: 0, obs: "Transporte animais" }
+    ]},
+    { grupo: "⛽ Abastecimento & Infra", itens: [
+      { nome: "Tanque Reboque Diesel", marca: "Usina", modelo: "TR 3000L", cap: 3000, obs: "3000L, bomba 50L/min" },
+      { nome: "Gerador a Diesel", marca: "Stemac", modelo: "GE50000", cap: 0, obs: "50kVA, trifásico" },
+      { nome: "Bomba Hidráulica", marca: "Dancor", modelo: "CVR-7", cap: 0, obs: "7cv, irrigação" },
+      { nome: "Pivô Central de Irrigação", marca: "Reinke", modelo: "E2065", cap: 0, obs: "Área 65ha, elétrico" }
+    ]},
+    { grupo: "🔧 Outros Equipamentos", itens: [
+      { nome: "Roçadeira Hidráulica", marca: "Triton", modelo: "TH-2000", cap: 0, obs: "Braço articulado 2m" },
+      { nome: "Empilhadeira / Telehandler", marca: "JLG", modelo: "TH644C", cap: 0, obs: "4t, alcance 6m" },
+      { nome: "Carregadeira Frontal", marca: "Caterpillar", modelo: "906M", cap: 0, obs: "Bucket 1m³" },
+      { nome: "ATV / Quadriciclo", marca: "Yamaha", modelo: "Grizzly 700", cap: 0, obs: "700cc, monitoramento" }
+    ]}
+  ];
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <style>
+      .maq-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+      .maq-kpi .card { text-align:center; padding:14px; }
+      .maq-kpi .big { font-size:28px; font-weight:800; color:#3b82f6; }
+      .maq-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+      .maq-tab { padding:7px 16px; border-radius:20px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer; font-size:13px; font-weight:500; transition:all .2s; }
+      .maq-tab.active { background:#3b82f6; color:white; border-color:#3b82f6; }
+      .maq-presets { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; margin-bottom:24px; }
+      .maq-preset-card { background:white; border:1px solid #e2e8f0; border-radius:10px; padding:14px; cursor:pointer; transition:all .2s; }
+      .maq-preset-card:hover { border-color:#3b82f6; box-shadow:0 4px 12px rgba(59,130,246,.15); transform:translateY(-1px); }
+      .maq-preset-card h4 { margin:0 0 4px; font-size:14px; color:#1e293b; }
+      .maq-preset-card small { color:#64748b; font-size:12px; }
+      .maq-preset-card .maq-badge { display:inline-block; background:#dbeafe; color:#1d4ed8; border-radius:6px; padding:2px 8px; font-size:11px; font-weight:600; margin-bottom:6px; }
+      .maq-list-table { width:100%; border-collapse:collapse; }
+      .maq-list-table th { background:#f1f5f9; padding:10px 12px; text-align:left; font-size:12px; color:#64748b; text-transform:uppercase; }
+      .maq-list-table td { padding:11px 12px; border-top:1px solid #f1f5f9; font-size:13px; }
+      .maq-list-table tr:hover td { background:#f8fafc; }
+      .status-badge { padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; }
+      .status-ativo { background:#dcfce7; color:#166534; }
+      .status-manutencao { background:#fef3c7; color:#92400e; }
+      .status-inativo { background:#fee2e2; color:#991b1b; }
+    </style>
+
+    <!-- KPIs -->
+    <div class="maq-kpi">
+      <div class="card"><div class="big">${maquinas.length}</div><small>Total cadastrado</small></div>
+      <div class="card"><div class="big" style="color:#10b981">${maquinas.filter(m=>!m.status||m.status==='ativo').length}</div><small>Ativas</small></div>
+      <div class="card"><div class="big" style="color:#f59e0b">${maquinas.filter(m=>m.status==='manutencao').length}</div><small>Em Manutenção</small></div>
+      <div class="card"><div class="big" style="color:#6366f1">${maquinas.reduce((s,m)=>s+Number(m.horimetro||0),0).toLocaleString('pt-BR')}</div><small>Horas Totais</small></div>
+    </div>
+
+    <!-- Formulário cadastro -->
+    <div class="section">
+      <div class="card">
+        <h3>➕ Cadastrar Máquina / Equipamento</h3>
+        <div class="help">Selecione um modelo pré-carregado ou preencha manualmente.</div>
+        <div class="hr"></div>
+
+        <h4 style="margin:0 0 10px; color:#475569;">📋 Modelos Pré-carregados — clique para preencher</h4>
+        <div class="maq-tabs" id="maqTabs">
+          ${TIPOS_MAQUINA.map((g,i) => `<div class="maq-tab ${i===0?'active':''}" data-grupo="${i}">${g.grupo}</div>`).join('')}
+        </div>
+        <div id="maqPresets" class="maq-presets">
+          ${TIPOS_MAQUINA[0].itens.map(it => `
+            <div class="maq-preset-card" onclick="preencherMaquina('${escapeHtml(it.nome)}','${escapeHtml(it.marca)}','${escapeHtml(it.modelo)}',${it.cap},'${escapeHtml(it.obs)}')">
+              <div class="maq-badge">${TIPOS_MAQUINA[0].grupo}</div>
+              <h4>${escapeHtml(it.nome)}</h4>
+              <small>🏷️ ${escapeHtml(it.marca)} ${escapeHtml(it.modelo)}</small><br>
+              <small style="color:#94a3b8;">${escapeHtml(it.obs)}</small>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="hr"></div>
+        <form id="frmMaq" class="formGrid">
+          <div><small>🏷️ Nome / Tipo *</small><input class="input" id="maqNome" name="nome" required placeholder="Ex: Trator New Holland TL5.90"></div>
+          <div><small>🏭 Marca</small><input class="input" id="maqMarca" name="marca" placeholder="John Deere, New Holland..."></div>
+          <div><small>📐 Modelo</small><input class="input" id="maqModelo" name="modelo" placeholder="S780, Uniport 4530..."></div>
+          <div><small>🔢 Placa / Nº Série / Patrimônio</small><input class="input" id="maqPlaca" name="placa"></div>
+          <div><small>📅 Ano de Fabricação</small><input class="input" id="maqAno" name="ano" type="number" min="1980" max="2030" placeholder="${new Date().getFullYear()}"></div>
+          <div><small>⏱️ Horímetro Atual (h)</small><input class="input" id="maqHorimetro" name="horimetro" type="number" min="0" placeholder="0"></div>
+          <div><small>💧 Capacidade (L) — tanque/pulverizador</small><input class="input" id="maqCap" name="capacidadeL" type="number" min="0" placeholder="0"></div>
+          <div><small>🔧 Bicos / Barra / Configuração</small><input class="input" id="maqBicos" name="bicos" placeholder="Barra 30m / Leque 11002..."></div>
+          <div><small>📊 Status</small>
+            <select class="select" id="maqStatus" name="status">
+              <option value="ativo">✅ Ativo</option>
+              <option value="manutencao">🔧 Em Manutenção</option>
+              <option value="inativo">❌ Inativo</option>
+            </select>
+          </div>
+          <div class="full"><small>📝 Observações</small><textarea class="input" id="maqObs" name="obs" rows="2" placeholder="Detalhes adicionais, histórico, etc."></textarea></div>
+          <div class="full row" style="justify-content:flex-end; gap:10px;">
+            <button type="button" class="btn" onclick="document.getElementById('frmMaq').reset(); document.getElementById('editMaqId').value='';">Limpar</button>
+            <button type="submit" class="btn primary" id="btnSalvarMaq">Salvar Máquina</button>
+          </div>
+        </form>
+        <input type="hidden" id="editMaqId" value="">
+      </div>
+    </div>
+
+    <!-- Tabela de máquinas cadastradas -->
+    <div class="section">
+      <div class="card">
+        <h3>🚜 Máquinas Cadastradas (${maquinas.length})</h3>
+        <div style="overflow-x:auto;">
+          <table class="maq-list-table" id="tblMaq">
+            <thead><tr>
+              <th>Máquina</th><th>Marca / Modelo</th><th>Placa/Série</th>
+              <th>Ano</th><th>Horímetro</th><th>Capacidade</th><th>Status</th><th>Ações</th>
+            </tr></thead>
+            <tbody id="tbodyMaq">
+              ${maquinas.length === 0
+                ? `<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:30px;">Nenhuma máquina cadastrada. Use o formulário acima.</td></tr>`
+                : maquinas.map(m => `
+                  <tr>
+                    <td><b>${escapeHtml(m.nome||'')}</b>${m.bicos?`<br><small style="color:#64748b;">${escapeHtml(m.bicos)}</small>`:''}</td>
+                    <td>${escapeHtml(m.marca||'-')} ${escapeHtml(m.modelo||'')}</td>
+                    <td>${escapeHtml(m.placa||'-')}</td>
+                    <td>${m.ano||'-'}</td>
+                    <td>${m.horimetro?num(m.horimetro,0)+' h':'-'}</td>
+                    <td>${m.capacidadeL?num(m.capacidadeL,0)+' L':'-'}</td>
+                    <td><span class="status-badge status-${m.status||'ativo'}">${m.status==='manutencao'?'Manutenção':m.status==='inativo'?'Inativo':'Ativo'}</span></td>
+                    <td style="white-space:nowrap;">
+                      <button class="btn" style="padding:4px 10px; font-size:12px;" onclick="editarMaquina('${m.id}')">✏️</button>
+                      <button class="btn" style="padding:4px 10px; font-size:12px; background:#fee2e2; color:#991b1b;" onclick="deletarMaquina('${m.id}')">🗑️</button>
+                    </td>
+                  </tr>
+                `).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Pré-carregado: tabs
+  const tabsEl = document.getElementById('maqTabs');
+  const presetsEl = document.getElementById('maqPresets');
+  tabsEl.addEventListener('click', e => {
+    const tab = e.target.closest('.maq-tab');
+    if (!tab) return;
+    tabsEl.querySelectorAll('.maq-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const gi = Number(tab.dataset.grupo);
+    const grupo = TIPOS_MAQUINA[gi];
+    presetsEl.innerHTML = grupo.itens.map(it => `
+      <div class="maq-preset-card" onclick="preencherMaquina('${escapeHtml(it.nome)}','${escapeHtml(it.marca)}','${escapeHtml(it.modelo)}',${it.cap},'${escapeHtml(it.obs)}')">
+        <div class="maq-badge">${grupo.grupo}</div>
+        <h4>${escapeHtml(it.nome)}</h4>
+        <small>🏷️ ${escapeHtml(it.marca)} ${escapeHtml(it.modelo)}</small><br>
+        <small style="color:#94a3b8;">${escapeHtml(it.obs)}</small>
+      </div>
+    `).join('');
+  });
+
+  // Preencher form com preset
+  window.preencherMaquina = (nome, marca, modelo, cap, obs) => {
+    document.getElementById('maqNome').value = nome + (modelo ? ' ' + modelo : '');
+    document.getElementById('maqMarca').value = marca;
+    document.getElementById('maqModelo').value = modelo;
+    document.getElementById('maqCap').value = cap || '';
+    document.getElementById('maqObs').value = obs;
+    document.getElementById('frmMaq').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  // Salvar
+  document.getElementById('frmMaq').addEventListener('submit', e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const editId = document.getElementById('editMaqId').value;
+    const db2 = getDB();
+    db2.maquinas = db2.maquinas || [];
+    const obj = {
+      id: editId || uid('maq'),
+      safraId: getSafraId(),
+      nome: fd.get('nome') || '',
+      marca: fd.get('marca') || '',
+      modelo: fd.get('modelo') || '',
+      placa: fd.get('placa') || '',
+      ano: fd.get('ano') ? Number(fd.get('ano')) : null,
+      horimetro: Number(fd.get('horimetro') || 0),
+      capacidadeL: Number(fd.get('capacidadeL') || 0),
+      bicos: fd.get('bicos') || '',
+      status: fd.get('status') || 'ativo',
+      obs: fd.get('obs') || ''
+    };
+    if (editId) {
+      const idx = db2.maquinas.findIndex(m => m.id === editId);
+      if (idx >= 0) db2.maquinas[idx] = obj;
+    } else {
+      db2.maquinas.push(obj);
+    }
+    setDB(db2);
+    toast('Salvo', `Máquina "${obj.nome}" ${editId?'atualizada':'cadastrada'}.`);
+    document.getElementById('editMaqId').value = '';
+    pageMaquinas();
+  });
+
+  // Editar
+  window.editarMaquina = (id) => {
+    const db2 = getDB();
+    const m = (db2.maquinas || []).find(x => x.id === id);
+    if (!m) return;
+    document.getElementById('editMaqId').value = id;
+    document.getElementById('maqNome').value = m.nome || '';
+    document.getElementById('maqMarca').value = m.marca || '';
+    document.getElementById('maqModelo').value = m.modelo || '';
+    document.getElementById('maqPlaca').value = m.placa || '';
+    document.getElementById('maqAno').value = m.ano || '';
+    document.getElementById('maqHorimetro').value = m.horimetro || 0;
+    document.getElementById('maqCap').value = m.capacidadeL || 0;
+    document.getElementById('maqBicos').value = m.bicos || '';
+    document.getElementById('maqStatus').value = m.status || 'ativo';
+    document.getElementById('maqObs').value = m.obs || '';
+    document.getElementById('btnSalvarMaq').textContent = '💾 Atualizar Máquina';
+    document.getElementById('frmMaq').scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Deletar
+  window.deletarMaquina = (id) => {
+    if (!confirm('Remover esta máquina?')) return;
+    const db2 = getDB();
+    db2.maquinas = (db2.maquinas || []).filter(m => m.id !== id);
+    setDB(db2);
+    toast('Removido', 'Máquina removida.');
+    pageMaquinas();
+  };
+
+  // Export CSV
+  document.getElementById('btnExportMaq').addEventListener('click', () => {
+    const rows = onlySafra(getDB().maquinas || []).map(m => ({
+      Nome: m.nome, Marca: m.marca||'', Modelo: m.modelo||'', Placa: m.placa||'',
+      Ano: m.ano||'', Horimetro_h: m.horimetro||0, Capacidade_L: m.capacidadeL||0,
+      Bicos: m.bicos||'', Status: m.status||'ativo', Obs: m.obs||''
+    }));
+    downloadText(`maquinas-${nowISO()}.csv`, toCSV(rows));
+    toast('Exportado', 'CSV baixado.');
   });
 }
 
@@ -4070,18 +4340,7 @@ window.setPlano = async (p) => {
 };
 function pageConfiguracoes() {
   const db = getDB();
-  const params = db.parametros || { 
-    precoSoja: 120, 
-    produtividadeMinSoja: 65, 
-    produtividadeMaxSoja: 75,
-    precoMilho: 60,
-    produtividadeMinMilho: 100,
-    produtividadeMaxMilho: 130,
-    precoAlgodao: 150,
-    produtividadeMinAlgodao: 250,
-    produtividadeMaxAlgodao: 300,
-    pesoPadraoSaca: 60
-  };
+  const params = db.parametros || { precoSoja: 120, produtividadeMinSoja: 65, produtividadeMaxSoja: 75, precoMilho: 60, produtividadeMinMilho: 100, produtividadeMaxMilho: 130, precoSorgo: 42, produtividadeMinSorgo: 70, produtividadeMaxSorgo: 100, precoFeijao: 280, produtividadeMinFeijao: 25, produtividadeMaxFeijao: 40, precoTrigo: 85, produtividadeMinTrigo: 40, produtividadeMaxTrigo: 60, precoArroz: 60, produtividadeMinArroz: 60, produtividadeMaxArroz: 80, precoCafe: 1200, produtividadeMinCafe: 20, produtividadeMaxCafe: 40, precoCanola: 140, produtividadeMinCanola: 40, produtividadeMaxCanola: 65, precoGirassol: 90, produtividadeMinGirassol: 35, produtividadeMaxGirassol: 55, precoAmendoim: 220, produtividadeMinAmendoim: 60, produtividadeMaxAmendoim: 100, pesoPadraoSaca: 60 };
 
   setTopActions(`
     <button class="btn" id="btnImport">📥 Importar Backup</button>
@@ -4154,15 +4413,57 @@ function pageConfiguracoes() {
       ${userRole === 'admin' ? `<div class="config-card">
         <h3>⚙️ Parâmetros de Mercado</h3>` : '<div style="display:none;">'}
         <form id="frmParams" class="formGrid">
-          <div><small>Preço da saca de soja (R$)</small><input class="input" name="precoSoja" value="${params.precoSoja}"></div>
-          <div><small>Produtividade mínima soja (sc/ha)</small><input class="input" name="prodMinSoja" value="${params.produtividadeMinSoja}"></div>
-          <div><small>Produtividade máxima soja (sc/ha)</small><input class="input" name="prodMaxSoja" value="${params.produtividadeMaxSoja}"></div>
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#10b981; font-size:13px; text-transform:uppercase; letter-spacing:1px;">🌱 Soja</h4></div>
+          <div><small>Preço da saca de soja (R$/sc)</small><input class="input" name="precoSoja" value="${params.precoSoja||120}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinSoja" value="${params.produtividadeMinSoja||65}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxSoja" value="${params.produtividadeMaxSoja||75}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#f59e0b; font-size:13px; text-transform:uppercase; letter-spacing:1px;">🌽 Milho</h4></div>
           <div><small>Preço do milho (R$/sc)</small><input class="input" name="precoMilho" value="${params.precoMilho||60}"></div>
-          <div><small>Produtividade mínima milho (sc/ha)</small><input class="input" name="prodMinMilho" value="${params.produtividadeMinMilho||100}"></div>
-          <div><small>Produtividade máxima milho (sc/ha)</small><input class="input" name="prodMaxMilho" value="${params.produtividadeMaxMilho||130}"></div>
-          <div><small>Preço do algodão (R$/sc)</small><input class="input" name="precoAlgodao" value="${params.precoAlgodao||150}"></div>
-          <div><small>Produtividade mínima algodão (sc/ha)</small><input class="input" name="prodMinAlgodao" value="${params.produtividadeMinAlgodao||250}"></div>
-          <div><small>Produtividade máxima algodão (sc/ha)</small><input class="input" name="prodMaxAlgodao" value="${params.produtividadeMaxAlgodao||300}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinMilho" value="${params.produtividadeMinMilho||100}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxMilho" value="${params.produtividadeMaxMilho||130}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#ef4444; font-size:13px; text-transform:uppercase; letter-spacing:1px;">🌾 Sorgo</h4></div>
+          <div><small>Preço do sorgo (R$/sc 50kg)</small><input class="input" name="precoSorgo" value="${params.precoSorgo||42}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinSorgo" value="${params.produtividadeMinSorgo||70}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxSorgo" value="${params.produtividadeMaxSorgo||100}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#8b5cf6; font-size:13px; text-transform:uppercase; letter-spacing:1px;">🫘 Feijão</h4></div>
+          <div><small>Preço do feijão (R$/sc 60kg)</small><input class="input" name="precoFeijao" value="${params.precoFeijao||280}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinFeijao" value="${params.produtividadeMinFeijao||25}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxFeijao" value="${params.produtividadeMaxFeijao||40}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#64748b; font-size:13px; text-transform:uppercase; letter-spacing:1px;">🌾 Trigo</h4></div>
+          <div><small>Preço do trigo (R$/sc 60kg)</small><input class="input" name="precoTrigo" value="${params.precoTrigo||85}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinTrigo" value="${params.produtividadeMinTrigo||40}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxTrigo" value="${params.produtividadeMaxTrigo||60}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#06b6d4; font-size:13px; text-transform:uppercase; letter-spacing:1px;">🍚 Arroz</h4></div>
+          <div><small>Preço do arroz (R$/sc 50kg)</small><input class="input" name="precoArroz" value="${params.precoArroz||60}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinArroz" value="${params.produtividadeMinArroz||60}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxArroz" value="${params.produtividadeMaxArroz||80}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#92400e; font-size:13px; text-transform:uppercase; letter-spacing:1px;">☕ Café</h4></div>
+          <div><small>Preço do café (R$/sc 60kg)</small><input class="input" name="precoCafe" value="${params.precoCafe||1200}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinCafe" value="${params.produtividadeMinCafe||20}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxCafe" value="${params.produtividadeMaxCafe||40}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#84cc16; font-size:13px; text-transform:uppercase; letter-spacing:1px;">🌼 Canola</h4></div>
+          <div><small>Preço da canola (R$/sc 60kg)</small><input class="input" name="precoCanola" value="${params.precoCanola||140}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinCanola" value="${params.produtividadeMinCanola||40}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxCanola" value="${params.produtividadeMaxCanola||65}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#eab308; font-size:13px; text-transform:uppercase; letter-spacing:1px;">🌻 Girassol</h4></div>
+          <div><small>Preço do girassol (R$/sc 60kg)</small><input class="input" name="precoGirassol" value="${params.precoGirassol||90}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinGirassol" value="${params.produtividadeMinGirassol||35}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxGirassol" value="${params.produtividadeMaxGirassol||55}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#c2410c; font-size:13px; text-transform:uppercase; letter-spacing:1px;">🥜 Amendoim</h4></div>
+          <div><small>Preço do amendoim (R$/sc 25kg)</small><input class="input" name="precoAmendoim" value="${params.precoAmendoim||220}"></div>
+          <div><small>Produtividade mínima (sc/ha)</small><input class="input" name="prodMinAmendoim" value="${params.produtividadeMinAmendoim||60}"></div>
+          <div><small>Produtividade máxima (sc/ha)</small><input class="input" name="prodMaxAmendoim" value="${params.produtividadeMaxAmendoim||100}"></div>
+
+          <div style="grid-column:1/-1;"><h4 style="margin:8px 0 4px; color:#374151; font-size:13px; text-transform:uppercase; letter-spacing:1px;">⚙️ Geral</h4></div>
           <div><small>Peso padrão da saca (kg)</small><input class="input" name="pesoPadraoSaca" value="${params.pesoPadraoSaca||60}"></div>
           <div class="full row" style="justify-content:flex-end"><button class="btn primary" type="submit">Salvar parâmetros</button></div>
         </form>
@@ -4207,9 +4508,30 @@ function pageConfiguracoes() {
       precoMilho: Number(fd.get("precoMilho") || 60),
       produtividadeMinMilho: Number(fd.get("prodMinMilho") || 100),
       produtividadeMaxMilho: Number(fd.get("prodMaxMilho") || 130),
-      precoAlgodao: Number(fd.get("precoAlgodao") || 150),
-      produtividadeMinAlgodao: Number(fd.get("prodMinAlgodao") || 250),
-      produtividadeMaxAlgodao: Number(fd.get("prodMaxAlgodao") || 300),
+      precoSorgo: Number(fd.get("precoSorgo") || 42),
+      produtividadeMinSorgo: Number(fd.get("prodMinSorgo") || 70),
+      produtividadeMaxSorgo: Number(fd.get("prodMaxSorgo") || 100),
+      precoFeijao: Number(fd.get("precoFeijao") || 280),
+      produtividadeMinFeijao: Number(fd.get("prodMinFeijao") || 25),
+      produtividadeMaxFeijao: Number(fd.get("prodMaxFeijao") || 40),
+      precoTrigo: Number(fd.get("precoTrigo") || 85),
+      produtividadeMinTrigo: Number(fd.get("prodMinTrigo") || 40),
+      produtividadeMaxTrigo: Number(fd.get("prodMaxTrigo") || 60),
+      precoArroz: Number(fd.get("precoArroz") || 60),
+      produtividadeMinArroz: Number(fd.get("prodMinArroz") || 60),
+      produtividadeMaxArroz: Number(fd.get("prodMaxArroz") || 80),
+      precoCafe: Number(fd.get("precoCafe") || 1200),
+      produtividadeMinCafe: Number(fd.get("prodMinCafe") || 20),
+      produtividadeMaxCafe: Number(fd.get("prodMaxCafe") || 40),
+      precoCanola: Number(fd.get("precoCanola") || 140),
+      produtividadeMinCanola: Number(fd.get("prodMinCanola") || 40),
+      produtividadeMaxCanola: Number(fd.get("prodMaxCanola") || 65),
+      precoGirassol: Number(fd.get("precoGirassol") || 90),
+      produtividadeMinGirassol: Number(fd.get("prodMinGirassol") || 35),
+      produtividadeMaxGirassol: Number(fd.get("prodMaxGirassol") || 55),
+      precoAmendoim: Number(fd.get("precoAmendoim") || 220),
+      produtividadeMinAmendoim: Number(fd.get("prodMinAmendoim") || 60),
+      produtividadeMaxAmendoim: Number(fd.get("prodMaxAmendoim") || 100),
       pesoPadraoSaca: Number(fd.get("pesoPadraoSaca") || 60)
     };
     setDB(db2);
@@ -6424,49 +6746,244 @@ async function buscarPrecoGraos(cultura, latitude, longitude) {
 function pageAjuda() {
   const content = document.getElementById("content");
   content.innerHTML = `
-    <div class="section">
-      <div class="card">
-        <h2>❓ Ajuda & Suporte</h2>
-        <p>Bem-vindo ao centro de ajuda do Agro Pro. Aqui você encontra orientações sobre como utilizar a plataforma e avisos importantes.</p>
-        
-        <div class="hr"></div>
-        
-        <h3>📖 Guia Rápido</h3>
-        <div class="grid">
-          <div class="card" style="border-left: 4px solid #4CAF50;">
-            <h4>Lançar Aplicações</h4>
-            <p>Vá em <b>Aplicações</b>, selecione o talhão, os produtos e a dose. O sistema calcula o custo e dá baixa no estoque automaticamente.</p>
-          </div>
-          <div class="card" style="border-left: 4px solid #2196F3;">
-            <h4>Controle de Clima</h4>
-            <p>Na página <b>Clima</b>, você pode ver a previsão real ou registrar manualmente a chuva observada em cada talhão.</p>
-          </div>
-          <div class="card" style="border-left: 4px solid #FF9800;">
-            <h4>Gestão de Planos</h4>
-            <p>O limite de fazendas e talhões depende do seu plano. Verifique em <b>Configurações</b> para fazer o upgrade.</p>
-          </div>
-        </div>
+    <style>
+      .ah-hero { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #064e3b 100%); border-radius: 16px; padding: 36px 28px; color: white; margin-bottom: 22px; position: relative; overflow: hidden; }
+      .ah-hero::after { content: '🌱'; position: absolute; right: 24px; top: 50%; transform: translateY(-50%); font-size: 80px; opacity: .12; }
+      .ah-hero .ah-badge { display: inline-block; background: #10b981; color: white; padding: 3px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase; }
+      .ah-hero h1 { margin: 0 0 6px; font-size: 24px; font-weight: 800; }
+      .ah-hero p { margin: 0; color: #94a3b8; font-size: 14px; }
+      .ah-sec { font-size: 17px; font-weight: 700; color: #1e293b; margin: 26px 0 14px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+      .ah-card { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 6px rgba(0,0,0,.05); margin-bottom: 14px; }
+      .ah-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; margin-bottom: 14px; }
+      .ah-grid .ah-card h4 { margin: 0 0 10px; font-size: 14px; color: #1e293b; }
+      .ah-grid .ah-card ul { margin: 0; padding-left: 18px; }
+      .ah-grid .ah-card li { font-size: 13px; color: #64748b; line-height: 1.75; }
+      .ah-steps { list-style: none; padding: 0; margin: 0; counter-reset: stp; }
+      .ah-steps li { counter-increment: stp; display: flex; gap: 14px; padding: 13px 0; border-bottom: 1px solid #f1f5f9; }
+      .ah-steps li:last-child { border-bottom: none; }
+      .ah-steps li::before { content: counter(stp); min-width: 28px; height: 28px; background: #3b82f6; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+      .ah-steps li .ah-step-body b { display: block; font-size: 13px; color: #1e293b; margin-bottom: 3px; }
+      .ah-steps li .ah-step-body span { font-size: 12px; color: #64748b; line-height: 1.6; }
+      .faq-item { border-bottom: 1px solid #f1f5f9; }
+      .faq-item:last-child { border-bottom: none; }
+      .faq-q { font-weight: 600; font-size: 14px; color: #1e293b; cursor: pointer; padding: 14px 0; display: flex; justify-content: space-between; align-items: center; user-select: none; }
+      .faq-q:hover { color: #3b82f6; }
+      .faq-arrow { font-size: 11px; color: #94a3b8; transition: transform .25s; flex-shrink: 0; margin-left: 10px; }
+      .faq-item.open .faq-arrow { transform: rotate(180deg); }
+      .faq-a { font-size: 13px; color: #64748b; line-height: 1.75; padding: 0 0 14px; display: none; }
+      .faq-item.open .faq-a { display: block; }
+      .ah-contact { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 22px; }
+      .ah-contact a { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 18px 14px; text-align: center; text-decoration: none; color: inherit; transition: all .2s; display: block; }
+      .ah-contact a:hover { border-color: #3b82f6; box-shadow: 0 4px 16px rgba(59,130,246,.14); transform: translateY(-2px); }
+      .ah-contact .ah-icon { font-size: 26px; margin-bottom: 8px; }
+      .ah-contact h4 { margin: 0 0 4px; font-size: 13px; color: #1e293b; font-weight: 700; }
+      .ah-contact p { margin: 0; font-size: 12px; color: #64748b; }
+      .ah-contact .ah-tag { font-size: 11px; font-weight: 600; margin-top: 4px; }
+      .ah-legal { background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 10px; padding: 16px 20px; }
+      .ah-legal h4 { margin: 0 0 10px; color: #92400e; font-size: 14px; }
+      .ah-legal li, .ah-legal p { font-size: 12px; color: #78350f; line-height: 1.75; margin: 0; }
+      .ah-legal ul { margin: 8px 0 0; padding-left: 18px; }
+      .ah-footer { text-align: center; padding: 28px 0 6px; color: #94a3b8; font-size: 12px; }
+    </style>
 
-        <div class="hr"></div>
+    <!-- HERO -->
+    <div class="ah-hero">
+      <div class="ah-badge">Central de Ajuda</div>
+      <h1>📖 Agro Pro — Suporte &amp; Documentação</h1>
+      <p>Tudo que você precisa para dominar a gestão agrícola mais completa do Brasil.</p>
+    </div>
 
-        <div style="background: #fff4e5; padding: 20px; border-radius: 8px; border-left: 6px solid #ff9800; margin-top: 20px;">
-          <h3>⚖️ Termos e Avisos Jurídicos (IA)</h3>
-          <p>O <b>Agro-Copilot</b> e a <b>IA Validadora</b> são ferramentas de auxílio à decisão baseadas em modelos de inteligência artificial generativa.</p>
-          <ul>
-            <li>As recomendações são sugestões estatísticas e não substituem o diagnóstico de campo.</li>
-            <li><b>AVISO OBRIGATÓRIO:</b> Sempre consulte um Engenheiro Agrônomo responsável antes de qualquer aplicação ou manejo.</li>
-            <li>O Agro Pro não se responsabiliza por perdas de safra ou danos causados por decisões baseadas exclusivamente na IA.</li>
-            <li>Os dados climáticos são providos pela Open-Meteo e podem apresentar variações em relação à realidade local.</li>
-          </ul>
-        </div>
+    <!-- PRIMEIROS PASSOS -->
+    <div class="ah-sec">🚀 Primeiros Passos — Configure em 5 minutos</div>
+    <div class="ah-card" style="margin-bottom:22px;">
+      <ol class="ah-steps">
+        <li><div class="ah-step-body"><b>Criar Safra</b><span>Acesse Configurações → Safras e crie a safra atual (ex: Safra 2024/25).</span></div></li>
+        <li><div class="ah-step-body"><b>Cadastrar Fazenda</b><span>Em Fazendas, informe nome, cidade, estado, área e coordenadas (lat/lon) para busca geolocalizada de preços.</span></div></li>
+        <li><div class="ah-step-body"><b>Adicionar Talhões</b><span>Em Talhões, cadastre cada talhão com área (ha) e cultura. Vincule à fazenda correspondente.</span></div></li>
+        <li><div class="ah-step-body"><b>Registrar Máquinas</b><span>Em Máquinas, use os modelos pré-carregados (tratores, colheitadeiras, pulverizadores etc.) para cadastrar rapidamente.</span></div></li>
+        <li><div class="ah-step-body"><b>Cadastrar Produtos no Estoque</b><span>Em Produtos, registre defensivos, sementes e fertilizantes com preço e unidade. O estoque é baixado automaticamente nas aplicações.</span></div></li>
+        <li><div class="ah-step-body"><b>Lançar Aplicações</b><span>Em Aplicações, registre cada operação de campo. Custo por hectare calculado automaticamente, com baixa de estoque.</span></div></li>
+        <li><div class="ah-step-body"><b>Registrar Colheita</b><span>Em Colheitas, informe produção por talhão, umidade e frete. O sistema calcula custo/saca e margem automaticamente.</span></div></li>
+      </ol>
+    </div>
 
-        <div class="hr"></div>
-        
-        <h3>📞 Suporte Técnico</h3>
-        <p>Dúvidas ou problemas? Entre em contato pelo e-mail: <b>suporte@agropro.com.br</b></p>
+    <!-- GUIA POR MÓDULO -->
+    <div class="ah-sec">📌 Guia por Módulo</div>
+    <div class="ah-grid">
+      <div class="ah-card">
+        <h4>🏡 Dashboard</h4>
+        <ul>
+          <li>KPIs em tempo real da safra atual</li>
+          <li>Alertas automáticos de pragas e clima</li>
+          <li>Próximas aplicações e lembretes</li>
+          <li>Gráfico de custos acumulados</li>
+        </ul>
+      </div>
+      <div class="ah-card">
+        <h4>🌿 Aplicações</h4>
+        <ul>
+          <li>Registre defensivos, fertilizantes e insumos</li>
+          <li>Custo total e por hectare automático</li>
+          <li>Baixa automática no estoque de produtos</li>
+          <li>IA valida compatibilidade de produtos</li>
+          <li>Export CSV para laudos técnicos</li>
+        </ul>
+      </div>
+      <div class="ah-card">
+        <h4>🌾 Colheitas &amp; Fretes</h4>
+        <ul>
+          <li>Produção por talhão em kg ou sacas</li>
+          <li>Até 2 destinos de frete por colheita</li>
+          <li>Custo/tonelada e frete/ton automático</li>
+          <li>KPIs: produção total, receita, frete</li>
+        </ul>
+      </div>
+      <div class="ah-card">
+        <h4>⛽ Combustível</h4>
+        <ul>
+          <li>Estoque de diesel por depósito</li>
+          <li>Entradas com nota fiscal e fornecedor</li>
+          <li>Baixa por talhão, máquina e operador</li>
+          <li>Preço médio ponderado automático</li>
+          <li>Gráfico mensal de consumo</li>
+        </ul>
+      </div>
+      <div class="ah-card">
+        <h4>🔧 Manutenções</h4>
+        <ul>
+          <li>Preventiva, corretiva e preditiva</li>
+          <li>Alerta automático por horímetro e data</li>
+          <li>Lista de peças com custo detalhado</li>
+          <li>Próximas manutenções nos 30 dias</li>
+          <li>Custo de manutenção por hectare</li>
+        </ul>
+      </div>
+      <div class="ah-card">
+        <h4>📊 Relatórios</h4>
+        <ul>
+          <li>Custo total, por hectare e por talhão</li>
+          <li>Receita estimada vs real por cultura</li>
+          <li>Comparativo com safras anteriores reais</li>
+          <li>Gráficos mensais: chuva, custo, diesel</li>
+          <li>Export para PDF (imprimir) e CSV</li>
+        </ul>
+      </div>
+      <div class="ah-card">
+        <h4>🤖 IA Prescritiva</h4>
+        <ul>
+          <li>Validação de compatibilidade de produtos</li>
+          <li>Recomendação de dose por cultura e estágio</li>
+          <li>Análise de custo com insights por talhão</li>
+          <li>Alertas de pragas por clima e histórico</li>
+          <li style="color:#3b82f6;font-style:italic;">Disponível nos planos Pro e Master</li>
+        </ul>
+      </div>
+      <div class="ah-card">
+        <h4>☁️ Sincronização</h4>
+        <ul>
+          <li>Dados salvos automaticamente na nuvem</li>
+          <li>Acesso em qualquer dispositivo após login</li>
+          <li>Backup JSON manual em Configurações</li>
+          <li>Modo offline: edita local, sincroniza depois</li>
+          <li>Indicador de status ☁️ / 📴 no topo</li>
+        </ul>
       </div>
     </div>
+
+    <!-- FAQ -->
+    <div class="ah-sec">❓ Perguntas Frequentes</div>
+    <div class="ah-card" style="margin-bottom:22px;" id="faqContainer">
+      <div class="faq-item">
+        <div class="faq-q">Por que meus talhões não aparecem? <span class="faq-arrow">▼</span></div>
+        <div class="faq-a">Verifique se a safra atual está selecionada (menu superior ou Configurações). Talhões e fazendas são vinculados por safra. Se acabou de criar a conta, acesse Configurações → Sincronizar Agora para baixar dados da nuvem.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Como funciona o cálculo de custo por hectare? <span class="faq-arrow">▼</span></div>
+        <div class="faq-a">O sistema soma todos os custos (aplicações, combustível, insumos base, manutenção rateada e frete) e divide pela área total dos talhões da safra. O detalhamento completo por talhão está disponível nos Relatórios.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Posso usar offline? <span class="faq-arrow">▼</span></div>
+        <div class="faq-a">Sim. O Agro Pro funciona offline usando localStorage do navegador. Todas as edições ficam salvas localmente e são sincronizadas automaticamente com a nuvem assim que a conexão for restabelecida.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Como deletar minha conta corretamente? <span class="faq-arrow">▼</span></div>
+        <div class="faq-a">Acesse o Supabase Dashboard → Authentication → Users, localize seu e-mail e clique em "Delete User". Isso remove a conta de autenticação e todos os dados vinculados (ON DELETE CASCADE). Atenção: deletar apenas o registro na tabela "profiles" não é suficiente — o JWT continua ativo até expirar.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">A IA tem acesso a todos meus dados? <span class="faq-arrow">▼</span></div>
+        <div class="faq-a">A IA Prescritiva recebe apenas os dados do talhão selecionado para a análise pontual, sem histórico completo. Os dados nunca são armazenados fora do seu banco Supabase e do localStorage do seu dispositivo.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Como fazer backup completo dos dados? <span class="faq-arrow">▼</span></div>
+        <div class="faq-a">Acesse Configurações → Backup e Restauração → Exportar Backup. O arquivo .json contém todos os seus dados e pode ser reimportado em qualquer dispositivo.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Os preços de grãos são atualizados automaticamente? <span class="faq-arrow">▼</span></div>
+        <div class="faq-a">A busca usa geolocalização da fazenda e tenta consultar a API HG Brasil em tempo real. Se indisponível, usa tabela de referência CEPEA/Esalq atualizada mensalmente. O preço buscado é apenas referência — ajuste os valores em Configurações → Parâmetros de Mercado.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Meus dados ficam seguros no Supabase? <span class="faq-arrow">▼</span></div>
+        <div class="faq-a">Sim. Todas as tabelas usam Row Level Security (RLS) com política (SELECT auth.uid()) = user_id, garantindo que cada usuário acesse apenas seus próprios dados. A chave ANON exposta no front-end só permite operações autenticadas — nunca acesso admin.</div>
+      </div>
+    </div>
+
+    <!-- CONTATO -->
+    <div class="ah-sec">📞 Fale Conosco</div>
+    <div class="ah-contact">
+      <a href="mailto:suporteagropro@gmail.com?subject=Suporte Agro Pro">
+        <div class="ah-icon">📧</div>
+        <h4>E-mail Suporte</h4>
+        <p>suporteagropro@gmail.com</p>
+        <p class="ah-tag" style="color:#3b82f6;">Resposta em até 24h úteis</p>
+      </a>
+      <a href="https://wa.me/5599991360547?text=Ol%C3%A1%21+Preciso+de+suporte+no+Agro+Pro" target="_blank" rel="noopener">
+        <div class="ah-icon">💬</div>
+        <h4>WhatsApp</h4>
+        <p>+55 (99) 99136-0547</p>
+        <p class="ah-tag" style="color:#25d366;">Seg–Sex, 8h–18h (BRT)</p>
+      </a>
+      <a href="https://github.com/tiagouchiha2014-max/Agropro" target="_blank" rel="noopener">
+        <div class="ah-icon">🐙</div>
+        <h4>GitHub / Changelog</h4>
+        <p>tiagouchiha2014-max/Agropro</p>
+        <p class="ah-tag" style="color:#6366f1;">Versão atual: v6.3</p>
+      </a>
+    </div>
+
+    <!-- AVISO LEGAL -->
+    <div class="ah-legal">
+      <h4>⚖️ Termos de Uso &amp; Avisos Legais</h4>
+      <p>O <strong>Agro Pro</strong> é uma plataforma de gestão agrícola para auxílio ao produtor rural. Ao utilizar, você concorda com:</p>
+      <ul>
+        <li>Recomendações da <strong>IA Prescritiva</strong> são sugestões estatísticas e <strong>não substituem</strong> o diagnóstico de campo nem a orientação de Engenheiro Agrônomo habilitado (CREA/CFTA).</li>
+        <li><strong>AVISO OBRIGATÓRIO (Lei 7.802/89):</strong> aplicação de agrotóxicos exige receituário agronômico de profissional habilitado. O Agro Pro não emite receituário.</li>
+        <li>Preços de commodities são meramente indicativos (referência CEPEA/Esalq) e não constituem oferta de compra ou venda.</li>
+        <li>Dados climáticos fornecidos pela API Open-Meteo podem divergir das condições locais reais.</li>
+        <li>O Agro Pro <strong>não se responsabiliza</strong> por perdas ou danos decorrentes de decisões baseadas exclusivamente nos dados da plataforma.</li>
+        <li>Dados armazenados no Supabase (terceiro). Consulte: <strong>supabase.com/privacy</strong>.</li>
+      </ul>
+    </div>
+
+    <div class="ah-footer">
+      Agro Pro v6.3 — &copy; ${new Date().getFullYear()} Tiago Santos. Todos os direitos reservados.<br>
+      Desenvolvido com ❤️ para o produtor rural brasileiro.
+    </div>
   `;
+
+  // FAQ accordion — listener JS separado (sem onclick inline para evitar problemas com aspas/apóstrofos)
+  document.getElementById('faqContainer').addEventListener('click', function(e) {
+    const q = e.target.closest('.faq-q');
+    if (!q) return;
+    const item = q.closest('.faq-item');
+    if (!item) return;
+    const wasOpen = item.classList.contains('open');
+    // Fechar todos
+    document.querySelectorAll('#faqContainer .faq-item.open').forEach(function(el) {
+      el.classList.remove('open');
+    });
+    // Abrir o clicado (toggle)
+    if (!wasOpen) item.classList.add('open');
+  });
 }
 
 
