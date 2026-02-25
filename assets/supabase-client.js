@@ -87,13 +87,29 @@ function isUUID(str) {
 // AUTH SERVICE
 // ============================================================
 var AuthService = {
-  async signUp(email, password, fullName) {
+  async signUp(email, password, fullName, cpf, phone) {
     if (!isSupabaseReady()) return { data: null, error: { message: "Supabase não configurado" } };
     var result = await _supabaseClient.auth.signUp({
       email: email, password: password,
-      options: { data: { full_name: fullName } }
+      options: { data: { full_name: fullName, cpf: cpf || null, phone: phone || null } }
     });
     return { data: result.data, error: result.error };
+  },
+
+  async checkCpfExists(cpf) {
+    if (!isSupabaseReady() || !cpf) return false;
+    try {
+      var result = await _supabaseClient.from('profiles').select('id').eq('cpf', cpf).maybeSingle();
+      return result.data !== null;
+    } catch (e) { return false; }
+  },
+
+  async checkPhoneExists(phone) {
+    if (!isSupabaseReady() || !phone) return false;
+    try {
+      var result = await _supabaseClient.from('profiles').select('id').eq('phone', phone).maybeSingle();
+      return result.data !== null;
+    } catch (e) { return false; }
   },
 
   async signIn(email, password) {
