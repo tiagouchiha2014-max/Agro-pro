@@ -1,5 +1,5 @@
 -- ============================================================
--- AGRO PRO — Setup Supabase COMPLETO v7.0
+-- AGRO PRO — Setup Supabase COMPLETO v7.1
 -- ✅ PROJETO NOVO — rode apenas uma vez
 -- ✅ Sem ALTER TABLE (tabelas criadas completas)
 -- ✅ Uma policy por operação por tabela (sem duplicatas)
@@ -7,6 +7,8 @@
 -- ✅ Trigger auto-profile no cadastro
 -- ✅ Todos os grãos: soja, milho, sorgo, feijão, trigo,
 --    arroz, café, canola, girassol, amendoim
+-- ✅ pragas: temp_min, temp_max, umidade_min incluídos
+-- ✅ 100% compatível com FIELD_MAP do supabase-client.js
 -- ============================================================
 -- Como usar:
 --   1. Crie um novo projeto no supabase.com
@@ -222,15 +224,17 @@ CREATE TABLE estoque (
   user_id         UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   safra_id        UUID        REFERENCES safras(id) ON DELETE CASCADE,
   produto_id      UUID        REFERENCES produtos(id) ON DELETE SET NULL,
-  tipo            TEXT,
-  quantidade      NUMERIC,
-  preco_unitario  NUMERIC,
-  data            TEXT,
-  nota_fiscal     TEXT,
-  observacoes     TEXT,
-  deleted_at      TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ DEFAULT now(),
-  updated_at      TIMESTAMPTZ DEFAULT now()
+  tipo             TEXT,
+  quantidade       NUMERIC,
+  quantidade_atual NUMERIC     DEFAULT 0,
+  preco_unitario   NUMERIC,
+  data             TEXT,
+  data_entrada     TEXT,
+  nota_fiscal      TEXT,
+  observacoes      TEXT,
+  deleted_at       TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ DEFAULT now(),
+  updated_at       TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE estoque ENABLE ROW LEVEL SECURITY;
 CREATE POLICY estoque_sel ON estoque FOR SELECT USING ((SELECT auth.uid()) = user_id);
@@ -543,6 +547,9 @@ CREATE TABLE pragas (
   tipo            TEXT,
   nivel           TEXT,
   data            TEXT,
+  temp_min        NUMERIC,
+  temp_max        NUMERIC,
+  umidade_min     NUMERIC,
   observacoes     TEXT,
   deleted_at      TIMESTAMPTZ,
   created_at      TIMESTAMPTZ DEFAULT now(),
@@ -671,9 +678,11 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- ============================================================
--- CONCLUÍDO — AGRO PRO v7.0
+-- CONCLUÍDO — AGRO PRO v7.1
 -- Tabelas criadas: 21
 -- Policies por tabela: 4 (sel/ins/upd/del) — sem duplicatas
 -- Trigger de signup: ativo
 -- Todos os grãos configurados com DEFAULT
+-- pragas: temp_min, temp_max, umidade_min ✅
+-- 100% compatível com FIELD_MAP (supabase-client.js)
 -- ============================================================
