@@ -12,7 +12,10 @@
    ============================================================ */
 
 // ============================================================
-// CONFIGURAÇÃO
+// CONFIGURAÇÃO — PROJETO SUPABASE
+// ⚠️  Após criar um novo projeto no supabase.com, substitua:
+//    SUPABASE_URL  → Settings > API > Project URL
+//    SUPABASE_ANON → Settings > API > anon (public) key
 // ============================================================
 var SUPABASE_URL  = "https://cqckmitwbevwkkxlzxdl.supabase.co";
 var SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxY2ttaXR3YmV2d2treGx6eGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NTY5NzUsImV4cCI6MjA4NzEzMjk3NX0.rzuZ3DjmoJY8KaKEOb62TP7E74h-pU1KO9ZGoYNYTYg";

@@ -1,527 +1,652 @@
 -- ============================================================
--- AGRO PRO — Setup Supabase Completo (v6.1)
--- COMPATÍVEL COM BANCO EXISTENTE:
---   • CREATE TABLE IF NOT EXISTS → não recria tabelas existentes
---   • ALTER TABLE ADD COLUMN IF NOT EXISTS → adiciona colunas faltando
---   • Índices criados apenas após garantir que as colunas existem
+-- AGRO PRO — Setup Supabase COMPLETO v7.0
+-- ✅ PROJETO NOVO — rode apenas uma vez
+-- ✅ Sem ALTER TABLE (tabelas criadas completas)
+-- ✅ Uma policy por operação por tabela (sem duplicatas)
+-- ✅ RLS com (SELECT auth.uid()) — sem warnings de performance
+-- ✅ Trigger auto-profile no cadastro
+-- ✅ Todos os grãos: soja, milho, sorgo, feijão, trigo,
+--    arroz, café, canola, girassol, amendoim
 -- ============================================================
--- Execute este SQL no Supabase Dashboard → SQL Editor
+-- Como usar:
+--   1. Crie um novo projeto no supabase.com
+--   2. Vá em SQL Editor → New Query
+--   3. Cole TODO este bloco e clique em Run
 -- ============================================================
 
 -- ============================================================
--- 0. LIMPAR POLICIES EXISTENTES (evita conflitos de nomes)
--- ============================================================
-DO $$
-DECLARE pol RECORD; tbl RECORD;
-BEGIN
-  FOR tbl IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-    AND tablename IN ('profiles','safras','fazendas','talhoes','produtos','estoque',
-      'aplicacoes','colheitas','combustivel','diesel_entradas','diesel_estoque',
-      'clima','manutencoes','equipe','maquinas','insumos_base','lembretes','pragas',
-      'parametros','user_data_backup')
-  LOOP
-    FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = tbl.tablename
-    LOOP
-      EXECUTE format('DROP POLICY IF EXISTS %I ON %I', pol.policyname, tbl.tablename);
-    END LOOP;
-  END LOOP;
-END $$;
-
--- ============================================================
--- 1. FUNÇÃO updated_at AUTOMÁTICA
+-- 1. FUNÇÃO updated_at
 -- ============================================================
 CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
   NEW.updated_at = now();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- ============================================================
--- 2. TABELA PROFILES
+-- 2. PROFILES
 -- ============================================================
-CREATE TABLE IF NOT EXISTS profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  full_name TEXT,
-  email TEXT,
-  user_role TEXT DEFAULT 'admin',
-  plan_type TEXT DEFAULT 'trial',
+CREATE TABLE profiles (
+  id            UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name     TEXT,
+  email         TEXT,
+  user_role     TEXT        DEFAULT 'admin',
+  plan_type     TEXT        DEFAULT 'trial',
   trial_ends_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  updated_at    TIMESTAMPTZ DEFAULT now()
 );
--- Colunas extras caso a tabela já exista sem elas
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS full_name TEXT;
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email TEXT;
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS user_role TEXT DEFAULT 'admin';
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plan_type TEXT DEFAULT 'trial';
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "profiles_select" ON profiles
-  FOR SELECT USING ((SELECT auth.uid()) = id);
-CREATE POLICY "profiles_insert" ON profiles
-  FOR INSERT WITH CHECK ((SELECT auth.uid()) = id);
-CREATE POLICY "profiles_update" ON profiles
-  FOR UPDATE USING ((SELECT auth.uid()) = id)
-  WITH CHECK ((SELECT auth.uid()) = id);
+CREATE POLICY profiles_sel ON profiles FOR SELECT USING ((SELECT auth.uid()) = id);
+CREATE POLICY profiles_ins ON profiles FOR INSERT WITH CHECK ((SELECT auth.uid()) = id);
+CREATE POLICY profiles_upd ON profiles FOR UPDATE USING ((SELECT auth.uid()) = id);
+CREATE TRIGGER trg_profiles_upd BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================
--- 3. TABELAS DE DADOS (CREATE + ALTER para colunas faltando)
+-- 3. SAFRAS
 -- ============================================================
-
--- ── SAFRAS ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS safras (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+CREATE TABLE safras (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  nome        TEXT        NOT NULL,
+  data_inicio DATE,
+  data_fim    DATE,
+  ativa       BOOLEAN     DEFAULT true,
+  observacoes TEXT,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
 );
-ALTER TABLE safras ADD COLUMN IF NOT EXISTS data_inicio DATE;
-ALTER TABLE safras ADD COLUMN IF NOT EXISTS data_fim DATE;
-ALTER TABLE safras ADD COLUMN IF NOT EXISTS ativa BOOLEAN DEFAULT true;
-ALTER TABLE safras ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE safras ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-ALTER TABLE safras ADD COLUMN IF NOT EXISTS safra_id UUID;
-CREATE INDEX IF NOT EXISTS idx_safras_user ON safras(user_id);
-
--- ── FAZENDAS ─────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS fazendas (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE fazendas ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE fazendas ADD COLUMN IF NOT EXISTS cidade TEXT;
-ALTER TABLE fazendas ADD COLUMN IF NOT EXISTS uf TEXT;
-ALTER TABLE fazendas ADD COLUMN IF NOT EXISTS area_ha NUMERIC;
-ALTER TABLE fazendas ADD COLUMN IF NOT EXISTS latitude TEXT;
-ALTER TABLE fazendas ADD COLUMN IF NOT EXISTS longitude TEXT;
-ALTER TABLE fazendas ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE fazendas ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_fazendas_user ON fazendas(user_id);
-CREATE INDEX IF NOT EXISTS idx_fazendas_safra ON fazendas(safra_id);
-
--- ── TALHÕES ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS talhoes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE talhoes ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE talhoes ADD COLUMN IF NOT EXISTS fazenda_id UUID REFERENCES fazendas(id) ON DELETE CASCADE;
-ALTER TABLE talhoes ADD COLUMN IF NOT EXISTS area_ha NUMERIC;
-ALTER TABLE talhoes ADD COLUMN IF NOT EXISTS cultura TEXT;
-ALTER TABLE talhoes ADD COLUMN IF NOT EXISTS safra TEXT;
-ALTER TABLE talhoes ADD COLUMN IF NOT EXISTS solo TEXT;
-ALTER TABLE talhoes ADD COLUMN IF NOT EXISTS coordenadas TEXT;
-ALTER TABLE talhoes ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE talhoes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_talhoes_user ON talhoes(user_id);
-CREATE INDEX IF NOT EXISTS idx_talhoes_safra ON talhoes(safra_id);
-CREATE INDEX IF NOT EXISTS idx_talhoes_fazenda ON talhoes(fazenda_id);
-
--- ── PRODUTOS ─────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS produtos (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE produtos ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE produtos ADD COLUMN IF NOT EXISTS tipo TEXT;
-ALTER TABLE produtos ADD COLUMN IF NOT EXISTS tipo_produto TEXT;
-ALTER TABLE produtos ADD COLUMN IF NOT EXISTS unidade TEXT;
-ALTER TABLE produtos ADD COLUMN IF NOT EXISTS preco NUMERIC;
-ALTER TABLE produtos ADD COLUMN IF NOT EXISTS estoque_atual NUMERIC DEFAULT 0;
-ALTER TABLE produtos ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE produtos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_produtos_user ON produtos(user_id);
-
--- ── ESTOQUE ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS estoque (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE estoque ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE estoque ADD COLUMN IF NOT EXISTS produto_id UUID REFERENCES produtos(id) ON DELETE SET NULL;
-ALTER TABLE estoque ADD COLUMN IF NOT EXISTS tipo TEXT;
-ALTER TABLE estoque ADD COLUMN IF NOT EXISTS quantidade NUMERIC;
-ALTER TABLE estoque ADD COLUMN IF NOT EXISTS preco_unitario NUMERIC;
-ALTER TABLE estoque ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE estoque ADD COLUMN IF NOT EXISTS nota_fiscal TEXT;
-ALTER TABLE estoque ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE estoque ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_estoque_user ON estoque(user_id);
-
--- ── APLICAÇÕES ───────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS aplicacoes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS talhao_id UUID REFERENCES talhoes(id) ON DELETE SET NULL;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS produto_id UUID REFERENCES produtos(id) ON DELETE SET NULL;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS produto TEXT;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS tipo TEXT;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS dose_ha NUMERIC;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS area_aplicada NUMERIC;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS quantidade_total NUMERIC;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS custo_unitario NUMERIC;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS custo_total NUMERIC;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS volume_calda NUMERIC;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS condicao_clima TEXT;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS maquina TEXT;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS operador TEXT;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE aplicacoes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_aplicacoes_user ON aplicacoes(user_id);
-CREATE INDEX IF NOT EXISTS idx_aplicacoes_safra ON aplicacoes(safra_id);
-CREATE INDEX IF NOT EXISTS idx_aplicacoes_talhao ON aplicacoes(talhao_id);
-
--- ── COLHEITAS ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS colheitas (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS talhao_id UUID REFERENCES talhoes(id) ON DELETE SET NULL;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS area_colhida NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS producao_total NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS unidade TEXT;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS umidade NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS peso_liquido NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS sacas_ha NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS armazem_1 TEXT;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS ton_armazem_1 NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS frete_1_ton NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS armazem_2 TEXT;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS ton_armazem_2 NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS frete_2_ton NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS preco_venda NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS receita_total NUMERIC;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS frete1 JSONB;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS frete2 JSONB;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS maquinas JSONB;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS data_colheita TEXT;
-ALTER TABLE colheitas ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_colheitas_user ON colheitas(user_id);
-CREATE INDEX IF NOT EXISTS idx_colheitas_talhao ON colheitas(talhao_id);
-
--- ── COMBUSTÍVEL ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS combustivel (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS talhao_id UUID REFERENCES talhoes(id) ON DELETE SET NULL;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS fazenda_id UUID REFERENCES fazendas(id) ON DELETE SET NULL;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS maquina_id UUID;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS operador_id UUID;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS tipo TEXT;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS deposito TEXT;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS posto TEXT;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS litros NUMERIC;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS preco_litro NUMERIC;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS km_ou_hora NUMERIC;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE combustivel ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
--- Índices só depois de garantir que as colunas existem
-CREATE INDEX IF NOT EXISTS idx_combustivel_user ON combustivel(user_id);
-CREATE INDEX IF NOT EXISTS idx_combustivel_talhao ON combustivel(talhao_id);
-
--- ── DIESEL ENTRADAS ──────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS diesel_entradas (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE diesel_entradas ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE diesel_entradas ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE diesel_entradas ADD COLUMN IF NOT EXISTS deposito TEXT;
-ALTER TABLE diesel_entradas ADD COLUMN IF NOT EXISTS litros NUMERIC;
-ALTER TABLE diesel_entradas ADD COLUMN IF NOT EXISTS preco_litro NUMERIC;
-ALTER TABLE diesel_entradas ADD COLUMN IF NOT EXISTS fornecedor TEXT;
-ALTER TABLE diesel_entradas ADD COLUMN IF NOT EXISTS nota_fiscal TEXT;
-ALTER TABLE diesel_entradas ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE diesel_entradas ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_diesel_entradas_user ON diesel_entradas(user_id);
-
--- ── DIESEL ESTOQUE ───────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS diesel_estoque (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE diesel_estoque ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE diesel_estoque ADD COLUMN IF NOT EXISTS deposito TEXT;
-ALTER TABLE diesel_estoque ADD COLUMN IF NOT EXISTS litros NUMERIC DEFAULT 0;
-ALTER TABLE diesel_estoque ADD COLUMN IF NOT EXISTS preco_vigente NUMERIC DEFAULT 0;
-ALTER TABLE diesel_estoque ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE diesel_estoque ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_diesel_estoque_user ON diesel_estoque(user_id);
-
--- ── CLIMA ────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS clima (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS temperatura NUMERIC;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS temp_max NUMERIC;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS temp_min NUMERIC;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS umidade NUMERIC;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS chuva_mm NUMERIC;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS vento_kmh NUMERIC;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS condicao TEXT;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE clima ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_clima_user ON clima(user_id);
-
--- ── MANUTENÇÕES ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS manutencoes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS maquina_id UUID;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS maquina_nome TEXT;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS tipo_manutencao TEXT;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS horimetro_atual NUMERIC;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS intervalo_horas NUMERIC DEFAULT 500;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS proxima_data TEXT;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS mecanico TEXT;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS oficina TEXT;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS servico TEXT;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS tempo_parada NUMERIC;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS pecas JSONB;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS custo_pecas NUMERIC DEFAULT 0;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS custo_mao_obra NUMERIC DEFAULT 0;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS outros_custos NUMERIC DEFAULT 0;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS custo_total NUMERIC DEFAULT 0;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_manutencoes_user ON manutencoes(user_id);
-CREATE INDEX IF NOT EXISTS idx_manutencoes_maquina ON manutencoes(maquina_id);
-
--- ── EQUIPE ───────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS equipe (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE equipe ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE equipe ADD COLUMN IF NOT EXISTS funcao TEXT;
-ALTER TABLE equipe ADD COLUMN IF NOT EXISTS telefone TEXT;
-ALTER TABLE equipe ADD COLUMN IF NOT EXISTS data_admissao TEXT;
-ALTER TABLE equipe ADD COLUMN IF NOT EXISTS salario NUMERIC;
-ALTER TABLE equipe ADD COLUMN IF NOT EXISTS status TEXT;
-ALTER TABLE equipe ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE equipe ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_equipe_user ON equipe(user_id);
-
--- ── MÁQUINAS ─────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS maquinas (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS tipo TEXT;
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS marca TEXT;
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS modelo TEXT;
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS ano NUMERIC;
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS placa TEXT;
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS horimetro NUMERIC DEFAULT 0;
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS status TEXT;
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE maquinas ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_maquinas_user ON maquinas(user_id);
-
--- ── INSUMOS BASE ─────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS insumos_base (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS talhao_id UUID REFERENCES talhoes(id) ON DELETE SET NULL;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS produto TEXT;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS tipo_insumo TEXT;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS quantidade NUMERIC;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS unidade TEXT;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS custo_unitario NUMERIC;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS custo_total NUMERIC;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE insumos_base ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_insumos_base_user ON insumos_base(user_id);
-CREATE INDEX IF NOT EXISTS idx_insumos_base_talhao ON insumos_base(talhao_id);
-
--- ── LEMBRETES ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS lembretes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE lembretes ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE lembretes ADD COLUMN IF NOT EXISTS titulo TEXT;
-ALTER TABLE lembretes ADD COLUMN IF NOT EXISTS descricao TEXT;
-ALTER TABLE lembretes ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE lembretes ADD COLUMN IF NOT EXISTS prioridade TEXT;
-ALTER TABLE lembretes ADD COLUMN IF NOT EXISTS concluido BOOLEAN DEFAULT false;
-ALTER TABLE lembretes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_lembretes_user ON lembretes(user_id);
-
--- ── PRAGAS ───────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS pragas (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE pragas ADD COLUMN IF NOT EXISTS safra_id UUID REFERENCES safras(id) ON DELETE CASCADE;
-ALTER TABLE pragas ADD COLUMN IF NOT EXISTS talhao_id UUID REFERENCES talhoes(id) ON DELETE SET NULL;
-ALTER TABLE pragas ADD COLUMN IF NOT EXISTS nome TEXT;
-ALTER TABLE pragas ADD COLUMN IF NOT EXISTS nome_cientifico TEXT;
-ALTER TABLE pragas ADD COLUMN IF NOT EXISTS tipo TEXT;
-ALTER TABLE pragas ADD COLUMN IF NOT EXISTS nivel TEXT;
-ALTER TABLE pragas ADD COLUMN IF NOT EXISTS data TEXT;
-ALTER TABLE pragas ADD COLUMN IF NOT EXISTS observacoes TEXT;
-ALTER TABLE pragas ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_pragas_user ON pragas(user_id);
-
--- ── PARÂMETROS ───────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS parametros (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_soja NUMERIC DEFAULT 120;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_soja NUMERIC DEFAULT 65;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_soja NUMERIC DEFAULT 75;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_milho NUMERIC DEFAULT 60;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_milho NUMERIC DEFAULT 100;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_milho NUMERIC DEFAULT 130;
--- Algodão (mantido para compatibilidade retroativa — não usado na UI v6.3)
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_algodao NUMERIC DEFAULT 150;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_algodao NUMERIC DEFAULT 250;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_algodao NUMERIC DEFAULT 300;
--- Novos grãos v6.3: Canola, Girassol, Amendoim
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_canola NUMERIC DEFAULT 140;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_canola NUMERIC DEFAULT 40;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_canola NUMERIC DEFAULT 65;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_girassol NUMERIC DEFAULT 90;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_girassol NUMERIC DEFAULT 35;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_girassol NUMERIC DEFAULT 55;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_amendoim NUMERIC DEFAULT 220;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_amendoim NUMERIC DEFAULT 60;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_amendoim NUMERIC DEFAULT 100;
--- Outros grãos já existentes (sorgo, feijao, trigo, arroz, cafe)
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_sorgo NUMERIC DEFAULT 42;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_sorgo NUMERIC DEFAULT 70;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_sorgo NUMERIC DEFAULT 100;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_feijao NUMERIC DEFAULT 280;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_feijao NUMERIC DEFAULT 25;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_feijao NUMERIC DEFAULT 40;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_trigo NUMERIC DEFAULT 85;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_trigo NUMERIC DEFAULT 40;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_trigo NUMERIC DEFAULT 60;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_arroz NUMERIC DEFAULT 60;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_arroz NUMERIC DEFAULT 60;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_arroz NUMERIC DEFAULT 80;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_cafe NUMERIC DEFAULT 1200;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_cafe NUMERIC DEFAULT 20;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_cafe NUMERIC DEFAULT 40;
-ALTER TABLE parametros ADD COLUMN IF NOT EXISTS peso_padrao_saca NUMERIC DEFAULT 60;
-
--- ── BACKUP JSON ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS user_data_backup (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE user_data_backup ADD COLUMN IF NOT EXISTS data JSONB;
+ALTER TABLE safras ENABLE ROW LEVEL SECURITY;
+CREATE POLICY safras_sel ON safras FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY safras_ins ON safras FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY safras_upd ON safras FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY safras_del ON safras FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_safras_user ON safras(user_id);
+CREATE TRIGGER trg_safras_upd BEFORE UPDATE ON safras
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================
--- 4. RLS PARA TODAS AS TABELAS
--- (SELECT auth.uid()) → elimina os 225 warnings de performance
+-- 4. FAZENDAS
 -- ============================================================
-DO $$
-DECLARE tbl TEXT;
-BEGIN
-  FOREACH tbl IN ARRAY ARRAY[
-    'safras','fazendas','talhoes','produtos','estoque','aplicacoes','colheitas',
-    'combustivel','diesel_entradas','diesel_estoque','clima','manutencoes',
-    'equipe','maquinas','insumos_base','lembretes','pragas','parametros','user_data_backup'
-  ] LOOP
-    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
-    EXECUTE format('CREATE POLICY %I ON %I FOR SELECT USING ((SELECT auth.uid()) = user_id)', tbl || '_sel', tbl);
-    EXECUTE format('CREATE POLICY %I ON %I FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id)', tbl || '_ins', tbl);
-    EXECUTE format('CREATE POLICY %I ON %I FOR UPDATE USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id)', tbl || '_upd', tbl);
-    EXECUTE format('CREATE POLICY %I ON %I FOR DELETE USING ((SELECT auth.uid()) = user_id)', tbl || '_del', tbl);
-  END LOOP;
-END $$;
+CREATE TABLE fazendas (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id    UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  nome        TEXT        NOT NULL,
+  cidade      TEXT,
+  uf          TEXT,
+  area_ha     NUMERIC,
+  latitude    TEXT,
+  longitude   TEXT,
+  observacoes TEXT,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE fazendas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY fazendas_sel ON fazendas FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY fazendas_ins ON fazendas FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY fazendas_upd ON fazendas FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY fazendas_del ON fazendas FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_fazendas_user  ON fazendas(user_id);
+CREATE INDEX idx_fazendas_safra ON fazendas(safra_id);
+CREATE TRIGGER trg_fazendas_upd BEFORE UPDATE ON fazendas
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================
--- 5. TRIGGERS updated_at (recria para garantir)
+-- 5. TALHÕES
 -- ============================================================
-DO $$
-DECLARE tbl TEXT;
-BEGIN
-  FOREACH tbl IN ARRAY ARRAY[
-    'profiles','safras','fazendas','talhoes','produtos','estoque','aplicacoes','colheitas',
-    'combustivel','diesel_entradas','diesel_estoque','clima','manutencoes',
-    'equipe','maquinas','insumos_base','lembretes','pragas','parametros','user_data_backup'
-  ] LOOP
-    EXECUTE format('DROP TRIGGER IF EXISTS trg_updated_at ON %I', tbl);
-    EXECUTE format('CREATE TRIGGER trg_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at()', tbl);
-  END LOOP;
-END $$;
+CREATE TABLE talhoes (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id    UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  fazenda_id  UUID        REFERENCES fazendas(id) ON DELETE SET NULL,
+  nome        TEXT        NOT NULL,
+  area_ha     NUMERIC,
+  cultura     TEXT,
+  safra       TEXT,
+  solo        TEXT,
+  coordenadas TEXT,
+  observacoes TEXT,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE talhoes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY talhoes_sel ON talhoes FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY talhoes_ins ON talhoes FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY talhoes_upd ON talhoes FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY talhoes_del ON talhoes FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_talhoes_user    ON talhoes(user_id);
+CREATE INDEX idx_talhoes_safra   ON talhoes(safra_id);
+CREATE INDEX idx_talhoes_fazenda ON talhoes(fazenda_id);
+CREATE INDEX idx_talhoes_user_safra ON talhoes(user_id, safra_id);
+CREATE TRIGGER trg_talhoes_upd BEFORE UPDATE ON talhoes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================
--- 6. TRIGGER SIGNUP → cria profile automaticamente
--- SECURITY DEFINER: roda com privilégios do owner (bypassa RLS)
+-- 6. MÁQUINAS
+-- ============================================================
+CREATE TABLE maquinas (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id    UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  nome        TEXT        NOT NULL,
+  tipo        TEXT,
+  marca       TEXT,
+  modelo      TEXT,
+  ano         NUMERIC,
+  placa       TEXT,
+  horimetro   NUMERIC     DEFAULT 0,
+  capacidade_l NUMERIC,
+  bicos       TEXT,
+  status      TEXT        DEFAULT 'ativo',
+  observacoes TEXT,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE maquinas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY maquinas_sel ON maquinas FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY maquinas_ins ON maquinas FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY maquinas_upd ON maquinas FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY maquinas_del ON maquinas FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_maquinas_user  ON maquinas(user_id);
+CREATE INDEX idx_maquinas_safra ON maquinas(safra_id);
+CREATE TRIGGER trg_maquinas_upd BEFORE UPDATE ON maquinas
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 7. EQUIPE
+-- ============================================================
+CREATE TABLE equipe (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id      UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  nome          TEXT        NOT NULL,
+  funcao        TEXT,
+  telefone      TEXT,
+  data_admissao TEXT,
+  salario       NUMERIC,
+  status        TEXT,
+  observacoes   TEXT,
+  deleted_at    TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  updated_at    TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE equipe ENABLE ROW LEVEL SECURITY;
+CREATE POLICY equipe_sel ON equipe FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY equipe_ins ON equipe FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY equipe_upd ON equipe FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY equipe_del ON equipe FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_equipe_user ON equipe(user_id);
+CREATE TRIGGER trg_equipe_upd BEFORE UPDATE ON equipe
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 8. PRODUTOS
+-- ============================================================
+CREATE TABLE produtos (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id      UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  nome          TEXT        NOT NULL,
+  tipo          TEXT,
+  tipo_produto  TEXT,
+  unidade       TEXT,
+  preco         NUMERIC,
+  estoque_atual NUMERIC     DEFAULT 0,
+  observacoes   TEXT,
+  deleted_at    TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  updated_at    TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE produtos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY produtos_sel ON produtos FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY produtos_ins ON produtos FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY produtos_upd ON produtos FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY produtos_del ON produtos FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_produtos_user ON produtos(user_id);
+CREATE TRIGGER trg_produtos_upd BEFORE UPDATE ON produtos
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 9. ESTOQUE
+-- ============================================================
+CREATE TABLE estoque (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id        UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  produto_id      UUID        REFERENCES produtos(id) ON DELETE SET NULL,
+  tipo            TEXT,
+  quantidade      NUMERIC,
+  preco_unitario  NUMERIC,
+  data            TEXT,
+  nota_fiscal     TEXT,
+  observacoes     TEXT,
+  deleted_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT now(),
+  updated_at      TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE estoque ENABLE ROW LEVEL SECURITY;
+CREATE POLICY estoque_sel ON estoque FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY estoque_ins ON estoque FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY estoque_upd ON estoque FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY estoque_del ON estoque FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_estoque_user ON estoque(user_id);
+CREATE TRIGGER trg_estoque_upd BEFORE UPDATE ON estoque
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 10. APLICAÇÕES
+-- ============================================================
+CREATE TABLE aplicacoes (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id         UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  talhao_id        UUID        REFERENCES talhoes(id) ON DELETE SET NULL,
+  produto_id       UUID        REFERENCES produtos(id) ON DELETE SET NULL,
+  data             TEXT,
+  produto          TEXT,
+  tipo             TEXT,
+  dose_ha          NUMERIC,
+  area_aplicada    NUMERIC,
+  quantidade_total NUMERIC,
+  custo_unitario   NUMERIC,
+  custo_total      NUMERIC,
+  volume_calda     NUMERIC,
+  condicao_clima   TEXT,
+  maquina          TEXT,
+  operador         TEXT,
+  observacoes      TEXT,
+  deleted_at       TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ DEFAULT now(),
+  updated_at       TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE aplicacoes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY aplicacoes_sel ON aplicacoes FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY aplicacoes_ins ON aplicacoes FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY aplicacoes_upd ON aplicacoes FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY aplicacoes_del ON aplicacoes FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_aplicacoes_user       ON aplicacoes(user_id);
+CREATE INDEX idx_aplicacoes_safra      ON aplicacoes(safra_id);
+CREATE INDEX idx_aplicacoes_talhao     ON aplicacoes(talhao_id);
+CREATE INDEX idx_aplicacoes_user_safra ON aplicacoes(user_id, safra_id);
+CREATE TRIGGER trg_aplicacoes_upd BEFORE UPDATE ON aplicacoes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 11. COLHEITAS
+-- ============================================================
+CREATE TABLE colheitas (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id       UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  talhao_id      UUID        REFERENCES talhoes(id) ON DELETE SET NULL,
+  data           TEXT,
+  area_colhida   NUMERIC,
+  producao_total NUMERIC,
+  unidade        TEXT,
+  umidade        NUMERIC,
+  peso_liquido   NUMERIC,
+  sacas_ha       NUMERIC,
+  armazem_1      TEXT,
+  ton_armazem_1  NUMERIC,
+  frete_1_ton    NUMERIC,
+  armazem_2      TEXT,
+  ton_armazem_2  NUMERIC,
+  frete_2_ton    NUMERIC,
+  preco_venda    NUMERIC,
+  receita_total  NUMERIC,
+  observacoes    TEXT,
+  deleted_at     TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ DEFAULT now(),
+  updated_at     TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE colheitas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY colheitas_sel ON colheitas FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY colheitas_ins ON colheitas FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY colheitas_upd ON colheitas FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY colheitas_del ON colheitas FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_colheitas_user       ON colheitas(user_id);
+CREATE INDEX idx_colheitas_talhao     ON colheitas(talhao_id);
+CREATE INDEX idx_colheitas_user_safra ON colheitas(user_id, safra_id);
+CREATE TRIGGER trg_colheitas_upd BEFORE UPDATE ON colheitas
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 12. COMBUSTÍVEL
+-- ============================================================
+CREATE TABLE combustivel (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id    UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  talhao_id   UUID        REFERENCES talhoes(id) ON DELETE SET NULL,
+  fazenda_id  UUID        REFERENCES fazendas(id) ON DELETE SET NULL,
+  maquina_id  UUID,
+  operador_id UUID,
+  data        TEXT,
+  tipo        TEXT,
+  deposito    TEXT,
+  posto       TEXT,
+  litros      NUMERIC,
+  preco_litro NUMERIC,
+  km_ou_hora  NUMERIC,
+  observacoes TEXT,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE combustivel ENABLE ROW LEVEL SECURITY;
+CREATE POLICY combustivel_sel ON combustivel FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY combustivel_ins ON combustivel FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY combustivel_upd ON combustivel FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY combustivel_del ON combustivel FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_combustivel_user       ON combustivel(user_id);
+CREATE INDEX idx_combustivel_talhao     ON combustivel(talhao_id);
+CREATE INDEX idx_combustivel_user_safra ON combustivel(user_id, safra_id);
+CREATE TRIGGER trg_combustivel_upd BEFORE UPDATE ON combustivel
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 13. DIESEL ENTRADAS
+-- ============================================================
+CREATE TABLE diesel_entradas (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id    UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  data        TEXT,
+  deposito    TEXT,
+  litros      NUMERIC,
+  preco_litro NUMERIC,
+  fornecedor  TEXT,
+  nota_fiscal TEXT,
+  observacoes TEXT,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE diesel_entradas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY diesel_entradas_sel ON diesel_entradas FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY diesel_entradas_ins ON diesel_entradas FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY diesel_entradas_upd ON diesel_entradas FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY diesel_entradas_del ON diesel_entradas FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_diesel_entradas_user ON diesel_entradas(user_id);
+CREATE TRIGGER trg_diesel_entradas_upd BEFORE UPDATE ON diesel_entradas
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 14. DIESEL ESTOQUE
+-- ============================================================
+CREATE TABLE diesel_estoque (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id      UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  deposito      TEXT,
+  litros        NUMERIC     DEFAULT 0,
+  preco_vigente NUMERIC     DEFAULT 0,
+  observacoes   TEXT,
+  deleted_at    TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  updated_at    TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE diesel_estoque ENABLE ROW LEVEL SECURITY;
+CREATE POLICY diesel_estoque_sel ON diesel_estoque FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY diesel_estoque_ins ON diesel_estoque FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY diesel_estoque_upd ON diesel_estoque FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY diesel_estoque_del ON diesel_estoque FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_diesel_estoque_user ON diesel_estoque(user_id);
+CREATE TRIGGER trg_diesel_estoque_upd BEFORE UPDATE ON diesel_estoque
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 15. CLIMA
+-- ============================================================
+CREATE TABLE clima (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id    UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  data        TEXT,
+  temperatura NUMERIC,
+  temp_max    NUMERIC,
+  temp_min    NUMERIC,
+  umidade     NUMERIC,
+  chuva_mm    NUMERIC,
+  vento_kmh   NUMERIC,
+  condicao    TEXT,
+  observacoes TEXT,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE clima ENABLE ROW LEVEL SECURITY;
+CREATE POLICY clima_sel ON clima FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY clima_ins ON clima FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY clima_upd ON clima FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY clima_del ON clima FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_clima_user ON clima(user_id);
+CREATE TRIGGER trg_clima_upd BEFORE UPDATE ON clima
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 16. MANUTENÇÕES
+-- ============================================================
+CREATE TABLE manutencoes (
+  id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id               UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id              UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  maquina_id            UUID,
+  maquina_nome          TEXT,
+  tipo_manutencao       TEXT,
+  data                  TEXT,
+  horimetro_atual       NUMERIC,
+  intervalo_horas       NUMERIC     DEFAULT 500,
+  proxima_data          TEXT,
+  proxima_revisao_horas NUMERIC,
+  proxima_revisao_data  TEXT,
+  mecanico              TEXT,
+  oficina               TEXT,
+  servico               TEXT,
+  servico_realizado     TEXT,
+  tempo_parada          NUMERIC,
+  pecas                 JSONB,
+  pecas_trocadas        TEXT,
+  custo_pecas           NUMERIC     DEFAULT 0,
+  custo_mao_obra        NUMERIC     DEFAULT 0,
+  outros_custos         NUMERIC     DEFAULT 0,
+  custo_total           NUMERIC     DEFAULT 0,
+  observacoes           TEXT,
+  deleted_at            TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ DEFAULT now(),
+  updated_at            TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE manutencoes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY manutencoes_sel ON manutencoes FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY manutencoes_ins ON manutencoes FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY manutencoes_upd ON manutencoes FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY manutencoes_del ON manutencoes FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_manutencoes_user        ON manutencoes(user_id);
+CREATE INDEX idx_manutencoes_maquina     ON manutencoes(maquina_id);
+CREATE INDEX idx_manutencoes_user_safra  ON manutencoes(user_id, safra_id);
+CREATE TRIGGER trg_manutencoes_upd BEFORE UPDATE ON manutencoes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 17. INSUMOS BASE
+-- ============================================================
+CREATE TABLE insumos_base (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id       UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  talhao_id      UUID        REFERENCES talhoes(id) ON DELETE SET NULL,
+  produto        TEXT,
+  tipo_insumo    TEXT,
+  quantidade     NUMERIC,
+  unidade        TEXT,
+  custo_unitario NUMERIC,
+  custo_total    NUMERIC,
+  data           TEXT,
+  observacoes    TEXT,
+  deleted_at     TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ DEFAULT now(),
+  updated_at     TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE insumos_base ENABLE ROW LEVEL SECURITY;
+CREATE POLICY insumos_base_sel ON insumos_base FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY insumos_base_ins ON insumos_base FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY insumos_base_upd ON insumos_base FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY insumos_base_del ON insumos_base FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_insumos_base_user   ON insumos_base(user_id);
+CREATE INDEX idx_insumos_base_talhao ON insumos_base(talhao_id);
+CREATE TRIGGER trg_insumos_base_upd BEFORE UPDATE ON insumos_base
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 18. LEMBRETES
+-- ============================================================
+CREATE TABLE lembretes (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id    UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  titulo      TEXT,
+  descricao   TEXT,
+  data        TEXT,
+  prioridade  TEXT,
+  concluido   BOOLEAN     DEFAULT false,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE lembretes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY lembretes_sel ON lembretes FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY lembretes_ins ON lembretes FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY lembretes_upd ON lembretes FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY lembretes_del ON lembretes FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_lembretes_user ON lembretes(user_id);
+CREATE TRIGGER trg_lembretes_upd BEFORE UPDATE ON lembretes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 19. PRAGAS
+-- ============================================================
+CREATE TABLE pragas (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  safra_id        UUID        REFERENCES safras(id) ON DELETE CASCADE,
+  talhao_id       UUID        REFERENCES talhoes(id) ON DELETE SET NULL,
+  nome            TEXT,
+  nome_cientifico TEXT,
+  tipo            TEXT,
+  nivel           TEXT,
+  data            TEXT,
+  observacoes     TEXT,
+  deleted_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT now(),
+  updated_at      TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE pragas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY pragas_sel ON pragas FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY pragas_ins ON pragas FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY pragas_upd ON pragas FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY pragas_del ON pragas FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_pragas_user ON pragas(user_id);
+CREATE TRIGGER trg_pragas_upd BEFORE UPDATE ON pragas
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 20. PARÂMETROS DE MERCADO
+-- ============================================================
+CREATE TABLE parametros (
+  id                         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                    UUID        UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  -- Soja
+  preco_soja                 NUMERIC     DEFAULT 120,
+  produtividade_min_soja     NUMERIC     DEFAULT 65,
+  produtividade_max_soja     NUMERIC     DEFAULT 75,
+  -- Milho
+  preco_milho                NUMERIC     DEFAULT 60,
+  produtividade_min_milho    NUMERIC     DEFAULT 100,
+  produtividade_max_milho    NUMERIC     DEFAULT 130,
+  -- Sorgo
+  preco_sorgo                NUMERIC     DEFAULT 42,
+  produtividade_min_sorgo    NUMERIC     DEFAULT 70,
+  produtividade_max_sorgo    NUMERIC     DEFAULT 100,
+  -- Feijão
+  preco_feijao               NUMERIC     DEFAULT 280,
+  produtividade_min_feijao   NUMERIC     DEFAULT 25,
+  produtividade_max_feijao   NUMERIC     DEFAULT 40,
+  -- Trigo
+  preco_trigo                NUMERIC     DEFAULT 85,
+  produtividade_min_trigo    NUMERIC     DEFAULT 40,
+  produtividade_max_trigo    NUMERIC     DEFAULT 60,
+  -- Arroz
+  preco_arroz                NUMERIC     DEFAULT 60,
+  produtividade_min_arroz    NUMERIC     DEFAULT 60,
+  produtividade_max_arroz    NUMERIC     DEFAULT 80,
+  -- Café
+  preco_cafe                 NUMERIC     DEFAULT 1200,
+  produtividade_min_cafe     NUMERIC     DEFAULT 20,
+  produtividade_max_cafe     NUMERIC     DEFAULT 40,
+  -- Canola
+  preco_canola               NUMERIC     DEFAULT 140,
+  produtividade_min_canola   NUMERIC     DEFAULT 40,
+  produtividade_max_canola   NUMERIC     DEFAULT 65,
+  -- Girassol
+  preco_girassol             NUMERIC     DEFAULT 90,
+  produtividade_min_girassol NUMERIC     DEFAULT 35,
+  produtividade_max_girassol NUMERIC     DEFAULT 55,
+  -- Amendoim
+  preco_amendoim             NUMERIC     DEFAULT 220,
+  produtividade_min_amendoim NUMERIC     DEFAULT 60,
+  produtividade_max_amendoim NUMERIC     DEFAULT 100,
+  -- Algodão (retrocompatibilidade)
+  preco_algodao              NUMERIC     DEFAULT 150,
+  produtividade_min_algodao  NUMERIC     DEFAULT 250,
+  produtividade_max_algodao  NUMERIC     DEFAULT 300,
+  -- Geral
+  peso_padrao_saca           NUMERIC     DEFAULT 60,
+  created_at                 TIMESTAMPTZ DEFAULT now(),
+  updated_at                 TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE parametros ENABLE ROW LEVEL SECURITY;
+CREATE POLICY parametros_sel ON parametros FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY parametros_ins ON parametros FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY parametros_upd ON parametros FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY parametros_del ON parametros FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE INDEX idx_parametros_user ON parametros(user_id);
+CREATE TRIGGER trg_parametros_upd BEFORE UPDATE ON parametros
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 21. BACKUP JSON
+-- ============================================================
+CREATE TABLE user_data_backup (
+  id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID        UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  data       JSONB,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE user_data_backup ENABLE ROW LEVEL SECURITY;
+CREATE POLICY user_data_backup_sel ON user_data_backup FOR SELECT USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY user_data_backup_ins ON user_data_backup FOR INSERT WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY user_data_backup_upd ON user_data_backup FOR UPDATE USING ((SELECT auth.uid()) = user_id);
+CREATE POLICY user_data_backup_del ON user_data_backup FOR DELETE USING ((SELECT auth.uid()) = user_id);
+CREATE TRIGGER trg_user_data_backup_upd BEFORE UPDATE ON user_data_backup
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- 22. TRIGGER DE SIGNUP → cria profile automaticamente
 -- ============================================================
 CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
 BEGIN
   INSERT INTO public.profiles (id, full_name, email, user_role, plan_type, trial_ends_at)
   VALUES (
@@ -530,15 +655,15 @@ BEGIN
     NEW.email,
     'admin',
     'trial',
-    now() + interval '15 days'
+    now() + INTERVAL '15 days'
   )
   ON CONFLICT (id) DO UPDATE SET
-    email = EXCLUDED.email,
-    full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
+    email      = EXCLUDED.email,
+    full_name  = COALESCE(EXCLUDED.full_name, profiles.full_name),
     updated_at = now();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
@@ -546,30 +671,9 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- ============================================================
--- 7. BACKFILL: cria profiles para usuários já existentes
--- ============================================================
-INSERT INTO public.profiles (id, full_name, email, user_role, plan_type, trial_ends_at)
-SELECT
-  u.id,
-  COALESCE(u.raw_user_meta_data->>'full_name', split_part(u.email, '@', 1)),
-  u.email,
-  'admin',
-  'trial',
-  now() + interval '15 days'
-FROM auth.users u
-WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = u.id)
-ON CONFLICT (id) DO NOTHING;
-
--- ============================================================
--- 8. ÍNDICES COMPOSTOS DE PERFORMANCE
--- ============================================================
-CREATE INDEX IF NOT EXISTS idx_talhoes_user_safra    ON talhoes(user_id, safra_id);
-CREATE INDEX IF NOT EXISTS idx_aplicacoes_user_safra  ON aplicacoes(user_id, safra_id);
-CREATE INDEX IF NOT EXISTS idx_colheitas_user_safra   ON colheitas(user_id, safra_id);
-CREATE INDEX IF NOT EXISTS idx_combustivel_user_safra ON combustivel(user_id, safra_id);
-CREATE INDEX IF NOT EXISTS idx_manutencoes_user_safra ON manutencoes(user_id, safra_id);
-
--- ============================================================
--- CONCLUÍDO! v6.1 — compatível com banco existente.
--- Todas as tabelas, colunas, RLS, triggers e backfill aplicados.
+-- CONCLUÍDO — AGRO PRO v7.0
+-- Tabelas criadas: 21
+-- Policies por tabela: 4 (sel/ins/upd/del) — sem duplicatas
+-- Trigger de signup: ativo
+-- Todos os grãos configurados com DEFAULT
 -- ============================================================
