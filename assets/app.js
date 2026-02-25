@@ -1279,7 +1279,8 @@ function pageLogin() {
           const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
           localStorage.setItem("agro_plano", planMap[profile.plan_type] || 'Trial');
         }
-        if (profile?.trial_ends_at) {
+        // Só salva dados de trial se o plano ainda for trial
+        if (profile?.trial_ends_at && profile?.plan_type === 'trial') {
           const fim = new Date(profile.trial_ends_at);
           const agora = new Date();
           const dias = Math.ceil((fim - agora) / (1000 * 60 * 60 * 24));
@@ -1292,6 +1293,9 @@ function pageLogin() {
             dataFim: profile.trial_ends_at,
             expirado: dias <= 0
           }));
+        } else if (profile?.plan_type && profile.plan_type !== 'trial') {
+          // Plano pago: limpar dados de trial para não mostrar badge errado
+          localStorage.removeItem("agro_trial");
         }
 
         // Restaurar dados da nuvem (tabelas individuais + backup JSON)
@@ -4322,21 +4326,28 @@ function pageAplicacoes() {
 
 // pageRelatorios stub removido - função real abaixo
 
-window.setPlano = async (p) => { 
-  localStorage.setItem("agro_plano", p); 
-  // Se mudou para plano pago, remover dados de trial
+window.setPlano = async (p) => {
+  // Se mudou para plano pago, limpar trial imediatamente
   if (p !== 'Trial') {
     localStorage.removeItem("agro_trial");
+    trialInfo = null;
   }
-  // Sincronizar plano com o Supabase
+  localStorage.setItem("agro_plano", p);
+  planoAtual = p;
+
+  // Sincronizar plano com o Supabase (obrigatório para persistir entre sessões)
   if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
     try {
       const planMap = { 'Básico': 'basico', 'Pro': 'pro', 'Master': 'master', 'Trial': 'trial' };
-      await AuthService.updateProfile({ plan_type: planMap[p] || 'trial' });
-      
-    } catch (e) { console.warn('Erro ao atualizar plano no Supabase:', e.message); }
+      const result = await AuthService.updateProfile({ plan_type: planMap[p] || 'trial' });
+      if (result?.error) {
+        console.warn('[Plano] Erro ao salvar no Supabase:', result.error.message);
+      }
+    } catch (e) {
+      console.warn('[Plano] Exceção ao atualizar plano:', e.message);
+    }
   }
-  location.reload(); 
+  location.reload();
 };
 function pageConfiguracoes() {
   const db = getDB();
@@ -4609,8 +4620,10 @@ function pageConfiguracoes() {
     }
     toast("Sincronizando", "Enviando dados para a nuvem...");
     try {
+      // Resetar hash para forçar sync completo (mesmo dados sem alteração)
+      if (typeof window._lastSyncedHash !== 'undefined') window._lastSyncedHash = null;
       await cloudSyncImmediate();
-      toast("Sucesso", "Dados sincronizados com a nuvem!");
+      toast("Sucesso", "Dados sincronizados com a nuvem! Verifique o Supabase.");
     } catch(e) {
       toast("Erro", "Falha ao sincronizar: " + e.message);
     }
@@ -7170,11 +7183,16 @@ function boot() {
           localStorage.setItem("agro_plano", planoAtual);
         }
 
-        if (profile?.trial_ends_at) {
+        // Só carrega trialInfo se o plano ainda for trial
+        if (profile?.trial_ends_at && profile?.plan_type === 'trial') {
           const fim = new Date(profile.trial_ends_at);
           const dias = Math.ceil((fim - new Date()) / (1000*60*60*24));
           trialInfo = { trial_ends_at: profile.trial_ends_at, created_at: profile.created_at, expirado: dias <= 0, diasRestantes: dias };
           localStorage.setItem("agro_trial", JSON.stringify(trialInfo));
+        } else if (profile?.plan_type && profile.plan_type !== 'trial') {
+          // Plano pago ativo: limpar trial do cache local
+          trialInfo = null;
+          localStorage.removeItem("agro_trial");
         }
 
         _renderPageAfterAuth(pageKey, titles);
