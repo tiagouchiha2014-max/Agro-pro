@@ -753,11 +753,19 @@ window.SupaCRUD = SupaCRUD;
 window.seedSupabase = seedSupabase;
 window._updateCloudIndicator = _updateCloudIndicator;
 // Expor hash para permitir reset forçado pelo botão "Sincronizar Agora"
-Object.defineProperty(window, '_lastSyncedHash', {
-  get: function() { return _lastSyncedHash; },
-  set: function(v) { _lastSyncedHash = v; },
-  configurable: true
-});
+// Usar try/catch para evitar erro se já definido (ex: hot-reload ou cache)
+try {
+  if (!Object.getOwnPropertyDescriptor(window, '_lastSyncedHash')) {
+    Object.defineProperty(window, '_lastSyncedHash', {
+      get: function() { return _lastSyncedHash; },
+      set: function(v) { _lastSyncedHash = v; },
+      configurable: true,
+      enumerable: true
+    });
+  }
+} catch(e) {
+  window._lastSyncedHash = _lastSyncedHash;
+}
 
 // Inicializar ao carregar
 initSupabase();
