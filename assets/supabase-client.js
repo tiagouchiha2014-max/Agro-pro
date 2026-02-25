@@ -30,9 +30,28 @@ function initSupabase() {
   if (_supabaseClient) return true;
   if (!SUPABASE_URL || !SUPABASE_ANON) return false;
   try {
-    var sdk = (typeof window !== 'undefined' && window.supabase) || (typeof globalThis !== 'undefined' && globalThis.supabase);
-    if (!sdk || !sdk.createClient) return false;
-    _supabaseClient = sdk.createClient(SUPABASE_URL, SUPABASE_ANON);
+    // O UMD do @supabase/supabase-js exporta para window.supabase (via this.supabase)
+    // Tentamos múltiplas formas para garantir compatibilidade
+    var sdk = (typeof window !== 'undefined' && (
+      window.supabase ||          // UMD padrão (dist/umd/supabase.js)
+      window.Supabase ||          // alguns builds capitalizam
+      window.SupabaseJS
+    )) || (typeof globalThis !== 'undefined' && (
+      globalThis.supabase ||
+      globalThis.Supabase
+    ));
+
+    // Fallback: o createClient pode estar exposto diretamente
+    var createClientFn = (sdk && sdk.createClient) ||
+                         (typeof createClient !== 'undefined' && createClient) ||
+                         null;
+
+    if (!createClientFn) {
+      console.warn('[Supabase] SDK não encontrado em window.supabase — CDN pode não ter carregado');
+      return false;
+    }
+
+    _supabaseClient = createClientFn(SUPABASE_URL, SUPABASE_ANON);
     _supabaseReady = true;
     window._supabaseReady = true;
     window._supabaseClient = _supabaseClient;
