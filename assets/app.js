@@ -458,6 +458,20 @@ function getDB() {
   db.maquinas = db.maquinas || [];
   db.clima = db.clima || [];
   db.dieselEntradas = db.dieselEntradas || [];
+
+  // Se há um safraId na sessão mas a safra não existe localmente (ex: Supabase offline),
+  // criar uma safra placeholder para o select não ficar vazio
+  if (db.session.safraId && db.safras.length === 0) {
+    const anoAtual = new Date().getFullYear();
+    db.safras.push({
+      id: db.session.safraId,
+      nome: `Safra ${anoAtual}/${String(anoAtual + 1).slice(2)}`,
+      dataInicio: nowISO(),
+      dataFim: "",
+      ativa: true,
+      observacoes: "(criada automaticamente - sincronize para restaurar dados)"
+    });
+  }
   db.dieselEstoque = db.dieselEstoque || [{ id: uid("dsl"), safraId: (db.session.safraId || db.safras?.[0]?.id || uid("saf")), deposito: "Tanque Principal", litros: 0, precoVigente: 0, obs: "" }];
   db.combustivel = db.combustivel || [];
   db.aplicacoes = db.aplicacoes || [];
@@ -6511,6 +6525,16 @@ function boot() {
 
 // Nova função auxiliar para renderizar após a confirmação da autenticação
 function _renderPageAfterAuth(pageKey, titles) {
+  // ─── Verificar trial e plano (dados já carregados do Supabase ou cache) ───
+  trialInfo = getTrialInfo();
+  const planoSalvo = localStorage.getItem("agro_plano") || "Trial";
+  if (planoSalvo === "Trial") {
+    if (trialInfo && trialInfo.expirado) { pageTrialExpirado(); return; }
+    planoAtual = "Trial";
+  } else {
+    planoAtual = planoSalvo;
+  }
+
   const [t, s] = titles[pageKey] || ["Agro Pro", ""];
   renderShell(pageKey, t, s);
 
@@ -6581,8 +6605,28 @@ function _renderPageAfterAuth(pageKey, titles) {
   updateCloudStatus();
   setInterval(updateCloudStatus, 5000);
 
-  // === CLOUD SYNC: Fazer backup inicial na nuvem ===
-  if (typeof cloudSync === 'function') cloudSync();
+  // === CLOUD SYNC / RESTORE (apenas uma vez, sem reload automático) ===
+  // Usamos flag de sessionStorage para evitar loop de reload
+  if (typeof cloudSync === 'function') {
+    if (!window._offlineMode) {
+      // Online: tentar restaurar apenas na PRIMEIRA carga da sessão
+      const jaRestaurou = sessionStorage.getItem('_cloudRestored');
+      if (!jaRestaurou && typeof cloudRestore === 'function') {
+        sessionStorage.setItem('_cloudRestored', '1'); // marcar ANTES para evitar loop
+        cloudRestore().then(restored => {
+          if (restored) {
+            // Dados atualizados no localStorage — recarregar UMA única vez
+            location.reload();
+          } else {
+            cloudSync();
+          }
+        }).catch(() => cloudSync());
+      } else {
+        cloudSync();
+      }
+    }
+    // Offline: não tentar sync (vai falhar e causar erros)
+  }
 }
 
 document.addEventListener("DOMContentLoaded", boot);// ============================================================================
