@@ -157,16 +157,20 @@ var FIELD_MAP = {
   precoLitro: 'preco_litro', precoVigente: 'preco_vigente', notaFiscal: 'nota_fiscal',
   chuvaMm: 'chuva_mm', ventoKmh: 'vento_kmh',
   maquinaNome: 'maquina_nome', horimetroAtual: 'horimetro_atual',
+  tipoManutencao: 'tipo_manutencao', intervaloHoras: 'intervalo_horas',
+  proximaData: 'proxima_data',
   proximaRevisaoHoras: 'proxima_revisao_horas', proximaRevisaoData: 'proxima_revisao_data',
   pecasTrocadas: 'pecas_trocadas', servicoRealizado: 'servico_realizado',
-  custoPecas: 'custo_pecas', custoMaoObra: 'custo_mao_obra',
+  custoPecas: 'custo_pecas', custoMaoObra: 'custo_mao_obra', outrosCustos: 'outros_custos',
+  tempoParada: 'tempo_parada', tipoInsumo: 'tipo_insumo',
+  fazendaId: 'fazenda_id', operadorId: 'operador_id', kmOuHora: 'km_ou_hora',
   dataAdmissao: 'data_admissao', dataEntrada: 'data_entrada', tipoProduto: 'tipo_produto',
   obs: 'observacoes',
   userId: 'user_id', createdAt: 'created_at', updatedAt: 'updated_at'
 };
 
-var REF_FIELDS = ['safraId', 'fazendaId', 'talhaoId', 'maquinaId', 'produtoId', 'safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id'];
-var REF_SNAKE  = ['safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id', 'safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id'];
+var REF_FIELDS = ['safraId', 'fazendaId', 'talhaoId', 'maquinaId', 'produtoId', 'operadorId', 'safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id', 'operador_id'];
+var REF_SNAKE  = ['safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id', 'operador_id', 'safra_id', 'fazenda_id', 'talhao_id', 'maquina_id', 'produto_id', 'operador_id'];
 
 // ============================================================
 // CONVERSORES
@@ -452,11 +456,19 @@ async function _restoreFromTables(userId) {
       .from('safras').select('id').eq('user_id', userId).limit(1);
     if (safraCheck.error || !safraCheck.data || safraCheck.data.length === 0) return false;
 
-    // Se já tem dados locais com UUIDs, não sobrescrever
+    // Sempre busca do servidor quando o servidor tem dados
+    // (não bloquear por UUIDs locais — o servidor é a fonte de verdade)
     var localRaw = localStorage.getItem("agro_pro_v10");
     var localDB = localRaw ? JSON.parse(localRaw) : null;
-    if (localDB && localDB.fazendas && localDB.fazendas.length > 0) {
-      if (isUUID(localDB.fazendas[0].id)) return false;
+    var localTalhoes = (localDB && localDB.talhoes) ? localDB.talhoes.length : 0;
+    var serverTalhoesCnt = (await _supabaseClient.from('talhoes').select('id', { count: 'exact', head: true }).eq('user_id', userId)).count || 0;
+    // Só pula o restore se local já tem mais dados que o servidor (dados locais mais novos)
+    var localFaz = (localDB && localDB.fazendas) ? localDB.fazendas.length : 0;
+    var serverFazCnt = (await _supabaseClient.from('fazendas').select('id', { count: 'exact', head: true }).eq('user_id', userId)).count || 0;
+    if (localFaz > 0 && localFaz >= serverFazCnt && localTalhoes >= serverTalhoesCnt) {
+      // Local está em dia — não sobrescrever, mas forçar sync reverso
+      // para garantir que talhões locais estejam no servidor
+      return false;
     }
 
     var fetchTable = async function(table) {
@@ -484,22 +496,51 @@ async function _restoreFromTables(userId) {
     } catch (e) {}
 
     var safraAtiva = results[0].find(function(s) { return s.ativa; }) || results[0][0];
+    // Mesclar com dados locais existentes para não perder registros offline não sincronizados
+    var existingLocal = localDB || {};
     var db = {
       meta: { createdAt: new Date().toISOString(), version: 11, source: 'cloud_tables', lastSync: new Date().toISOString() },
-      session: { safraId: safraAtiva ? safraAtiva.id : null },
-      safras: results[0], fazendas: results[1], talhoes: results[2],
-      produtos: results[3], estoque: results[4], aplicacoes: results[5],
-      colheitas: results[6], combustivel: results[7], dieselEntradas: results[8],
-      dieselEstoque: results[9], clima: results[10], manutencoes: results[11],
-      equipe: results[12], maquinas: results[13], insumosBase: results[14],
-      lembretes: results[15], pragas: results[16], parametros: parametros
+      session: existingLocal.session || { safraId: safraAtiva ? safraAtiva.id : null },
+      safras: _mergeByField(results[0], existingLocal.safras || [], 'id'),
+      fazendas: _mergeByField(results[1], existingLocal.fazendas || [], 'id'),
+      talhoes: _mergeByField(results[2], existingLocal.talhoes || [], 'id'),
+      produtos: _mergeByField(results[3], existingLocal.produtos || [], 'id'),
+      estoque: _mergeByField(results[4], existingLocal.estoque || [], 'id'),
+      aplicacoes: _mergeByField(results[5], existingLocal.aplicacoes || [], 'id'),
+      colheitas: _mergeByField(results[6], existingLocal.colheitas || [], 'id'),
+      combustivel: _mergeByField(results[7], existingLocal.combustivel || [], 'id'),
+      dieselEntradas: _mergeByField(results[8], existingLocal.dieselEntradas || [], 'id'),
+      dieselEstoque: _mergeByField(results[9], existingLocal.dieselEstoque || [], 'id'),
+      clima: _mergeByField(results[10], existingLocal.clima || [], 'id'),
+      manutencoes: _mergeByField(results[11], existingLocal.manutencoes || [], 'id'),
+      equipe: _mergeByField(results[12], existingLocal.equipe || [], 'id'),
+      maquinas: _mergeByField(results[13], existingLocal.maquinas || [], 'id'),
+      insumosBase: _mergeByField(results[14], existingLocal.insumosBase || [], 'id'),
+      lembretes: _mergeByField(results[15], existingLocal.lembretes || [], 'id'),
+      pragas: _mergeByField(results[16], existingLocal.pragas || [], 'id'),
+      parametros: parametros
     };
+    // safraId: manter a sessão atual se válida, senão usa a ativa do servidor
+    if (!db.session.safraId) db.session.safraId = safraAtiva ? safraAtiva.id : null;
 
     localStorage.setItem("agro_pro_v10", JSON.stringify(db));
     return true;
   } catch (e) {
     return false;
   }
+}
+
+// ============================================================
+// MERGE HELPER: une registros do servidor com locais não sincronizados
+// Servidor tem prioridade para IDs que já existem (UUID); mantém locais sem UUID
+// ============================================================
+function _mergeByField(serverArr, localArr, field) {
+  var serverIds = new Set(serverArr.map(function(r) { return r[field]; }));
+  // Preservar apenas registros locais que ainda não têm UUID (não sincronizados)
+  var onlyLocal = (localArr || []).filter(function(r) {
+    return r[field] && !isUUID(r[field]);
+  });
+  return serverArr.concat(onlyLocal);
 }
 
 // ============================================================
