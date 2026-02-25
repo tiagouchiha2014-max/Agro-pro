@@ -745,3 +745,28 @@ initSupabase();
 window._supabaseReady = _supabaseReady;
 window._supabaseClient = _supabaseClient;
 window._cloudConnected = _supabaseReady;
+
+// ============================================================
+// _ensureSupabase — garante que o SDK está pronto antes de usar
+// Tenta até 10x com intervalo de 200ms (total 2s de espera)
+// ============================================================
+window._ensureSupabase = function() {
+  return new Promise(function(resolve) {
+    if (isSupabaseReady()) { resolve(true); return; }
+    // Tentar inicializar agora (SDK pode já estar disponível)
+    if (initSupabase()) { resolve(true); return; }
+    var tries = 0;
+    var timer = setInterval(function() {
+      tries++;
+      if (initSupabase() || isSupabaseReady()) {
+        clearInterval(timer);
+        resolve(true);
+        return;
+      }
+      if (tries >= 15) { // 15 x 300ms = 4.5s máximo
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, 300);
+  });
+};
