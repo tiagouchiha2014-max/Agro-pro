@@ -1,14 +1,16 @@
 -- ============================================================
--- AGRO PRO — Setup Supabase COMPLETO v7.1
+-- AGRO PRO — Setup Supabase COMPLETO v8.0
 -- ✅ PROJETO NOVO — rode apenas uma vez
 -- ✅ Sem ALTER TABLE (tabelas criadas completas)
 -- ✅ Uma policy por operação por tabela (sem duplicatas)
 -- ✅ RLS com (SELECT auth.uid()) — sem warnings de performance
--- ✅ Trigger auto-profile no cadastro
+-- ✅ Trigger auto-profile no cadastro (cpf + phone + plan=free)
 -- ✅ Todos os grãos: soja, milho, sorgo, feijão, trigo,
 --    arroz, café, canola, girassol, amendoim
 -- ✅ pragas: temp_min, temp_max, umidade_min incluídos
 -- ✅ 100% compatível com FIELD_MAP do supabase-client.js
+-- ✅ profiles: cpf, phone, plan_type DEFAULT 'free' (sem trial)
+-- ✅ Planos: Free (R$0) / Pro (R$199) / Master (R$299)
 -- ============================================================
 -- Como usar:
 --   1. Crie um novo projeto no supabase.com
