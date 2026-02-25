@@ -536,10 +536,12 @@ function renderShell(pageKey, title, subtitle) {
     return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span> ${escapeHtml(p.label)}</a>`;
   }).join("");
 
-  const safraOptions = db.safras.map(s => {
-    const sel = s.id === safraId ? "selected" : "";
-    return `<option value="${s.id}" ${sel}>${escapeHtml(s.nome)} ${s.ativa ? '✅' : ''}</option>`;
-  }).join("");
+  const safraOptions = db.safras.length > 0
+    ? db.safras.map(s => {
+        const sel = s.id === safraId ? "selected" : "";
+        return `<option value="${s.id}" ${sel}>${escapeHtml(s.nome)} ${s.ativa ? '✅' : ''}</option>`;
+      }).join("")
+    : `<option value="" disabled selected>— Nenhuma safra cadastrada —</option>`;
 
   const root = document.getElementById("app");
   root.innerHTML = `
@@ -563,7 +565,7 @@ function renderShell(pageKey, title, subtitle) {
           <div class="hr"></div>
           
           <small>🌱 Safra ativa</small>
-          <select class="select" id="safraSelect">${safraOptions}</select>
+          <select class="select" id="safraSelect" ${db.safras.length === 0 ? 'disabled style="opacity:0.5"' : ''}>${safraOptions}</select>
           
           <small style="margin-top:10px; display:block;">🏡 Filtrar por Fazenda</small>
           <select class="select" id="fazendaSelect">
@@ -6417,33 +6419,34 @@ function boot() {
   localStorage.removeItem("agro_pro_openai_key");
   sessionStorage.removeItem("agro_pro_openai_key");
 
-   // Verificar Sessão Real (Sempre valida com o Supabase)
+  // Verificar Sessão — Online (Supabase) ou Offline (localStorage cache)
   if (pageKey !== "login") {
     if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
+      // === MODO ONLINE: validar sessão real com Supabase ===
       AuthService.getSession().then(async (session) => {
         if (!session || !session.user) {
           localStorage.removeItem("agro_session");
           pageLogin();
           return;
         }
-        
+
         // Sincronizar dados da sessão para o localStorage (apenas cache)
         const profile = await AuthService.getUserProfile();
         const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
-        
-        userSession = { 
-          user: { id: session.user.id, email: session.user.email, nome: profile?.full_name || '', role: profile?.user_role || 'admin' } 
+
+        userSession = {
+          user: { id: session.user.id, email: session.user.email, nome: profile?.full_name || '', role: profile?.user_role || 'admin' }
         };
         localStorage.setItem("agro_session", JSON.stringify(userSession));
-        
+
         userRole = profile?.user_role || 'admin';
         localStorage.setItem("agro_role", userRole);
-        
+
         if (profile?.plan_type) {
           planoAtual = planMap[profile.plan_type] || 'Trial';
           localStorage.setItem("agro_plano", planoAtual);
         }
-        
+
         if (profile?.trial_ends_at) {
           const fim = new Date(profile.trial_ends_at);
           const dias = Math.ceil((fim - new Date()) / (1000*60*60*24));
@@ -6451,16 +6454,45 @@ function boot() {
           localStorage.setItem("agro_trial", JSON.stringify(trialInfo));
         }
 
-        // Continuar renderização
         _renderPageAfterAuth(pageKey, titles);
       }).catch(() => {
-        localStorage.removeItem("agro_session");
-        pageLogin();
+        // Supabase falhou: tentar sessão em cache antes de deslogar
+        const cached = localStorage.getItem("agro_session");
+        if (cached) {
+          try {
+            userSession = JSON.parse(cached);
+            userRole = userSession?.user?.role || localStorage.getItem("agro_role") || 'admin';
+            trialInfo = getTrialInfo();
+            planoAtual = localStorage.getItem("agro_plano") || 'Trial';
+            _renderPageAfterAuth(pageKey, titles);
+          } catch (_e) {
+            localStorage.removeItem("agro_session");
+            pageLogin();
+          }
+        } else {
+          pageLogin();
+        }
       });
       return;
     } else {
-      // Sem Supabase disponível, não podemos garantir segurança
-      pageLogin();
+      // === MODO OFFLINE: Supabase indisponível — usar sessão em cache ===
+      const cached = localStorage.getItem("agro_session");
+      if (cached) {
+        try {
+          userSession = JSON.parse(cached);
+          userRole = userSession?.user?.role || localStorage.getItem("agro_role") || 'admin';
+          trialInfo = getTrialInfo();
+          planoAtual = localStorage.getItem("agro_plano") || 'Trial';
+          // Mostrar aviso de modo offline na tela
+          window._offlineMode = true;
+          _renderPageAfterAuth(pageKey, titles);
+        } catch (_e) {
+          pageLogin();
+        }
+      } else {
+        // Sem cache e sem Supabase: forçar login
+        pageLogin();
+      }
       return;
     }
   }
@@ -6482,10 +6514,23 @@ function _renderPageAfterAuth(pageKey, titles) {
   const [t, s] = titles[pageKey] || ["Agro Pro", ""];
   renderShell(pageKey, t, s);
 
+  // Banner de trial
   const trialBannerHTML = renderTrialBanner();
   if (trialBannerHTML) {
     const mainEl = document.querySelector('.main');
     if (mainEl) mainEl.insertAdjacentHTML('afterbegin', trialBannerHTML);
+  }
+
+  // Banner de modo offline (Supabase indisponível)
+  if (window._offlineMode) {
+    const mainEl = document.querySelector('.main');
+    if (mainEl) {
+      mainEl.insertAdjacentHTML('afterbegin', `
+        <div id="offlineBanner" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 10px 20px; text-align: center; font-size: 13px; font-weight: 500; position: sticky; top: 0; z-index: 9998;">
+          📴 <b>Modo Offline</b> — Sem conexão com o Supabase. Seus dados locais estão disponíveis, mas alterações não serão sincronizadas até a reconexão.
+        </div>
+      `);
+    }
   }
 
   if (!canAccessPage(pageKey)) {
