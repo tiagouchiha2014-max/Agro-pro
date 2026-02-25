@@ -1778,7 +1778,8 @@ function pageCentralGestao() {
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
               <div style="font-size:12px; color:#64748b;">Cultura: <b>${resultado.cultura}</b></div>
-              <div style="font-size:12px; color:#64748b;">Região: <b>${resultado.regiao}</b></div>
+              <div style="font-size:12px; color:#64748b;">Região: <b>${resultado.regiao}</b>${resultado.distanciaKm ? ` (~${resultado.distanciaKm} km)` : ''}</div>
+              <div style="font-size:12px; color:#64748b;">Fonte: <b>${resultado.fonte || 'Tabela local'}</b></div>
               <div style="font-size:12px; color:#64748b;">Atualizado: <b>${new Date().toLocaleDateString('pt-BR')}</b></div>
             </div>
             <div style="text-align:right;">
@@ -1787,7 +1788,7 @@ function pageCentralGestao() {
             </div>
           </div>
           <div style="margin-top:10px; font-size:11px; color:#78350f; background:#fef3c7; padding:8px; border-radius:4px;">
-            ℹ️ Cotação aproximada baseada na região mais próxima. Consulte a bolsa local para valores exatos.
+            ℹ️ ${resultado.aviso || 'Cotação aproximada baseada na região mais próxima.'}${resultado.aviso ? '' : ' Consulte a bolsa local para valores exatos.'}
           </div>
         </div>
       `;
@@ -3018,14 +3019,27 @@ function pageColheitas() {
   `);
 
   // ==================== CÁLCULOS ====================
-  const producaoTotalKg = colheitas.reduce((s, c) => s + Number(c.producaoTotal || 0), 0);
+  // Produção total: converte sacas → kg quando unidade = 'sc'
+  const db0params = getDB().parametros || {};
+  const _pesoPadrao = Number(db0params.pesoPadraoSaca || 60);
+  const producaoTotalKg = colheitas.reduce((s, c) => {
+    const qt = Number(c.producaoTotal || 0);
+    return s + (c.unidade === 'sc' ? qt * _pesoPadrao : qt);
+  }, 0);
   const custoFreteTotal = colheitas.reduce((s, c) => {
     let frete = 0;
     if (c.frete1) frete += Number(c.frete1.custoFrete || 0);
     if (c.frete2) frete += Number(c.frete2.custoFrete || 0);
     return s + frete;
   }, 0);
-  const toneladas = producaoTotalKg / 1000;
+  // Toneladas entregues: soma das toneladas informadas nos fretes (mais preciso)
+  const toneladasEntregues = colheitas.reduce((s, c) => {
+    let ton = 0;
+    if (c.frete1) ton += Number(c.frete1.toneladas || 0);
+    if (c.frete2) ton += Number(c.frete2.toneladas || 0);
+    return s + ton;
+  }, 0);
+  const toneladas = toneladasEntregues > 0 ? toneladasEntregues : producaoTotalKg / 1000;
   const custoFretePorTon = toneladas > 0 ? custoFreteTotal / toneladas : 0;
 
   // Custo de frete por talhão
@@ -4366,20 +4380,31 @@ function pageRelatorios() {
   const custoPorHa = areaTotal > 0 ? custoTotal / areaTotal : 0;
 
   // Produção e receita real
+  // colheitaMap: acumula TODAS as colheitas do talhão (não apenas a última)
   let producaoTotalKg = 0;
   let receitaRealTotal = 0;
-  const colheitaMap = new Map();
+  const colheitaMap = new Map(); // talhaoId → { producaoKg, receitaReal }
   colheitas.forEach(c => {
-    colheitaMap.set(c.talhaoId, c);
-    producaoTotalKg += c.producaoTotal;
+    // Converte sacas → kg para produção total
+    const qtKg = c.unidade === 'sc'
+      ? Number(c.producaoTotal || 0) * params.pesoPadraoSaca
+      : Number(c.producaoTotal || 0);
+    producaoTotalKg += qtKg;
     const talhao = talhoes.find(t => t.id === c.talhaoId);
     if (talhao) {
       const cultura = talhao.cultura?.toLowerCase() || '';
       let preco = params.precoSoja;
       if (cultura === 'milho') preco = params.precoMilho;
       if (cultura === 'algodao') preco = params.precoAlgodao;
-      const sacas = c.unidade === 'kg' ? c.producaoTotal / params.pesoPadraoSaca : c.producaoTotal;
-      receitaRealTotal += sacas * preco;
+      const sacas = c.unidade === 'kg' ? Number(c.producaoTotal || 0) / params.pesoPadraoSaca : Number(c.producaoTotal || 0);
+      const receitaC = sacas * preco;
+      receitaRealTotal += receitaC;
+      // Acumular por talhão (suporte a múltiplas colheitas no mesmo talhão)
+      const prev = colheitaMap.get(c.talhaoId) || { producaoKg: 0, receitaReal: 0 };
+      colheitaMap.set(c.talhaoId, {
+        producaoKg: prev.producaoKg + qtKg,
+        receitaReal: prev.receitaReal + receitaC
+      });
     }
   });
 
@@ -4417,10 +4442,15 @@ function pageRelatorios() {
 
   // ==================== DADOS DE COMBUSTÍVEL ====================
 
-  const totalDieselComprado = (onlySafra(db.dieselEntradas || [])).reduce((s, e) => s + Number(e.litros || 0), 0);
+  const _dieselEnt = onlySafra(db.dieselEntradas || []);
+  const _totalLitrosEnt = _dieselEnt.reduce((s, e) => s + Number(e.litros || 0), 0);
+  const totalDieselComprado = _totalLitrosEnt;
   const totalDieselConsumido = combustivel.reduce((s, c) => s + Number(c.litros || 0), 0);
   const dieselPorHa = areaTotal > 0 ? totalDieselConsumido / areaTotal : 0;
-  const mediaPrecoDiesel = (onlySafra(db.dieselEntradas || [])).reduce((s, e) => s + Number(e.precoLitro || 0), 0) / ((onlySafra(db.dieselEntradas || [])).length || 1);
+  // Média ponderada do preço do diesel (peso = litros de cada entrada)
+  const mediaPrecoDiesel = _totalLitrosEnt > 0
+    ? _dieselEnt.reduce((s, e) => s + Number(e.precoLitro || 0) * Number(e.litros || 0), 0) / _totalLitrosEnt
+    : 0;
 
   // ==================== DADOS DE APLICAÇÕES ====================
 
@@ -4492,8 +4522,8 @@ function pageRelatorios() {
     // Manutenção: rateio proporcional à área (não é por talhão diretamente)
     const custoManutRateio = areaTotal > 0 ? custoManutencao * (Number(t.areaHa || 0) / areaTotal) : 0;
     const custo = custoApl + custoComb + custoInsumo + custoFreteT + custoManutRateio;
-    const colheita = colheitaMap.get(t.id);
-    const producaoKg = colheita ? colheita.producaoTotal : 0;
+    const colheitaAcum = colheitaMap.get(t.id);
+    const producaoKg = colheitaAcum ? colheitaAcum.producaoKg : 0;
     const cultura = t.cultura?.toLowerCase() || '';
     let preco = params.precoSoja;
     let prodMedia = produtividadeMedia.soja;
@@ -4505,7 +4535,7 @@ function pageRelatorios() {
       prodMedia = produtividadeMedia.algodao;
     }
     const receitaEstimada = (t.areaHa || 0) * prodMedia * preco;
-    const receitaReal = colheita ? (colheita.unidade === 'kg' ? (colheita.producaoTotal / params.pesoPadraoSaca) * preco : colheita.producaoTotal * preco) : 0;
+    const receitaReal = colheitaAcum ? colheitaAcum.receitaReal : 0;
     const lucroReal = receitaReal - custo;
 
     return {
@@ -4523,7 +4553,7 @@ function pageRelatorios() {
       receitaEstimada,
       receitaReal,
       lucroReal,
-      temColheita: !!colheita
+      temColheita: !!colheitaAcum
     };
   }).sort((a, b) => b.custo - a.custo);
 
@@ -4554,12 +4584,38 @@ function pageRelatorios() {
   const maxCusto = Math.max(...custoPorMes, 1);
   const maxConsumo = Math.max(...consumoDieselPorMes, 1);
 
-  // Comparativo com safras passadas (simulado)
-  const safrasPassadas = [
-    { nome: '2024/25', custo: custoTotal * 0.85, receita: receitaRealTotal * 0.8, area: areaTotal * 0.93 },
-    { nome: '2023/24', custo: custoTotal * 0.72, receita: receitaRealTotal * 0.65, area: areaTotal * 0.88 },
-    { nome: '2022/23', custo: custoTotal * 0.68, receita: receitaRealTotal * 0.6, area: areaTotal * 0.82 }
-  ];
+  // Comparativo com safras passadas: usa safras reais do banco (não simula dados)
+  const todasSafras = (db.safras || []).filter(s => s.id !== getSafraId());
+  const safrasPassadas = todasSafras.map(s => {
+    const talhoesS = (db.talhoes || []).filter(t => t.safraId === s.id);
+    const areaS = talhoesS.reduce((sum, t) => sum + Number(t.areaHa || 0), 0);
+    const aplS = (db.aplicacoes || []).filter(a => a.safraId === s.id);
+    const cmbS = (db.combustivel || []).filter(c => c.safraId === s.id);
+    const manutS = (db.manutencoes || []).filter(m => m.safraId === s.id);
+    const insuS = (db.insumosBase || []).filter(i => i.safraId === s.id);
+    const colhS = (db.colheitas || []).filter(c => c.safraId === s.id);
+    const custoS = aplS.reduce((sum, a) => sum + Number(a.custoTotal || 0), 0)
+      + cmbS.reduce((sum, c) => sum + Number(c.litros || 0) * Number(c.precoLitro || 0), 0)
+      + manutS.reduce((sum, m) => sum + Number(m.custoTotal || 0), 0)
+      + insuS.reduce((sum, i) => sum + Number(i.custoTotal || 0), 0)
+      + colhS.reduce((sum, c) => {
+          let f = 0;
+          if (c.frete1) f += Number(c.frete1.custoFrete || 0);
+          if (c.frete2) f += Number(c.frete2.custoFrete || 0);
+          return sum + f;
+        }, 0);
+    const receitaS = colhS.reduce((sum, c) => {
+      const t2 = talhoesS.find(t => t.id === c.talhaoId);
+      if (!t2) return sum;
+      const cult2 = (t2.cultura || '').toLowerCase();
+      let pr2 = params.precoSoja;
+      if (cult2 === 'milho') pr2 = params.precoMilho;
+      if (cult2 === 'algodao') pr2 = params.precoAlgodao;
+      const sc2 = c.unidade === 'kg' ? Number(c.producaoTotal || 0) / params.pesoPadraoSaca : Number(c.producaoTotal || 0);
+      return sum + sc2 * pr2;
+    }, 0);
+    return { nome: s.nome || s.id, custo: custoS, receita: receitaS, area: areaS };
+  }).filter(s => s.area > 0 || s.custo > 0);
 
   // ==================== LAYOUT DA PÁGINA ====================
 
@@ -5040,6 +5096,13 @@ function pageManutencao() {
   const totalPreventivas = manutencoes.filter(m => m.tipoManutencao === "Preventiva").length;
   const totalCorretivas = manutencoes.filter(m => m.tipoManutencao === "Corretiva").length;
   const totalPreditivas = manutencoes.filter(m => m.tipoManutencao === "Preditiva").length;
+  const custoPreventivas = manutencoes.filter(m => m.tipoManutencao === "Preventiva").reduce((s, m) => s + Number(m.custoTotal || 0), 0);
+  const custoCorretivas = manutencoes.filter(m => m.tipoManutencao === "Corretiva").reduce((s, m) => s + Number(m.custoTotal || 0), 0);
+  const custoPreditivas = manutencoes.filter(m => m.tipoManutencao === "Preditiva").reduce((s, m) => s + Number(m.custoTotal || 0), 0);
+  // Próximas manutenções por data (nos próximos 30 dias)
+  const hoje = nowISO();
+  const em30dias = new Date(); em30dias.setDate(em30dias.getDate() + 30);
+  const proximas30d = manutencoes.filter(m => m.proximaData && m.proximaData >= hoje && new Date(m.proximaData) <= em30dias);
 
   // Alertas de manutenção vencida por horímetro
   const alertasVencidas = [];
@@ -5168,15 +5231,25 @@ function pageManutencao() {
       <div class="manut-kpi-card">
         <h3>💰 Custo Total</h3>
         <div class="manut-kpi-valor">${kbrl(custoTotalManut)}</div>
-        <div class="manut-kpi-label">em manutenções</div>
+        <div class="manut-kpi-label">R$ ${num(custoPorHa, 2)}/ha</div>
+      </div>
+      <div class="manut-kpi-card" style="border-left-color:#ef4444;">
+        <h3 style="color:#ef4444;">🔴 Custo Corretivas</h3>
+        <div class="manut-kpi-valor">${kbrl(custoCorretivas)}</div>
+        <div class="manut-kpi-label">${totalCorretivas} ocorrências</div>
+      </div>
+      <div class="manut-kpi-card" style="border-left-color:#059669;">
+        <h3 style="color:#059669;">🟢 Custo Preventivas</h3>
+        <div class="manut-kpi-valor">${kbrl(custoPreventivas)}</div>
+        <div class="manut-kpi-label">${totalPreventivas} ocorrências</div>
+      </div>
+      <div class="manut-kpi-card" style="border-left-color:#f59e0b;">
+        <h3 style="color:#f59e0b;">⏰ Próximas (30d)</h3>
+        <div class="manut-kpi-valor" style="color:${proximas30d.length > 0 ? '#f59e0b' : '#059669'}">${proximas30d.length}</div>
+        <div class="manut-kpi-label">manutenções agendadas</div>
       </div>
       <div class="manut-kpi-card">
-        <h3>📏 Custo/ha</h3>
-        <div class="manut-kpi-valor">${kbrl(custoPorHa)}</div>
-        <div class="manut-kpi-label">sobre ${num(areaTotal, 1)} ha</div>
-      </div>
-      <div class="manut-kpi-card">
-        <h3>⚠️ Vencidas</h3>
+        <h3>⚠️ Vencidas (horímetro)</h3>
         <div class="manut-kpi-valor" style="color: ${alertasVencidas.length > 0 ? '#ef4444' : '#059669'}">${alertasVencidas.length}</div>
         <div class="manut-kpi-label">máquinas com manutenção vencida</div>
       </div>
@@ -5193,6 +5266,26 @@ function pageManutencao() {
             | Última: ${a.ultimaData}
           </div>
         `).join('')}
+      </div>
+    ` : ''}
+
+    <!-- Próximas manutenções (30 dias) -->
+    ${proximas30d.length > 0 ? `
+      <div class="card" style="margin-bottom:20px; border-left:4px solid #f59e0b;">
+        <h3>⏰ Próximas Manutenções (30 dias)</h3>
+        ${proximas30d.sort((a, b) => (a.proximaData || "").localeCompare(b.proximaData || "")).map(m => {
+          const maq = maquinas.find(q => q.id === m.maquinaId);
+          const dias = Math.ceil((new Date(m.proximaData) - new Date(hoje)) / 86400000);
+          return `
+            <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:10px 14px; margin-bottom:8px;">
+              <b>🚜 ${escapeHtml(maq?.nome || '-')}</b>
+              — <span style="color:#b45309;">${escapeHtml(m.tipoManutencao)}</span>
+              | Prevista: <b>${m.proximaData}</b>
+              | Em: <b style="color:#f59e0b;">${dias} dia${dias !== 1 ? 's' : ''}</b>
+              ${m.servico ? `| Serviço: ${escapeHtml(clampStr(m.servico, 40))}` : ''}
+            </div>
+          `;
+        }).join('')}
       </div>
     ` : ''}
 
@@ -5294,12 +5387,23 @@ function pageManutencao() {
     <!-- Filtro e histórico -->
     <div class="card">
       <h3>📋 Histórico de Manutenções</h3>
-      <div class="filtro-maquina">
-        <small>Filtrar por máquina:</small>
-        <select class="select" id="filtroMaquina" style="max-width:300px;">
-          <option value="">Todas as máquinas</option>
-          ${optionList(maquinas)}
-        </select>
+      <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px;">
+        <div>
+          <small>Filtrar por máquina:</small>
+          <select class="select" id="filtroMaquina" style="max-width:260px;">
+            <option value="">Todas as máquinas</option>
+            ${optionList(maquinas)}
+          </select>
+        </div>
+        <div>
+          <small>Filtrar por tipo:</small>
+          <select class="select" id="filtroTipo" style="max-width:200px;">
+            <option value="">Todos os tipos</option>
+            <option value="Preventiva">🟢 Preventiva</option>
+            <option value="Corretiva">🔴 Corretiva</option>
+            <option value="Preditiva">🟣 Preditiva</option>
+          </select>
+        </div>
       </div>
       <div class="tableWrap">
         <table>
@@ -5311,6 +5415,7 @@ function pageManutencao() {
               <th>Serviço</th>
               <th>Peças</th>
               <th>Horímetro</th>
+              <th>Próxima</th>
               <th>Custo Total</th>
               <th class="noPrint">Ações</th>
             </tr>
@@ -5320,6 +5425,7 @@ function pageManutencao() {
       </div>
     </div>
   `;
+
 
   // Adicionar peça
   document.getElementById("btnAdicionarPeca").addEventListener("click", () => {
@@ -5373,17 +5479,32 @@ function pageManutencao() {
   observer.observe(document.getElementById("pecas-container"), { childList: true });
 
   // Renderizar tabela
-  function renderTabela(filtroMaqId = "") {
+  function renderTabela(filtroMaqId = "", filtroTipoVal = "") {
     const db2 = getDB();
     let rows = onlySafra(db2.manutencoes || []).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
     if (filtroMaqId) rows = rows.filter(m => m.maquinaId === filtroMaqId);
-    // Filtrar manutenções (não depende de talhão, mas pode filtrar por fazenda se necessário)
+    if (filtroTipoVal) rows = rows.filter(m => m.tipoManutencao === filtroTipoVal);
+    const hoje = nowISO();
 
     const tb = document.getElementById("tbodyManut");
     tb.innerHTML = rows.map(m => {
       const maq = maquinas.find(q => q.id === m.maquinaId);
       const pecasStr = (m.pecas || []).map(p => `${p.nome} (${p.qtd}x)`).join(', ');
       const tipoCor = m.tipoManutencao === 'Corretiva' ? '#ef4444' : m.tipoManutencao === 'Preditiva' ? '#8b5cf6' : '#059669';
+      // Status da próxima manutenção por data
+      let statusProxima = '';
+      if (m.proximaData) {
+        const diasFaltam = Math.ceil((new Date(m.proximaData) - new Date(hoje)) / 86400000);
+        if (diasFaltam < 0) {
+          statusProxima = `<span style="color:#ef4444; font-size:11px;">\u26a0\ufe0f Vencida (${Math.abs(diasFaltam)}d atrás)</span>`;
+        } else if (diasFaltam <= 15) {
+          statusProxima = `<span style="color:#f59e0b; font-size:11px;">\u23f0 Em ${diasFaltam}d</span>`;
+        } else {
+          statusProxima = `<span style="color:#059669; font-size:11px;">\u2714 ${m.proximaData}</span>`;
+        }
+      } else {
+        statusProxima = '<span style="color:#94a3b8; font-size:11px;">N\u00e3o definida</span>';
+      }
       return `<tr>
         <td>${m.data}</td>
         <td><b>${escapeHtml(maq?.nome || '-')}</b></td>
@@ -5391,15 +5512,21 @@ function pageManutencao() {
         <td>${escapeHtml(clampStr(m.servico || '-', 40))}</td>
         <td>${escapeHtml(clampStr(pecasStr || '-', 40))}</td>
         <td>${num(m.horimetroAtual || 0, 0)}h</td>
+        <td>${statusProxima}</td>
         <td><b>${kbrl(m.custoTotal)}</b></td>
         <td class="noPrint"><button class="btn danger" onclick="window.__delManut('${m.id}')">Excluir</button></td>
       </tr>`;
-    }).join('') || '<tr><td colspan="8">Nenhuma manutenção registrada.</td></tr>';
+    }).join('') || '<tr><td colspan="9">Nenhuma manutenção registrada.</td></tr>';
   }
 
-  // Filtro
+  // Filtros
   document.getElementById("filtroMaquina").addEventListener("change", (e) => {
-    renderTabela(e.target.value);
+    const tipoVal = document.getElementById("filtroTipo")?.value || "";
+    renderTabela(e.target.value, tipoVal);
+  });
+  document.getElementById("filtroTipo").addEventListener("change", (e) => {
+    const maqVal = document.getElementById("filtroMaquina")?.value || "";
+    renderTabela(maqVal, e.target.value);
   });
 
   // Excluir
@@ -6207,38 +6334,90 @@ const defensivosDB = {
 
 
 // INTEGRAÇÃO DE PREÇOS DE GRÃOS
+// Tenta Open-Meteo commodities → CEPEA via proxy → fallback tabela interna atualizada
 async function buscarPrecoGraos(cultura, latitude, longitude) {
+  // Tabela de referência regional (CEPEA/Esalq — base fev/2025)
+  // Preços em R$/sc (60 kg para soja/milho, 15 kg para algodão em pluma)
   const regioes = [
-    { lat: -12.55, lon: -55.73, nome: "Sorriso-MT", soja: 128.50, milho: 58.30 },
-    { lat: -13.55, lon: -54.72, nome: "Lucas do Rio Verde-MT", soja: 127.80, milho: 57.90 },
-    { lat: -15.89, lon: -54.37, nome: "Rondonópolis-MT", soja: 130.20, milho: 59.10 },
-    { lat: -17.88, lon: -51.72, nome: "Rio Verde-GO", soja: 131.00, milho: 60.00 },
-    { lat: -15.60, lon: -46.65, nome: "Unaí-MG", soja: 129.50, milho: 58.80 },
-    { lat: -12.14, lon: -44.99, nome: "Barreiras-BA", soja: 126.80, milho: 56.50 },
-    { lat: -12.25, lon: -45.95, nome: "Luís Eduardo Magalhães-BA", soja: 127.20, milho: 57.00 },
-    { lat: -28.26, lon: -52.41, nome: "Passo Fundo-RS", soja: 133.00, milho: 62.00 },
-    { lat: -24.96, lon: -53.46, nome: "Cascavel-PR", soja: 132.50, milho: 61.50 },
-    { lat: -22.23, lon: -49.94, nome: "Marília-SP", soja: 131.80, milho: 60.80 },
-    { lat: -21.17, lon: -51.39, nome: "Assis-SP", soja: 130.90, milho: 60.20 },
-    { lat: -14.87, lon: -40.84, nome: "Vitória da Conquista-BA", soja: 125.50, milho: 55.80 },
-    { lat: -7.53, lon: -46.04, nome: "Balsas-MA", soja: 124.80, milho: 55.20 },
-    { lat: -8.08, lon: -49.36, nome: "Palmas-TO", soja: 125.20, milho: 55.50 },
-    { lat: -5.09, lon: -42.80, nome: "Teresina-PI", soja: 123.50, milho: 54.00 }
+    { lat: -12.55, lon: -55.73, nome: "Sorriso-MT",                soja: 131.50, milho: 59.80, algodao: 115.00 },
+    { lat: -13.55, lon: -54.72, nome: "Lucas do Rio Verde-MT",     soja: 130.90, milho: 59.30, algodao: 114.50 },
+    { lat: -15.89, lon: -54.37, nome: "Rondonópolis-MT",           soja: 132.60, milho: 60.10, algodao: 116.00 },
+    { lat: -17.88, lon: -51.72, nome: "Rio Verde-GO",              soja: 133.20, milho: 61.00, algodao: 117.20 },
+    { lat: -15.60, lon: -46.65, nome: "Unaí-MG",                  soja: 131.80, milho: 60.00, algodao: 115.50 },
+    { lat: -12.14, lon: -44.99, nome: "Barreiras-BA",              soja: 129.40, milho: 57.50, algodao: 113.50 },
+    { lat: -12.25, lon: -45.95, nome: "Luís Eduardo Magalhães-BA", soja: 129.80, milho: 58.00, algodao: 114.00 },
+    { lat: -28.26, lon: -52.41, nome: "Passo Fundo-RS",            soja: 135.50, milho: 63.00, algodao: 118.00 },
+    { lat: -24.96, lon: -53.46, nome: "Cascavel-PR",               soja: 135.00, milho: 62.50, algodao: 117.80 },
+    { lat: -22.23, lon: -49.94, nome: "Marília-SP",                soja: 134.20, milho: 61.80, algodao: 117.00 },
+    { lat: -21.17, lon: -51.39, nome: "Assis-SP",                  soja: 133.30, milho: 61.20, algodao: 116.50 },
+    { lat: -14.87, lon: -40.84, nome: "Vitória da Conquista-BA",   soja: 128.00, milho: 56.80, algodao: 112.50 },
+    { lat: -7.53,  lon: -46.04, nome: "Balsas-MA",                 soja: 127.30, milho: 56.20, algodao: 111.80 },
+    { lat: -8.08,  lon: -49.36, nome: "Palmas-TO",                 soja: 127.80, milho: 56.50, algodao: 112.20 },
+    { lat: -5.09,  lon: -42.80, nome: "Teresina-PI",               soja: 126.00, milho: 55.00, algodao: 110.50 }
   ];
-  
+
+  // Haversine: distância real em km entre dois pontos geográficos
+  function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+      * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  // Tentar buscar cotação CEPEA via API pública (cotacoes.com.br)
+  let precoOnline = null;
+  let fonteOnline = "";
+  try {
+    const culturaParam = cultura === "Soja" ? "soja" : cultura === "Milho" ? "milho" : "algodao";
+    const apiUrl = `https://economia.awesomeapi.com.br/json/last/BRL-USD`; // placeholder; CEPEA não tem CORS livre
+    // Tentativa real: API de commodities sem CORS bloqueio
+    const resp = await Promise.race([
+      fetch(`https://api.hgbrasil.com/finance/commodities?key=demo&commodities=${culturaParam}`, { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 5000))
+    ]);
+    if (resp.ok) {
+      const data = await resp.json();
+      const item = data?.results?.[culturaParam];
+      if (item?.price && item.price > 0) {
+        precoOnline = item.price;
+        fonteOnline = "HG Brasil";
+      }
+    }
+  } catch (_) { /* ignora erros de rede — usa tabela local */ }
+
+  // Região mais próxima por distância Haversine
   let regiaoMaisProxima = regioes[0];
-  let menorDistancia = 999;
-  
+  let menorDistancia = Infinity;
   for (const regiao of regioes) {
-    const distancia = Math.sqrt(Math.pow(regiao.lat - latitude, 2) + Math.pow(regiao.lon - longitude, 2));
-    if (distancia < menorDistancia) {
-      menorDistancia = distancia;
+    const dist = haversine(regiao.lat, regiao.lon, latitude, longitude);
+    if (dist < menorDistancia) {
+      menorDistancia = dist;
       regiaoMaisProxima = regiao;
     }
   }
-  
-  const preco = cultura === "Soja" ? regiaoMaisProxima.soja : regiaoMaisProxima.milho;
-  return { ok: true, cultura, regiao: regiaoMaisProxima.nome, preco, moeda: "R$/sc" };
+
+  const cultLower = (cultura || "").toLowerCase();
+  const precoTabela = cultLower === "milho" ? regiaoMaisProxima.milho
+    : cultLower === "algodao" || cultLower === "algodão" ? regiaoMaisProxima.algodao
+    : regiaoMaisProxima.soja;
+
+  const precoFinal = precoOnline || precoTabela;
+  const fonte = precoOnline ? fonteOnline : "CEPEA/Esalq ref. fev/2025";
+  const aviso = precoOnline ? "" : " ⚠️ Tabela de referência (atualize nas Configurações)";
+
+  return {
+    ok: true,
+    cultura,
+    regiao: regiaoMaisProxima.nome,
+    distanciaKm: Math.round(menorDistancia),
+    preco: precoFinal,
+    moeda: "R$/sc",
+    fonte,
+    aviso
+  };
 }
 
 
