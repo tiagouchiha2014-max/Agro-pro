@@ -322,7 +322,8 @@ function escapeHtml(str) {
     .replaceAll("'", "&#039;");
 }
 
-function toast(title, msg) {
+function toast(title, msg, duration) {
+  const dur = (typeof duration === 'number') ? duration : 3200;
   const host = document.getElementById("toastHost") || (() => {
     const h = document.createElement("div");
     h.id = "toastHost";
@@ -338,10 +339,10 @@ function toast(title, msg) {
 
   setTimeout(() => {
     el.classList.add('opacity-0', 'translate-y-6');
-  }, 3200);
+  }, dur);
   setTimeout(() => {
     el.remove();
-  }, 3800);
+  }, dur + 600);
 }
 
 function downloadText(filename, text) {
@@ -1303,7 +1304,7 @@ function pageLogin() {
 
     toast("Aguarde", "Conectando ao servidor...");
 
-    // Garantir que Supabase está pronto (com retry automático de até 4s)
+    // Garantir que Supabase está pronto (com retry automático de até 4.5s)
     const ready = typeof _ensureSupabase === 'function' ? await _ensureSupabase() : (typeof isSupabaseReady === 'function' && isSupabaseReady());
     if (!ready) {
       return toast("Erro de conexão", "Não foi possível conectar ao servidor. Verifique sua internet e recarregue a página.");
@@ -1312,11 +1313,32 @@ function pageLogin() {
     try {
       const { data, error } = await AuthService.signIn(email, pass);
       if (error) {
-        return toast("Erro", "E-mail ou senha incorretos. Se é novo, crie uma conta.");
+        const msg = error.message || '';
+        // Tratar erro específico de e-mail não confirmado
+        if (msg.toLowerCase().includes('email not confirmed') || msg.toLowerCase().includes('not confirmed')) {
+          return toast("E-mail não confirmado", "Verifique sua caixa de entrada e confirme o e-mail antes de entrar. Verifique também o spam.");
+        }
+        if (msg.toLowerCase().includes('invalid login') || msg.toLowerCase().includes('invalid credentials')) {
+          return toast("Erro", "E-mail ou senha incorretos.");
+        }
+        return toast("Erro", "Não foi possível entrar: " + msg);
       }
 
-      const profile = await AuthService.getUserProfile();
-      const userName = profile?.full_name || email.split('@')[0];
+      if (!data?.user) {
+        return toast("Erro", "Resposta inválida do servidor. Tente novamente.");
+      }
+
+      toast("Aguarde", "Carregando seu perfil...");
+
+      // Buscar perfil com retry (trigger pode levar 1-2s para criar)
+      let profile = null;
+      for (let i = 0; i < 3; i++) {
+        profile = await AuthService.getUserProfile();
+        if (profile) break;
+        await new Promise(r => setTimeout(r, 800));
+      }
+
+      const userName = profile?.full_name || data.user.user_metadata?.full_name || email.split('@')[0];
       const role = profile?.user_role || 'admin';
 
       localStorage.setItem("agro_session", JSON.stringify({
@@ -1324,11 +1346,10 @@ function pageLogin() {
       }));
       localStorage.setItem("agro_role", role);
 
-      // Sincronizar plano do banco — mapeia 'trial' e 'basico' legados para 'Free'
-      if (profile?.plan_type) {
-        const planMap = { free: 'Free', trial: 'Free', basico: 'Free', pro: 'Pro', master: 'Master' };
-        localStorage.setItem("agro_plano", planMap[profile.plan_type] || 'Free');
-      }
+      // Sincronizar plano do banco — mapeia legados para Free
+      const planMap = { free: 'Free', trial: 'Free', basico: 'Free', pro: 'Pro', master: 'Master' };
+      const planKey = profile?.plan_type?.toLowerCase() || 'free';
+      localStorage.setItem("agro_plano", planMap[planKey] || 'Free');
       localStorage.removeItem("agro_trial");
 
       toast("Sincronizando", "Carregando dados da nuvem...");
@@ -1338,7 +1359,7 @@ function pageLogin() {
       } catch (e) { console.warn('Login restore:', e.message); }
 
       toast("Bem-vindo!", `Olá, ${userName}!`);
-      setTimeout(() => location.reload(), 500);
+      setTimeout(() => location.reload(), 600);
     } catch (err) {
       console.error("Erro no login:", err);
       toast("Erro", "Falha no login: " + (err.message || "tente novamente."));
@@ -1384,30 +1405,58 @@ function pageLogin() {
       const phoneExists = await AuthService.checkPhoneExists(phone.replace(/\D/g,''));
       if (phoneExists) return toast("Erro", "Este telefone já está cadastrado. Faça login ou use outro número.");
 
-      const { data, error } = await AuthService.signUp(
+      toast("Aguarde", "Criando sua conta...");
+
+      const { data: signUpData, error: signUpError } = await AuthService.signUp(
         email, pass, nome,
         cpf.replace(/\D/g,''),
         phone.replace(/\D/g,'')
       );
-      if (error) {
-        if (error.message.includes("already registered") || error.message.includes("already been registered"))
+      if (signUpError) {
+        if (signUpError.message.includes("already registered") || signUpError.message.includes("already been registered"))
           return toast("Erro", "Este e-mail já possui conta. Faça login.");
-        return toast("Erro", "Falha ao criar conta: " + error.message);
+        return toast("Erro", "Falha ao criar conta: " + signUpError.message);
       }
 
-      // Iniciar como Free (trigger SQL também configura)
-      iniciarTrial(email, nome); // compatibilidade — define Free
+      // ─── Supabase pode exigir confirmação de e-mail ───────────────────────
+      // Se não voltou sessão (email_confirm ON), fazemos signIn imediato
+      // pois o usuário acabou de digitar as credenciais corretas.
+      // ──────────────────────────────────────────────────────────────────────
+      toast("Aguarde", "Finalizando acesso...");
+
+      let userId = signUpData?.user?.id;
+      let sessionOk = !!(signUpData?.session);
+
+      if (!sessionOk) {
+        // Tenta login imediato para obter sessão
+        const { data: loginData, error: loginError } = await AuthService.signIn(email, pass);
+        if (!loginError && loginData?.session) {
+          sessionOk = true;
+          userId = loginData.user?.id || userId;
+        }
+        // Se ainda falhar (email_confirm bloqueando), salva contexto mínimo e avisa
+        if (!sessionOk) {
+          toast("Conta criada!", "Verifique seu e-mail para confirmar o cadastro antes de entrar.", 8000);
+          return;
+        }
+      }
+
+      // ─── Sessão ativa: salvar dados locais e entrar ───────────────────────
+      iniciarTrial(email, nome); // define Plano Free no localStorage
       localStorage.setItem("agro_session", JSON.stringify({
-        user: { id: data.user.id, email, nome, role: 'admin' }
+        user: { id: userId, email, nome, role: 'admin' }
       }));
       localStorage.setItem("agro_role", "admin");
+
+      // Aguardar trigger SQL criar o perfil (max 2s)
+      await new Promise(r => setTimeout(r, 1200));
 
       try {
         if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate();
       } catch (e) { console.warn('Signup sync:', e.message); }
 
-      toast("Conta criada!", "Bem-vindo ao Agro Pro! Você está no Plano Free.");
-      setTimeout(() => location.reload(), 1000);
+      toast("Conta criada!", `Bem-vindo ao Agro Pro, ${nome}! Você está no Plano Free.`);
+      setTimeout(() => location.reload(), 1200);
     } catch (err) {
       console.error("Erro no cadastro:", err);
       toast("Erro", "Não foi possível criar a conta: " + (err.message || "tente novamente."));

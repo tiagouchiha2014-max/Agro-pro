@@ -165,11 +165,21 @@ var AuthService = {
   async getUserProfile() {
     var user = await this.getUser();
     if (!user) return null;
-    try {
-      var result = await _supabaseClient
-        .from('profiles').select('*').eq('id', user.id).single();
-      return result.error ? null : result.data;
-    } catch (e) { return null; }
+    // Retry até 3x: o trigger SQL pode levar alguns ms para criar o perfil
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        var result = await _supabaseClient
+          .from('profiles').select('*').eq('id', user.id).single();
+        if (!result.error && result.data) return result.data;
+        // PGRST116 = no rows found (perfil ainda não criado) — espera e tenta de novo
+        if (result.error?.code === 'PGRST116' && attempt < 2) {
+          await new Promise(function(r) { setTimeout(r, 700); });
+          continue;
+        }
+        return null;
+      } catch (e) { return null; }
+    }
+    return null;
   },
 
   async updateProfile(updates) {
