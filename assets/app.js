@@ -1218,14 +1218,14 @@ function pageLogin() {
 
   document.getElementById("linkCadastro").onclick = (e) => {
     e.preventDefault();
-    document.getElementById("loginForm").classList.add('hidden');
-    document.getElementById("signupForm").classList.remove('hidden');
+    document.getElementById("loginForm").style.display = 'none';
+    document.getElementById("signupForm").style.display = 'block';
   };
 
   document.getElementById("linkLogin").onclick = (e) => {
     e.preventDefault();
-    document.getElementById("signupForm").classList.add('hidden');
-    document.getElementById("loginForm").classList.remove('hidden');
+    document.getElementById("signupForm").style.display = 'none';
+    document.getElementById("loginForm").style.display = 'block';
   };
 
   // === LOGIN ===
@@ -6625,6 +6625,19 @@ function boot() {
 
         // Sincronizar dados da sessão para o localStorage (apenas cache)
         const profile = await AuthService.getUserProfile();
+
+        // ============================================================
+        // SEGURANÇA: profile nulo significa conta deletada no Supabase
+        // mas JWT ainda vigente → forçar logout imediato
+        // ============================================================
+        if (!profile) {
+          console.warn('[Auth] Sessão ativa mas profile não encontrado — forçando logout por segurança');
+          ['agro_session','agro_role','agro_trial','agro_plano'].forEach(k => localStorage.removeItem(k));
+          if (isSupabaseReady()) await AuthService.signOut().catch(() => {});
+          pageLogin();
+          return;
+        }
+
         const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
 
         userSession = {

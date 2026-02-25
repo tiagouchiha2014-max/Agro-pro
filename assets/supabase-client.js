@@ -34,6 +34,30 @@ function initSupabase() {
     window._supabaseReady = true;
     window._supabaseClient = _supabaseClient;
     window._cloudConnected = true;
+
+    // ============================================================
+    // SEGURANÇA: ouvir mudanças de estado de auth
+    // Se a conta for deletada ou desativada no Supabase, o JWT
+    // expira e onAuthStateChange dispara SIGNED_OUT → limpa sessão
+    // ============================================================
+    _supabaseClient.auth.onAuthStateChange(function(event, session) {
+      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+        // Limpar TODO o estado local imediatamente
+        ['agro_session','agro_role','agro_trial','agro_plano'].forEach(function(k) {
+          localStorage.removeItem(k);
+        });
+        window._cloudConnected = false;
+        // Redirecionar para login se não estiver já lá
+        if (typeof pageLogin === 'function' && !window._loggingOut) {
+          window._loggingOut = true;
+          pageLogin();
+          setTimeout(function() { window._loggingOut = false; }, 2000);
+        }
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        window._cloudConnected = true;
+      }
+    });
+
     return true;
   } catch (e) {
     return false;
@@ -77,7 +101,11 @@ var AuthService = {
 
   async signOut() {
     if (!isSupabaseReady()) return { error: null };
-    return await _supabaseClient.auth.signOut();
+    // Limpar sessão local ANTES de chamar signOut para evitar race condition
+    ['agro_session','agro_role','agro_trial','agro_plano'].forEach(function(k) {
+      localStorage.removeItem(k);
+    });
+    return await _supabaseClient.auth.signOut({ scope: 'global' });
   },
 
   async getSession() {
@@ -313,9 +341,9 @@ async function _syncGranular(userId, db) {
     if (!localData || !Array.isArray(localData) || localData.length === 0) continue;
 
     try {
-      // Buscar registros existentes
+      // Buscar registros existentes (select apenas id para evitar erro em tabelas sem coluna 'nome')
       var existingResult = await _supabaseClient
-        .from(tableName).select('id, nome').eq('user_id', userId);
+        .from(tableName).select('id').eq('user_id', userId);
       var existing = existingResult.error ? [] : (existingResult.data || []);
 
       for (var j = 0; j < localData.length; j++) {
@@ -341,15 +369,8 @@ async function _syncGranular(userId, db) {
           continue;
         }
 
-        // Caso 2: ID local — verificar se já existe por nome
+        // Caso 2: ID local — nunca houve sync anterior
         var alreadySynced = false;
-        if (item.nome) {
-          var match = existing.find(function(r) { return r.nome === item.nome; });
-          if (match) {
-            idMap[item.id] = match.id;
-            alreadySynced = true;
-          }
-        }
 
         if (!alreadySynced) {
           var insertData = _prepareForInsert(item, userId, idMap);
@@ -466,8 +487,11 @@ async function _restoreFromTables(userId) {
     var localFaz = (localDB && localDB.fazendas) ? localDB.fazendas.length : 0;
     var serverFazCnt = (await _supabaseClient.from('fazendas').select('id', { count: 'exact', head: true }).eq('user_id', userId)).count || 0;
     if (localFaz > 0 && localFaz >= serverFazCnt && localTalhoes >= serverTalhoesCnt) {
-      // Local está em dia — não sobrescrever, mas forçar sync reverso
-      // para garantir que talhões locais estejam no servidor
+      // Local está em dia ou mais novo — enviar dados locais para o servidor
+      // (sync reverso: local → server) sem sobrescrever localStorage
+      if (typeof cloudSyncImmediate === 'function') {
+        cloudSyncImmediate().catch(function(e) { console.warn('[Restore] sync reverso:', e.message); });
+      }
       return false;
     }
 
