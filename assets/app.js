@@ -1271,12 +1271,12 @@ function pageLogin() {
         try {
           const restored = await cloudRestore();
           if (restored) {
-            console.log('Login: dados restaurados da nuvem');
+            
           } else {
             // Se não há dados na nuvem, enviar dados locais
             if (typeof cloudSyncImmediate === 'function') {
               await cloudSyncImmediate();
-              console.log('Login: dados locais sincronizados com a nuvem');
+              
             }
           }
         } catch (restoreErr) {
@@ -1301,7 +1301,8 @@ function pageLogin() {
     const email = document.getElementById("signEmail").value.trim();
     const pass = document.getElementById("signPass").value;
     if (!nome || !email || !pass) return toast("Erro", "Preencha todos os campos");
-    if (pass.length < 6) return toast("Erro", "A senha deve ter no mínimo 6 caracteres");
+    if (pass.length < 8) return toast("Erro", "A senha deve ter no mínimo 8 caracteres");
+    if (!/[A-Za-z]/.test(pass) || !/[0-9]/.test(pass)) return toast("Erro", "A senha deve conter letras e números");
     
     toast("Aguarde", "Criando sua conta...");
     
@@ -1329,7 +1330,7 @@ function pageLogin() {
         // Sincronizar dados locais para a nuvem IMEDIATAMENTE
         try {
           if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate();
-          console.log('Signup: dados locais sincronizados com a nuvem');
+          
         } catch (syncErr) {
           console.warn('Signup: erro ao sincronizar:', syncErr.message);
         }
@@ -1813,15 +1814,25 @@ function pageCentralGestao() {
     const resp = await gerarRecomendacaoIA(talhaoId);
     
     if (resp.ok) {
-      // Converter markdown simples para HTML
-      let html = resp.texto
-        .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-        .replace(/\*(.+?)\*/g, '<i>$1</i>')
-        .replace(/^### (.+)$/gm, '<h4 style="color:#3b82f6; margin:15px 0 8px;">$1</h4>')
-        .replace(/^## (.+)$/gm, '<h3 style="color:#1e40af; margin:20px 0 10px;">$1</h3>')
-        .replace(/^# (.+)$/gm, '<h2 style="color:#0f172a; margin:20px 0 10px;">$1</h2>')
-        .replace(/^- (.+)$/gm, '<li>$1</li>')
-        .replace(/\n/g, '<br>');
+      // Converter markdown simples para HTML com proteção XSS
+      // Primeiro escapa o texto bruto, depois aplica formatação segura
+      function safeMd(text) {
+        // 1. Escapar todo HTML do texto original
+        let safe = String(text ?? "")
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        // 2. Aplicar markdown sobre texto já seguro
+        safe = safe
+          .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+          .replace(/\*(.+?)\*/g, '<i>$1</i>')
+          .replace(/^### (.+)$/gm, '<h4 style="color:#60a5fa; margin:15px 0 8px;">$1</h4>')
+          .replace(/^## (.+)$/gm, '<h3 style="color:#93c5fd; margin:20px 0 10px;">$1</h3>')
+          .replace(/^# (.+)$/gm, '<h2 style="color:#bfdbfe; margin:20px 0 10px;">$1</h2>')
+          .replace(/^- (.+)$/gm, '<li style="margin:4px 0;">$1</li>')
+          .replace(/\n/g, '<br>');
+        return safe;
+      }
+      const html = safeMd(resp.texto);
 
       resultado.innerHTML = `
         <div style="background: linear-gradient(135deg, #0f172a, #1e293b); border-radius:12px; padding:20px; color:white;">
@@ -4022,7 +4033,7 @@ window.setPlano = async (p) => {
     try {
       const planMap = { 'Básico': 'basico', 'Pro': 'pro', 'Master': 'master', 'Trial': 'trial' };
       await AuthService.updateProfile({ plan_type: planMap[p] || 'trial' });
-      console.log('Plano atualizado no Supabase:', p);
+      
     } catch (e) { console.warn('Erro ao atualizar plano no Supabase:', e.message); }
   }
   location.reload(); 
@@ -6509,119 +6520,6 @@ function _renderPageAfterAuth(pageKey, titles) {
   }
 
   // Status da nuvem
-  const sidebarBottom = document.querySelector('.sidebar > div:last-child');
-  if (sidebarBottom) {
-    sidebarBottom.insertAdjacentHTML('beforeend', `
-      <div id="cloudStatusIndicator" style="margin-top: 8px; font-size: 10px; text-align: center;"></div>
-    `);
-  }
-  function updateCloudStatus() {
-    var el = document.getElementById('cloudStatusIndicator');
-    if (!el) return;
-    var ready = window._cloudConnected === true || (typeof isSupabaseReady === 'function' && isSupabaseReady());
-    el.textContent = ready ? '☁️ Conectado' : '📴 Offline';
-    if (ready) { el.classList.add('text-success'); el.classList.remove('text-warning'); } else { el.classList.add('text-warning'); el.classList.remove('text-success'); }
-  }
-  updateCloudStatus();
-  setInterval(updateCloudStatus, 5000);
-  
-  if (typeof cloudSync === 'function') cloudSync();
-})) {
-    cloudRestore().then(restored => {
-      if (restored) {
-        sessionStorage.setItem('_cloudRestored', '1');
-        location.reload();
-      } else if (typeof cloudSync === 'function') {
-        cloudSync();
-      }
-    }).catch(() => {});
-  } else if (typeof cloudSync === 'function') {
-    cloudSync();
-  }
-
-  // === CARREGAR ROLE DO USUÁRIO ===
-  // Prioridade: 1) sessão com role, 2) localStorage agro_role, 3) default admin
-  if (userSession?.user?.role) {
-    userRole = userSession.user.role;
-    localStorage.setItem("agro_role", userRole);
-  } else {
-    userRole = localStorage.getItem("agro_role") || "admin";
-  }
-
-  // === VERIFICAR ACESSO À PÁGINA ===
-  if (!canAccessPage(pageKey) && pageKey !== 'login') {
-    // Redirecionar para dashboard se não tem acesso
-    window.location.href = 'index.html';
-    return;
-  }
-
-  // === VERIFICAR TRIAL ===
-  trialInfo = getTrialInfo();
-  const planoSalvo = localStorage.getItem("agro_plano") || "Trial";
-  
-  // Atualizar planoAtual baseado no estado do trial
-  if (planoSalvo === "Trial") {
-    if (trialInfo && !trialInfo.expirado) {
-      // Trial ativo: dar acesso Pro
-      planoAtual = "Trial";
-    } else if (trialInfo && trialInfo.expirado) {
-      // Trial expirado: bloquear acesso
-      pageTrialExpirado();
-      return;
-    } else {
-      // Sem trial data mas plano é Trial (edge case): iniciar trial
-      if (userSession?.user?.email) {
-        iniciarTrial(userSession.user.email, userSession.user.nome || '');
-        trialInfo = getTrialInfo();
-      }
-      planoAtual = "Trial";
-    }
-  } else {
-    planoAtual = planoSalvo;
-  }
-
-  const [t, s] = titles[pageKey] || ["Agro Pro", ""];
-  renderShell(pageKey, t, s);
-
-  // Inserir banner de trial após o shell ser renderizado
-  const trialBannerHTML = renderTrialBanner();
-  if (trialBannerHTML) {
-    const mainEl = document.querySelector('.main');
-    if (mainEl) {
-      mainEl.insertAdjacentHTML('afterbegin', trialBannerHTML);
-    }
-  }
-
-  // Verificar acesso antes de renderizar a página
-  if (!canAccessPage(pageKey)) {
-    document.getElementById('content').innerHTML = `
-      <div class="card" style="text-align:center; padding:40px;">
-        <h2>🚫 Acesso Restrito</h2>
-        <p style="color:#64748b;">Seu perfil de <b>${getRoleLabel()}</b> não tem permissão para acessar esta página.</p>
-        <a href="index.html" class="btn primary" style="margin-top:15px;">Voltar ao Dashboard</a>
-      </div>
-    `;
-  } else if (pageKey === "dashboard") pageDashboard();
-  else if (pageKey === "centralgestao") pageCentralGestao();
-  else if (pageKey === "safras") pageSafras();
-  else if (pageKey === "fazendas") pageFazendas();
-  else if (pageKey === "talhoes") pageTalhoes();
-  else if (pageKey === "produtos") pageProdutos();
-  else if (pageKey === "estoque") pageEstoque();
-  else if (pageKey === "insumosbase") pageInsumosBase();
-  else if (pageKey === "aplicacoes") pageAplicacoes();
-  else if (pageKey === "combustivel") pageCombustivel();
-  else if (pageKey === "clima") pageClima();
-  else if (pageKey === "colheitas") pageColheitas();
-  else if (pageKey === "manutencao") pageManutencao();
-  else if (pageKey === "equipe") pageEquipe();
-  else if (pageKey === "maquinas") pageMaquinas();
-  else if (pageKey === "relatorios") pageRelatorios();
-  else if (pageKey === "copilot") pageCopilot();
-  else if (pageKey === "ajuda") pageAjuda();
-  else if (pageKey === "config") pageConfiguracoes();
-
-  // === STATUS DE CONEXÃO COM A NUVEM (Atualização dinâmica) ===
   const sidebarBottom = document.querySelector('.sidebar > div:last-child');
   if (sidebarBottom) {
     sidebarBottom.insertAdjacentHTML('beforeend', `

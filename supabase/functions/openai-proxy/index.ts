@@ -5,13 +5,30 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// Origens permitidas — adicione seu domínio de produção aqui
+const ALLOWED_ORIGINS = [
+  "https://agropro.vercel.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:5500",
+  "https://tiagouchiha2014-max.github.io",
+];
+
+function getCorsHeaders(requestOrigin: string | null) {
+  const origin = requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)
+    ? requestOrigin
+    : ALLOWED_ORIGINS[0]; // fallback para domínio principal
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+}
 
 serve(async (req: Request) => {
+  const requestOrigin = req.headers.get("Origin");
+  const corsHeaders = getCorsHeaders(requestOrigin);
+
   // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -43,7 +60,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // 4. Verificar plano do usuário (opcional: bloquear trial)
+    // 4. Verificar plano do usuário + Rate Limiting (máx 20 chamadas/hora)
     const { data: profile } = await supabase
       .from("profiles")
       .select("plan_type, trial_ends_at")
@@ -61,6 +78,25 @@ serve(async (req: Request) => {
         );
       }
     }
+
+    // Rate Limiting: máx 20 requisições por usuário por hora
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentCalls } = await supabase
+      .from("ai_usage_log")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gte("created_at", oneHourAgo);
+
+    const MAX_CALLS_PER_HOUR = 20;
+    if ((recentCalls ?? 0) >= MAX_CALLS_PER_HOUR) {
+      return new Response(
+        JSON.stringify({ error: `Limite de ${MAX_CALLS_PER_HOUR} consultas por hora atingido. Tente novamente em instantes.` }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Registrar uso (sem bloquear em caso de erro)
+    await supabase.from("ai_usage_log").insert({ user_id: user.id }).catch(() => {});
 
     // 5. Ler o body da requisição
     const body = await req.json();
