@@ -439,9 +439,36 @@ ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_soja NUMERIC D
 ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_milho NUMERIC DEFAULT 60;
 ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_milho NUMERIC DEFAULT 100;
 ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_milho NUMERIC DEFAULT 130;
+-- Algodão (mantido para compatibilidade retroativa — não usado na UI v6.3)
 ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_algodao NUMERIC DEFAULT 150;
 ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_algodao NUMERIC DEFAULT 250;
 ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_algodao NUMERIC DEFAULT 300;
+-- Novos grãos v6.3: Canola, Girassol, Amendoim
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_canola NUMERIC DEFAULT 140;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_canola NUMERIC DEFAULT 40;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_canola NUMERIC DEFAULT 65;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_girassol NUMERIC DEFAULT 90;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_girassol NUMERIC DEFAULT 35;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_girassol NUMERIC DEFAULT 55;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_amendoim NUMERIC DEFAULT 220;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_amendoim NUMERIC DEFAULT 60;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_amendoim NUMERIC DEFAULT 100;
+-- Outros grãos já existentes (sorgo, feijao, trigo, arroz, cafe)
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_sorgo NUMERIC DEFAULT 42;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_sorgo NUMERIC DEFAULT 70;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_sorgo NUMERIC DEFAULT 100;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_feijao NUMERIC DEFAULT 280;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_feijao NUMERIC DEFAULT 25;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_feijao NUMERIC DEFAULT 40;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_trigo NUMERIC DEFAULT 85;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_trigo NUMERIC DEFAULT 40;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_trigo NUMERIC DEFAULT 60;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_arroz NUMERIC DEFAULT 60;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_arroz NUMERIC DEFAULT 60;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_arroz NUMERIC DEFAULT 80;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS preco_cafe NUMERIC DEFAULT 1200;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_min_cafe NUMERIC DEFAULT 20;
+ALTER TABLE parametros ADD COLUMN IF NOT EXISTS produtividade_max_cafe NUMERIC DEFAULT 40;
 ALTER TABLE parametros ADD COLUMN IF NOT EXISTS peso_padrao_saca NUMERIC DEFAULT 60;
 
 -- ── BACKUP JSON ──────────────────────────────────────────────
