@@ -112,33 +112,3 @@ function pageSafras() {
 }
 
 
-// ============================================================
-// HELPERS DE FORMATAÇÃO DE CPF E TELEFONE
-// ============================================================
-function formatCPF(v) {
-  return v.replace(/\D/g, '').slice(0,11)
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-}
-function formatPhone(v) {
-  return v.replace(/\D/g, '').slice(0,11)
-    .replace(/^(\d{2})(\d)/, '($1) $2')
-    .replace(/(\d{5})(\d{4})$/, '$1-$2');
-}
-function validateCPF(cpf) {
-  cpf = cpf.replace(/\D/g, '');
-  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
-  let s = 0;
-  for (let i = 0; i < 9; i++) s += +cpf[i] * (10 - i);
-  let r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
-  if (r !== +cpf[9]) return false;
-  s = 0;
-  for (let i = 0; i < 10; i++) s += +cpf[i] * (11 - i);
-  r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
-  return r === +cpf[10];
-}
-
-// ============================================================
-// PÁGINA DE LOGIN / CADASTRO v8.0
-// ============================================================
