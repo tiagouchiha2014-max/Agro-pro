@@ -1182,3 +1182,132 @@ tbody tr:last-child td {
   color: var(--brand);
   font-size: 1.05em;
 }
+
+/* ══════════════════════════════════════════════════════════
+   PROPRIEDADE — TABS INTEGRADAS (Safras · Fazendas · Talhões)
+══════════════════════════════════════════════════════════ */
+.prop-tab-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  display: flex;
+  gap: 4px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-5);
+}
+
+.prop-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: var(--font);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--t-fast), color var(--t-fast), font-weight var(--t-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.prop-tab:hover:not(.active) {
+  background: var(--brand-subtle);
+  color: var(--brand);
+}
+
+.prop-tab.active {
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .prop-tab { font-size: 12px; padding: 9px 10px; gap: 5px; }
+  .prop-tab span.tab-label { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   CONFIGURAÇÕES — CARDS REDESENHADOS
+══════════════════════════════════════════════════════════ */
+
+/* Garantir que cards da config usem fundo correto em dark mode */
+[data-theme="dark"] .cfg-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .plan-hero {
+  background: linear-gradient(135deg, #0d1a0d 0%, #162016 100%);
+}
+
+[data-theme="dark"] .plan-card {
+  background: var(--surface);
+}
+
+[data-theme="dark"] .plan-card--featured {
+  border-color: var(--success);
+}
+
+[data-theme="dark"] .plan-card--featured.plan-card--active {
+  background: var(--success-bg);
+}
+
+[data-theme="dark"] .plan-card--premium {
+  border-color: var(--warning);
+}
+
+[data-theme="dark"] .plan-card--premium.plan-card--active-gold {
+  background: var(--accent-subtle);
+}
+
+[data-theme="dark"] .activation-notice {
+  background: var(--info-bg);
+  border-color: rgba(56,189,248,.18);
+}
+
+[data-theme="dark"] .cfg-ia-status {
+  background: var(--success-bg);
+  border-color: rgba(76,175,80,.2);
+}
+
+/* ══════════════════════════════════════════════════════════
+   PROPRIEDADE — LAYOUT RESPONSIVO
+══════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  /* Formulário + lista side-by-side → stacked no mobile */
+  #propContent > div[style*="grid-template-columns:340px"] {
+    display: flex !important;
+    flex-direction: column;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   FREE PLAN BANNER — SUBSTITUINDO VERMELHO POR ÂMBAR
+══════════════════════════════════════════════════════════ */
+.free-banner {
+  background: linear-gradient(90deg, var(--warning-bg), var(--accent-subtle));
+  border-left: 3px solid var(--warning);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 10px var(--space-5);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.free-banner strong { color: var(--warning); }
+.free-banner a {
+  color: var(--brand);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.free-banner a:hover { text-decoration: underline; }

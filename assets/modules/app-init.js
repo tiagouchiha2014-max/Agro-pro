@@ -90,9 +90,9 @@ function boot() {
   const titles = {
     dashboard: ["Dashboard", "Visão geral da safra atual"],
     centralgestao: ["Central de Gestão", "Alertas, custos e IA prescritiva"],
-    safras: ["Safras", "Gerenciar safras"],
-    fazendas: ["Fazendas", "Unidades produtivas da safra"],
-    talhoes: ["Talhões", "Áreas de cultivo da safra"],
+    safras: ["Minha Propriedade", "Safras, fazendas e talhões"],
+    fazendas: ["Minha Propriedade", "Safras, fazendas e talhões"],
+    talhoes: ["Minha Propriedade", "Safras, fazendas e talhões"],
     produtos: ["Produtos", "Insumos da safra"],
     estoque: ["Estoque", "Controle de insumos da safra"],
     insumosbase: ["Insumos Base", "Adubação e insumos de base por talhão"],
@@ -260,9 +260,9 @@ function _renderPageAfterAuth(pageKey, titles) {
     // Renderizar página específica
     if (pageKey === "dashboard") pageDashboard();
     else if (pageKey === "centralgestao") pageCentralGestao();
-    else if (pageKey === "safras") pageSafras();
+    else if (pageKey === "safras")   pageSafras();
     else if (pageKey === "fazendas") pageFazendas();
-    else if (pageKey === "talhoes") pageTalhoes();
+    else if (pageKey === "talhoes")  pageTalhoes();
     else if (pageKey === "produtos") pageProdutos();
     else if (pageKey === "estoque") pageEstoque();
     else if (pageKey === "insumosbase") pageInsumosBase();
@@ -278,9 +278,6 @@ function _renderPageAfterAuth(pageKey, titles) {
     else if (pageKey === "ajuda") pageAjuda();
     else if (pageKey === "config") pageConfiguracoes();
     else if (pageKey === "propriedade") pagePropriedade();
-    else if (pageKey === "safras")   pageSafras();
-    else if (pageKey === "fazendas") pageFazendas();
-    else if (pageKey === "talhoes")  pageTalhoes();
   }
 
   // Status da nuvem
