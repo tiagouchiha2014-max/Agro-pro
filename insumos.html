@@ -3,34 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Agro Pro — Configurações</title>
+  <title>Agro Pro — Insumos</title>
   <link rel="stylesheet" href="assets/style.css?v=9.3" />
   <script>
     window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
   </script>
   <script defer src="/_vercel/insights/script.js"></script>
-  <style>/* ===== Destaque de cor nos serviços ===== */
-.card__title{
-  color: var(--gold1);              /* dourado */
-  text-shadow: 0 10px 22px rgba(0,0,0,.55);
-}
-
-.card__meta{
-  color: rgba(212,160,74,.78);      /* dourado mais suave */
-}
-
-/* Quando estiver selecionado, fica mais forte */
-.card.is-selected .card__title{
-  color: #ffd88a;
-  text-shadow: 0 0 18px rgba(212,160,74,.35), 0 10px 24px rgba(0,0,0,.55);
-}
-
-.card.is-selected .card__meta{
-  color: rgba(255,216,138,.90);
-}</style>
 </head>
-<body data-page="config">
+<body data-page="insumos">
   <div id="app"></div>
+
+  <!-- App principal -->
     <!-- 1. Supabase SDK (CDN UMD) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 

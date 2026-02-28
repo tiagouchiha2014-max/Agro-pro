@@ -16,7 +16,7 @@ let userRole = localStorage.getItem("agro_role") || "admin";
 
 // Páginas BLOQUEADAS por plano (não aparecem na sidebar nem podem ser acessadas)
 const PLAN_BLOCKED_PAGES = {
-  'Free':   ['colheitas','manutencao','clima','relatorios','centralgestao','copilot','combustivel','aplicacoes','estoque','equipe','maquinas','insumosbase','config'],
+  'Free':   ['colheitas','manutencao','clima','relatorios','centralgestao','copilot','combustivel','aplicacoes','insumos','estoque','equipe','maquinas','insumosbase','config'],
   'Pro':    [],
   'Master': [],
   'Trial':  [] // legado — tratar como Free se aparecer
@@ -41,21 +41,21 @@ function getPlanBlockedPages() {
 
 const ROLE_PERMISSIONS = {
   admin: {
-    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda','propriedade'],
+    pages: ['dashboard','copilot','centralgestao','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda'],
     canCreate: true,
     canDelete: true,
     canSeeFinanceiro: true,
     label: 'Administrador'
   },
   gerente: {
-    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda','propriedade'],
+    pages: ['dashboard','copilot','centralgestao','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda'],
     canCreate: true,
     canDelete: true,
     canSeeFinanceiro: false,
     label: 'Gerente'
   },
   funcionario: {
-    pages: ['dashboard','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','ajuda','propriedade'],
+    pages: ['dashboard','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','ajuda'],
     canCreate: false, // default false, override por pagina
     canDelete: false,
     canSeeFinanceiro: false,
@@ -67,6 +67,7 @@ const ROLE_PERMISSIONS = {
       fazendas:     { view: true, create: false, delete: false },
       talhoes:      { view: true, create: false, delete: false },
       produtos:     { view: true, create: false, delete: false },
+      insumos:      { view: true, create: true,  delete: false },  // aba estoque: registrar, sem excluir
       estoque:      { view: true, create: true,  delete: false },  // Registrar, sem excluir
       insumosbase:  { view: true, create: false, delete: false },
       aplicacoes:   { view: true, create: true,  delete: true  },  // CRUD total
@@ -531,8 +532,7 @@ const PAGES = [
   { href: "copilot.html",       label: "Agro-Copilot (IA)",  key: "copilot",       icon: "🤖" },
   { href: "centralgestao.html", label: "Central de Gestão",  key: "centralgestao", icon: "🛰️" },
   { href: "propriedade.html",   label: "Minha Propriedade",  key: "propriedade",   icon: "🏡" },
-  { href: "produtos.html",      label: "Produtos",           key: "produtos",      icon: "🧪" },
-  { href: "estoque.html",       label: "Estoque",            key: "estoque",       icon: "📦" },
+  { href: "insumos.html",       label: "Produtos & Estoque", key: "insumos",       icon: "🧪" },
   { href: "insumosbase.html",   label: "Insumos Base",       key: "insumosbase",   icon: "🌱" },
   { href: "aplicacoes.html",    label: "Aplicações",         key: "aplicacoes",    icon: "🚜" },
   { href: "combustivel.html",   label: "Combustível",        key: "combustivel",   icon: "⛽" },

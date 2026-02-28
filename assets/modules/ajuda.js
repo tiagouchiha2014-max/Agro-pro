@@ -2,43 +2,43 @@ function pageAjuda() {
   const content = document.getElementById("content");
   content.innerHTML = `
     <style>
-      .ah-hero { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #064e3b 100%); border-radius: 16px; padding: 36px 28px; color: white; margin-bottom: 22px; position: relative; overflow: hidden; }
+      .ah-hero { background: linear-gradient(135deg, var(--sidebar-bg) 0%, #1e3a5f 50%, #064e3b 100%); border-radius: var(--radius); padding: 36px 28px; color: white; margin-bottom: 22px; position: relative; overflow: hidden; }
       .ah-hero::after { content: '🌱'; position: absolute; right: 24px; top: 50%; transform: translateY(-50%); font-size: 80px; opacity: .12; }
-      .ah-hero .ah-badge { display: inline-block; background: #10b981; color: white; padding: 3px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase; }
+      .ah-hero .ah-badge { display: inline-block; background: var(--brand); color: white; padding: 3px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase; }
       .ah-hero h1 { margin: 0 0 6px; font-size: 24px; font-weight: 800; }
-      .ah-hero p { margin: 0; color: #94a3b8; font-size: 14px; }
-      .ah-sec { font-size: 17px; font-weight: 700; color: #1e293b; margin: 26px 0 14px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
-      .ah-card { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 6px rgba(0,0,0,.05); margin-bottom: 14px; }
+      .ah-hero p { margin: 0; color: rgba(255,255,255,.6); font-size: 14px; }
+      .ah-sec { font-size: 17px; font-weight: 700; color: var(--text); margin: 26px 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+      .ah-card { background: var(--surface); border-radius: var(--radius); padding: 20px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-bottom: 14px; }
       .ah-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; margin-bottom: 14px; }
-      .ah-grid .ah-card h4 { margin: 0 0 10px; font-size: 14px; color: #1e293b; }
+      .ah-grid .ah-card h4 { margin: 0 0 10px; font-size: 14px; color: var(--text); }
       .ah-grid .ah-card ul { margin: 0; padding-left: 18px; }
-      .ah-grid .ah-card li { font-size: 13px; color: #64748b; line-height: 1.75; }
+      .ah-grid .ah-card li { font-size: 13px; color: var(--text-secondary); line-height: 1.75; }
       .ah-steps { list-style: none; padding: 0; margin: 0; counter-reset: stp; }
-      .ah-steps li { counter-increment: stp; display: flex; gap: 14px; padding: 13px 0; border-bottom: 1px solid #f1f5f9; }
+      .ah-steps li { counter-increment: stp; display: flex; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--border); }
       .ah-steps li:last-child { border-bottom: none; }
-      .ah-steps li::before { content: counter(stp); min-width: 28px; height: 28px; background: #3b82f6; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
-      .ah-steps li .ah-step-body b { display: block; font-size: 13px; color: #1e293b; margin-bottom: 3px; }
-      .ah-steps li .ah-step-body span { font-size: 12px; color: #64748b; line-height: 1.6; }
-      .faq-item { border-bottom: 1px solid #f1f5f9; }
+      .ah-steps li::before { content: counter(stp); min-width: 28px; height: 28px; background: var(--brand); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+      .ah-steps li .ah-step-body b { display: block; font-size: 13px; color: var(--text); margin-bottom: 3px; }
+      .ah-steps li .ah-step-body span { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+      .faq-item { border-bottom: 1px solid var(--border); }
       .faq-item:last-child { border-bottom: none; }
-      .faq-q { font-weight: 600; font-size: 14px; color: #1e293b; cursor: pointer; padding: 14px 0; display: flex; justify-content: space-between; align-items: center; user-select: none; }
-      .faq-q:hover { color: #3b82f6; }
-      .faq-arrow { font-size: 11px; color: #94a3b8; transition: transform .25s; flex-shrink: 0; margin-left: 10px; }
+      .faq-q { font-weight: 600; font-size: 14px; color: var(--text); cursor: pointer; padding: 14px 0; display: flex; justify-content: space-between; align-items: center; user-select: none; }
+      .faq-q:hover { color: var(--brand); }
+      .faq-arrow { font-size: 11px; color: var(--text-muted); transition: transform .25s; flex-shrink: 0; margin-left: 10px; }
       .faq-item.open .faq-arrow { transform: rotate(180deg); }
-      .faq-a { font-size: 13px; color: #64748b; line-height: 1.75; padding: 0 0 14px; display: none; }
+      .faq-a { font-size: 13px; color: var(--text-secondary); line-height: 1.75; padding: 0 0 14px; display: none; }
       .faq-item.open .faq-a { display: block; }
       .ah-contact { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 22px; }
-      .ah-contact a { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 18px 14px; text-align: center; text-decoration: none; color: inherit; transition: all .2s; display: block; }
-      .ah-contact a:hover { border-color: #3b82f6; box-shadow: 0 4px 16px rgba(59,130,246,.14); transform: translateY(-2px); }
+      .ah-contact a { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px 14px; text-align: center; text-decoration: none; color: inherit; transition: all .2s; display: block; }
+      .ah-contact a:hover { border-color: var(--brand); box-shadow: var(--shadow-md); transform: translateY(-2px); }
       .ah-contact .ah-icon { font-size: 26px; margin-bottom: 8px; }
-      .ah-contact h4 { margin: 0 0 4px; font-size: 13px; color: #1e293b; font-weight: 700; }
-      .ah-contact p { margin: 0; font-size: 12px; color: #64748b; }
+      .ah-contact h4 { margin: 0 0 4px; font-size: 13px; color: var(--text); font-weight: 700; }
+      .ah-contact p { margin: 0; font-size: 12px; color: var(--text-muted); }
       .ah-contact .ah-tag { font-size: 11px; font-weight: 600; margin-top: 4px; }
-      .ah-legal { background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 10px; padding: 16px 20px; }
-      .ah-legal h4 { margin: 0 0 10px; color: #92400e; font-size: 14px; }
-      .ah-legal li, .ah-legal p { font-size: 12px; color: #78350f; line-height: 1.75; margin: 0; }
+      .ah-legal { background: var(--accent-subtle); border: 1px solid var(--warning); border-left: 4px solid var(--warning); border-radius: var(--radius); padding: 16px 20px; }
+      .ah-legal h4 { margin: 0 0 10px; color: var(--warning); font-size: 14px; }
+      .ah-legal li, .ah-legal p { font-size: 12px; color: var(--text-secondary); line-height: 1.75; margin: 0; }
       .ah-legal ul { margin: 8px 0 0; padding-left: 18px; }
-      .ah-footer { text-align: center; padding: 28px 0 6px; color: #94a3b8; font-size: 12px; }
+      .ah-footer { text-align: center; padding: 28px 0 6px; color: var(--text-muted); font-size: 12px; }
     </style>
 
     <!-- HERO -->
@@ -52,11 +52,11 @@ function pageAjuda() {
     <div class="ah-sec">🚀 Primeiros Passos — Configure em 5 minutos</div>
     <div class="ah-card" style="margin-bottom:22px;">
       <ol class="ah-steps">
-        <li><div class="ah-step-body"><b>Criar Safra</b><span>Acesse Configurações → Safras e crie a safra atual (ex: Safra 2024/25).</span></div></li>
-        <li><div class="ah-step-body"><b>Cadastrar Fazenda</b><span>Em Fazendas, informe nome, cidade, estado, área e coordenadas (lat/lon) para busca geolocalizada de preços.</span></div></li>
-        <li><div class="ah-step-body"><b>Adicionar Talhões</b><span>Em Talhões, cadastre cada talhão com área (ha) e cultura. Vincule à fazenda correspondente.</span></div></li>
+        <li><div class="ah-step-body"><b>Criar Safra</b><span>Acesse <strong>Minha Propriedade</strong> → aba Safras e crie a safra atual (ex: Safra 2025/26).</span></div></li>
+        <li><div class="ah-step-body"><b>Cadastrar Fazenda</b><span>Em <strong>Minha Propriedade</strong> → aba Fazendas, informe nome, cidade, estado, área e coordenadas (lat/lon).</span></div></li>
+        <li><div class="ah-step-body"><b>Adicionar Talhões</b><span>Em <strong>Minha Propriedade</strong> → aba Talhões, cadastre cada talhão com área (ha) e cultura.</span></div></li>
         <li><div class="ah-step-body"><b>Registrar Máquinas</b><span>Em Máquinas, use os modelos pré-carregados (tratores, colheitadeiras, pulverizadores etc.) para cadastrar rapidamente.</span></div></li>
-        <li><div class="ah-step-body"><b>Cadastrar Produtos no Estoque</b><span>Em Produtos, registre defensivos, sementes e fertilizantes com preço e unidade. O estoque é baixado automaticamente nas aplicações.</span></div></li>
+        <li><div class="ah-step-body"><b>Cadastrar Produtos no Estoque</b><span>Em <strong>Produtos & Estoque</strong>, registre defensivos, sementes e fertilizantes. O estoque é baixado automaticamente nas aplicações.</span></div></li>
         <li><div class="ah-step-body"><b>Lançar Aplicações</b><span>Em Aplicações, registre cada operação de campo. Custo por hectare calculado automaticamente, com baixa de estoque.</span></div></li>
         <li><div class="ah-step-body"><b>Registrar Colheita</b><span>Em Colheitas, informe produção por talhão, umidade e frete. O sistema calcula custo/saca e margem automaticamente.</span></div></li>
       </ol>
@@ -197,12 +197,6 @@ function pageAjuda() {
         <p>+55 (99) 99136-0547</p>
         <p class="ah-tag" style="color:#25d366;">Seg–Sex, 8h–18h (BRT)</p>
       </a>
-      <a href="https://github.com/tiagouchiha2014-max/Agropro" target="_blank" rel="noopener">
-        <div class="ah-icon">🐙</div>
-        <h4>GitHub / Changelog</h4>
-        <p>tiagouchiha2014-max/Agropro</p>
-        <p class="ah-tag" style="color:#6366f1;">Versão atual: v6.3</p>
-      </a>
     </div>
 
     <!-- AVISO LEGAL -->
@@ -220,7 +214,7 @@ function pageAjuda() {
     </div>
 
     <div class="ah-footer">
-      Agro Pro v6.3 — &copy; ${new Date().getFullYear()} Tiago Santos. Todos os direitos reservados.<br>
+      Agro Pro v9.3 — &copy; ${new Date().getFullYear()} Tiago Santos. Todos os direitos reservados.<br>
       Desenvolvido com ❤️ para o produtor rural brasileiro.
     </div>
   `;
