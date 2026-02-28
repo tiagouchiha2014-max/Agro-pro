@@ -106,7 +106,8 @@ function boot() {
     relatorios: ["Relatórios", "Exportação de dados da safra"],
     config: ["Configurações", "Parâmetros e backup"],
     copilot: ["Agro-Copilot", "Assistente de IA para sua fazenda"],
-    ajuda: ["Ajuda & Suporte", "Centro de Ajuda e Documentação"]
+    ajuda: ["Ajuda & Suporte", "Centro de Ajuda e Documentação"],
+    pagamento: ["Pagamento & Planos", "Assine ou gerencie seu plano"]
   };
 
   // API Key removida do front-end — IA processada via Edge Function no servidor
@@ -276,6 +277,7 @@ function _renderPageAfterAuth(pageKey, titles) {
     else if (pageKey === "copilot") pageCopilot();
     else if (pageKey === "ajuda") pageAjuda();
     else if (pageKey === "config") pageConfiguracoes();
+    else if (pageKey === "pagamento") pagePagamento();
   }
 
   // Status da nuvem

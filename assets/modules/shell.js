@@ -57,10 +57,10 @@ function renderShell(pageKey, title, subtitle) {
         <div style="margin: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 12px;">
            <b>Plano ${planoAtual}</b>
            ${userRole !== 'admin' ? `<br><span style="color: #fbbf24;">Perfil: ${getRoleLabel()}</span>` : ''}<br>
-           ${(planoAtual === 'Free' || planoAtual === 'Trial') ? `<span style="color: #fca5a5; font-size: 11px;">Acesso limitado — só visualização</span><br>` : ''}
+           ${(planoAtual === 'Free' || planoAtual === 'Trial') ? `<span style="color: rgba(251,191,36,0.85); font-size: 11px;">Acesso limitado — só visualização</span><br>` : ''}
            ${userRole === 'admin' ? `<a href="configuracoes.html" style="color: #4ade80; text-decoration: none;">${(planoAtual === 'Free' || planoAtual === 'Trial') ? 'Assinar plano' : 'Gerenciar plano'} →</a>` : `<span style="color: #94a3b8;">Conta vinculada ao admin</span>`}
            
-           <button id="btnSairSidebar" style="width: 100%; margin-top: 15px; padding: 8px; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 11px; transition: all 0.2s;">🚪 SAIR DA CONTA</button>
+           <button id="btnSairSidebar" style="width: 100%; margin-top: 15px; padding: 8px; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.55); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 11px; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">🚪 Sair da conta</button>
         </div>
       </aside>
 
@@ -73,7 +73,9 @@ function renderShell(pageKey, title, subtitle) {
               <p>${escapeHtml(subtitle || (safra ? `Safra: ${safra.nome}` : "Selecione uma safra"))}</p>
             </div>
           </div>
-          <div class="actions noPrint" id="topActions"></div>
+          <div class="actions noPrint" id="topActions">
+            <button class="theme-toggle noPrint" id="btnThemeToggle" title="Alternar modo escuro/claro" aria-label="Alternar tema">🌙</button>
+          </div>
         </div>
 
         <div id="content" class="content"></div>
@@ -85,6 +87,21 @@ function renderShell(pageKey, title, subtitle) {
   const toggle = () => document.getElementById("sidebar").classList.toggle("active");
   document.getElementById("menuToggleMain")?.addEventListener("click", toggle);
   if(document.getElementById("menuToggle")) document.getElementById("menuToggle").addEventListener("click", toggle);
+
+  // Dark mode toggle
+  const _applyTheme = (dark) => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    const btn = document.getElementById('btnThemeToggle');
+    if (btn) btn.textContent = dark ? '☀️' : '🌙';
+    localStorage.setItem('agro_theme', dark ? 'dark' : 'light');
+  };
+  // Apply saved theme on render
+  const _savedTheme = localStorage.getItem('agro_theme') || 'light';
+  _applyTheme(_savedTheme === 'dark');
+  document.getElementById('btnThemeToggle')?.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    _applyTheme(!isDark);
+  });
 
   document.getElementById("safraSelect").addEventListener("change", (e) => {
     setSafraId(e.target.value);

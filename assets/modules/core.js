@@ -41,21 +41,21 @@ function getPlanBlockedPages() {
 
 const ROLE_PERMISSIONS = {
   admin: {
-    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda'],
+    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda','pagamento'],
     canCreate: true,
     canDelete: true,
     canSeeFinanceiro: true,
     label: 'Administrador'
   },
   gerente: {
-    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda'],
+    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda','pagamento'],
     canCreate: true,
     canDelete: true,
     canSeeFinanceiro: false,
     label: 'Gerente'
   },
   funcionario: {
-    pages: ['dashboard','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','ajuda'],
+    pages: ['dashboard','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','ajuda','pagamento'],
     canCreate: false, // default false, override por pagina
     canDelete: false,
     canSeeFinanceiro: false,
@@ -161,9 +161,9 @@ function renderTrialBanner() {
   const p = planoAtual;
   if (p === 'Free' || p === 'Trial') {
     return `
-      <div id="trialBanner" style="background:linear-gradient(135deg,#dc2626,#b91c1c); color:white; padding:9px 20px; text-align:center; font-size:13px; font-weight:500; position:sticky; top:0; z-index:9999; display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap;">
-        🔒 Plano Free — apenas visualização, 1 fazenda, 1 talhão.
-        <button onclick="pageUpgrade()" style="background:white; color:#dc2626; border:none; border-radius:6px; padding:5px 14px; font-weight:700; font-size:12px; cursor:pointer; white-space:nowrap;">⬆ Ver Planos</button>
+      <div class="free-banner">
+        🔒 <strong>Plano Free</strong> — apenas visualização, 1 fazenda, 1 talhão.
+        <button onclick="pageUpgrade()" class="btn" style="padding:4px 12px; font-size:11.5px; background:var(--warning); color:#fff; border:none; box-shadow:none;">Ver Planos</button>
       </div>
     `;
   }
@@ -545,7 +545,44 @@ const PAGES = [
   { href: "maquinas.html", label: "Máquinas", key: "maquinas", icon: "🛠️" },
   { href: "relatorios.html", label: "Relatórios", key: "relatorios", icon: "🧾" },
   { href: "configuracoes.html", label: "Configurações", key: "config", icon: "⚙️" },
-  { href: "ajuda.html", label: "Ajuda & Suporte", key: "ajuda", icon: "❓" }
+  { href: "ajuda.html", label: "Ajuda & Suporte", key: "ajuda", icon: "❓" },
+  { href: "pagamento.html", label: "Pagamento", key: "pagamento", icon: "💳" }
 ];
 
+// ============================================================
+// DARK MODE — inicializar antes do primeiro render
+// ============================================================
+(function initTheme() {
+  const saved = localStorage.getItem('agro_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+})();
+
+// ============================================================
+// EMPTY STATE HELPER — nunca mostrar "0" vazio sem contexto
+// ============================================================
+/**
+ * emptyState(icon, title, description, actionHtml)
+ * Retorna HTML de estado vazio amigável.
+ */
+function emptyState(icon, title, description, actionHtml = '') {
+  return `
+    <div class="empty-state">
+      <div class="empty-icon">${icon}</div>
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(description)}</p>
+      ${actionHtml}
+    </div>
+  `;
+}
+
+/**
+ * kpiValue(n, unit, emptyMsg)
+ * Formata um valor de KPI — se for 0 retorna msg de estado vazio
+ * em vez de "0" solto.
+ */
+function kpiValue(n, unit = '', emptyMsg = 'Nenhum registro') {
+  const v = Number(n || 0);
+  if (v === 0) return `<span class="text-muted" style="font-size:14px; font-weight:500;">${emptyMsg}</span>`;
+  return `${num(v)}${unit ? ` <span style="font-size:13px;font-weight:400;">${unit}</span>` : ''}`;
+}
 

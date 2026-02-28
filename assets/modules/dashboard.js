@@ -15,95 +15,179 @@ function pageDashboard() {
   const aplHoje = aplicacoes.filter(a => a.data === hoje).length;
   const chuvaHoje = clima.filter(c => c.data === hoje).reduce((s, c) => s + Number(c.chuvaMm || 0), 0);
   const areaTotal = talhoes.reduce((s, t) => s + Number(t.areaHa || 0), 0);
-  const totalColhido = colheitas.reduce((s, c) => s + c.producaoTotal, 0);
+  const totalColhido = colheitas.reduce((s, c) => s + Number(c.producaoTotal || 0), 0);
+  const recentApl = aplicacoes.slice().reverse().slice(0, 5);
 
   const content = document.getElementById("content");
+
+  // ── KPI cards ──────────────────────────────────────────────────────────
+  const safraCard = `
+    <div class="card" style="background: linear-gradient(135deg, var(--brand-dark) 0%, var(--brand) 100%); color:#fff; border:none; overflow:hidden; position:relative;">
+      <div style="position:absolute; right:-20px; top:-20px; font-size:90px; opacity:.07; pointer-events:none;">🌾</div>
+      <h3 style="color:rgba(255,255,255,.55); border:none; padding:0; margin-bottom:8px; font-size:11px; text-transform:uppercase; letter-spacing:.6px;">Safra Atual</h3>
+      <div class="big" style="color:#fff; font-size:22px;">${escapeHtml(safra?.nome || 'Nenhuma safra')}</div>
+      <div class="sub" style="color:rgba(255,255,255,.6); margin-top:6px;">
+        ${safra ? (safra.dataInicio ? safra.dataInicio + ' → ' + (safra.dataFim || 'em andamento') : 'Datas não definidas') : 'Crie uma safra para começar'}
+      </div>
+    </div>`;
+
+  const talhoesCard = `
+    <div class="card">
+      <h3>🧭 Talhões</h3>
+      <div class="big">${talhoes.length > 0 ? num(talhoes.length, 0) : '—'}</div>
+      <div class="sub">${areaTotal > 0 ? `Área total: ${num(areaTotal, 1)} ha` : 'Nenhum talhão cadastrado'}</div>
+    </div>`;
+
+  const colheitasCard = `
+    <div class="card">
+      <h3>🌾 Produção Colhida</h3>
+      <div class="big">
+        ${totalColhido > 0
+          ? `${num(totalColhido / 1000, 1)} <span style="font-size:16px; font-weight:400;">t</span>`
+          : '<span class="text-muted" style="font-size:15px; font-weight:500;">Aguardando colheita</span>'}
+      </div>
+      <div class="sub">${colheitas.length > 0 ? `${colheitas.length} registro${colheitas.length > 1 ? 's' : ''} de colheita` : 'Nenhuma colheita registrada'}</div>
+    </div>`;
+
+  const chuvaCard = `
+    <div class="card">
+      <h3>🌧️ Chuva Hoje</h3>
+      <div class="big">
+        ${chuvaHoje > 0
+          ? `${num(chuvaHoje, 1)} <span style="font-size:16px; font-weight:400;">mm</span>`
+          : '<span class="text-muted" style="font-size:15px; font-weight:500;">Sem registro hoje</span>'}
+      </div>
+      <div class="sub">${aplHoje > 0 ? `${aplHoje} aplicação(ões) hoje` : 'Nenhuma aplicação hoje'}</div>
+    </div>`;
+
+  // ── Alertas de pragas ───────────────────────────────────────────────────
+  const alertasHtml = alertasPragas.length
+    ? alertasPragas.map(a => `
+        <div style="
+          padding: var(--space-4);
+          background: var(--warning-bg);
+          border-left: 3px solid var(--warning);
+          border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+          margin-bottom: var(--space-3);
+          display: flex;
+          gap: var(--space-3);
+          align-items: flex-start;
+        ">
+          <span style="font-size:18px; flex-shrink:0;">⚠️</span>
+          <div>
+            <div style="font-weight:700; font-size:13.5px; color:var(--warning);">${escapeHtml(a.mensagem)}</div>
+            <div style="font-size:12.5px; color:var(--text-muted); margin-top:2px;">${escapeHtml(a.detalhe || '')}</div>
+          </div>
+        </div>
+      `).join('')
+    : emptyState('🌿', 'Nenhum alerta de praga', 'Condições climáticas e aplicações estão dentro do esperado.', '');
+
+  // ── Lembretes ───────────────────────────────────────────────────────────
+  const lembretesHtml = lembretes.length
+    ? lembretes.map(l => `
+        <div style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: var(--space-4);
+          padding: var(--space-3) var(--space-4);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          margin-bottom: var(--space-2);
+          background: var(--surface);
+          transition: background var(--t-fast);
+        " onmouseover="this.style.background='var(--brand-subtle)'" onmouseout="this.style.background='var(--surface)'">
+          <div>
+            <div style="font-weight:600; font-size:13.5px; color:var(--text);">${escapeHtml(l.mensagem)}</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">📅 ${l.data || 'Sem data'}</div>
+          </div>
+          <button class="btn" style="font-size:12px; padding:6px 14px; flex-shrink:0; background:var(--brand); color:#fff; border:none;" onclick="concluirLembrete('${l.id}')">✓ Concluir</button>
+        </div>
+      `).join('')
+    : emptyState('📋', 'Tudo em dia!', 'Você não tem lembretes pendentes no momento.');
+
+  // ── Últimas aplicações ──────────────────────────────────────────────────
+  const aplTableBody = recentApl.length
+    ? recentApl.map(a => {
+        const talhaoNome = findNameById(talhoes, a.talhaoId);
+        const produto = a.produtos?.[0]?.produtoNome || '—';
+        return `<tr>
+          <td>${a.data}</td>
+          <td>${escapeHtml(talhaoNome)}</td>
+          <td>${num(a.areaHaAplicada, 1)} ha</td>
+          <td>${escapeHtml(produto)}</td>
+          ${canSeeFinanceiro() ? `<td class="highlight-value">${kbrl(a.custoTotal)}</td>` : ''}
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="${canSeeFinanceiro() ? 5 : 4}" style="text-align:center; padding:32px;">
+        <div class="empty-state" style="padding:var(--space-6);">
+          <div class="empty-icon">🚜</div>
+          <h3>Nenhuma aplicação registrada</h3>
+          <p>Registre a primeira aplicação da safra para acompanhar aqui.</p>
+          ${canCreateOnPage('aplicacoes') ? `<a href="aplicacoes.html" class="btn primary">+ Registrar Aplicação</a>` : ''}
+        </div>
+      </td></tr>`;
+
   content.innerHTML = `
-    <div class="kpi">
-      <div class="card" style="background: linear-gradient(135deg, #3b82f6, #1e3a8a); color:white;">
-        <h3>🌱 Safra Atual</h3>
-        <div class="big">${escapeHtml(safra?.nome || 'N/A')}</div>
-        <div class="sub">${safra?.dataInicio || ''} a ${safra?.dataFim || ''}</div>
-      </div>
-      <div class="card">
-        <h3>Talhões</h3>
-        <div class="big">${talhoes.length}</div>
-        <div class="sub">Área total: ${num(areaTotal, 1)} ha</div>
-      </div>
-      <div class="card">
-        <h3>Produção Colhida</h3>
-        <div class="big">${num(totalColhido, 0)} kg</div>
-        <div class="sub">${colheitas.length} talhões colhidos</div>
-      </div>
-      <div class="card">
-        <h3>Chuva (hoje)</h3>
-        <div class="big">${num(chuvaHoje, 1)} mm</div>
-        <div class="sub">Lançamento manual</div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="card">
-        <h3>🚨 Alertas de Pragas</h3>
-        ${alertasPragas.length ? alertasPragas.map(a => `
-          <div style="padding:12px; margin:8px 0; background: rgba(244, 67, 54, 0.1); border-left:4px solid #f44336; border-radius:4px;">
-            <b style="color:#f44336;">${escapeHtml(a.mensagem)}</b><br>
-            <span style="color:#888; font-size:13px;">${escapeHtml(a.detalhe)}</span>
-          </div>
-        `).join('') : '<p style="color:#888;">Nenhum alerta no momento.</p>'}
+    <div class="section page-enter">
+      <!-- KPIs -->
+      <div class="kpi">
+        ${safraCard}
+        ${talhoesCard}
+        ${colheitasCard}
+        ${chuvaCard}
       </div>
 
-      <div class="card">
-        <h3>📋 Lembretes Pendentes</h3>
-        ${lembretes.length ? lembretes.map(l => `
-          <div style="padding:12px; margin:8px 0; background: rgba(59, 130, 246, 0.1); border-left:4px solid #3b82f6; border-radius:4px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <b style="color:#3b82f6;">${escapeHtml(l.mensagem)}</b><br>
-                <span style="color:#888; font-size:13px;">Data: ${l.data}</span>
-              </div>
-              <button class="btn" style="background:#3b82f6; color:white;" onclick="concluirLembrete('${l.id}')">Concluir</button>
-            </div>
-          </div>
-        `).join('') : '<p style="color:#888;">Nenhum lembrete pendente.</p>'}
+      <!-- Alerts + Reminders -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); gap:var(--space-5);">
+        <div class="card">
+          <h3>⚠️ Alertas de Pragas</h3>
+          ${alertasHtml}
+        </div>
+        <div class="card">
+          <h3>📋 Lembretes Pendentes</h3>
+          ${lembretesHtml}
+        </div>
       </div>
-    </div>
 
-    <div class="tableWrap" style="margin-top:20px;">
-      <h3>Últimas aplicações</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th>Talhão</th>
-            <th>Área</th>
-            <th>Produto</th>
-            ${canSeeFinanceiro() ? '<th>Custo</th>' : ''}
-          </tr>
-        </thead>
-        <tbody>
-          ${aplicacoes.slice().reverse().slice(0, 5).map(a => {
-            const talhao = findNameById(talhoes, a.talhaoId);
-            const produto = a.produtos?.[0]?.produtoNome || '—';
-            return `<tr><td>${a.data}</td><td>${escapeHtml(talhao)}</td><td>${num(a.areaHaAplicada, 1)} ha</td><td>${escapeHtml(produto)}</td>${canSeeFinanceiro() ? `<td>${kbrl(a.custoTotal)}</td>` : ''}</tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-    ${isSimplifiedDashboard() ? `
-      <div class="card" style="background:#fffbeb; border-left: 4px solid #f59e0b; margin-top:15px;">
-        <p style="color:#92400e; margin:0;">\uD83D\uDD12 <b>Dashboard simplificado</b> \u2014 Seu perfil de ${getRoleLabel()} tem acesso limitado. Para mais detalhes, fale com o administrador.</p>
+      <!-- Últimas aplicações -->
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding-bottom:var(--space-4); border-bottom:1px solid var(--border); margin-bottom:var(--space-4);">
+          <h3 style="margin:0; border:none; padding:0; font-size:14px; font-weight:700;">🚜 Últimas Aplicações</h3>
+          ${canCreateOnPage('aplicacoes') ? `<a href="aplicacoes.html" class="btn" style="font-size:12px; padding:6px 14px;">Ver todas →</a>` : ''}
+        </div>
+        <div class="tableWrap" style="margin:0; border:none; box-shadow:none;">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Talhão</th>
+                <th>Área</th>
+                <th>Produto</th>
+                ${canSeeFinanceiro() ? '<th>Custo</th>' : ''}
+              </tr>
+            </thead>
+            <tbody>${aplTableBody}</tbody>
+          </table>
+        </div>
       </div>
-    ` : ''}
+
+      ${isSimplifiedDashboard() ? `
+        <div class="card" style="background:var(--accent-subtle); border-left:3px solid var(--accent); padding: var(--space-4) var(--space-5);">
+          <p style="margin:0; font-size:13.5px; color:var(--warning);">
+            🔒 <b>Dashboard simplificado</b> — Perfil <b>${getRoleLabel()}</b>. Para acesso completo, fale com o administrador.
+          </p>
+        </div>
+      ` : ''}
+    </div>
   `;
 
   window.concluirLembrete = (id) => {
-    const db = getDB();
-    const lembrete = db.lembretes.find(l => l.id === id);
+    const db2 = getDB();
+    const lembrete = db2.lembretes.find(l => l.id === id);
     if (lembrete) lembrete.concluido = true;
-    setDB(db);
-    toast("Lembrete concluído", "");
+    setDB(db2);
+    toast("✓ Concluído", "Lembrete marcado como concluído.");
     pageDashboard();
   };
 }
-
