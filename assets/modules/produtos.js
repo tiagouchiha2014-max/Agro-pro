@@ -1,0 +1,39 @@
+function pageProdutos() {
+  crudPage({
+    entityKey: "produtos",
+    subtitle: "Produtos disponíveis na safra atual.",
+    fields: [
+      { key: "tipo", label: "Tipo", type: "text", placeholder: "Herbicida/Fungicida..." },
+      { key: "nome", label: "Nome comercial", type: "text" },
+      { key: "ingrediente", label: "Ingrediente ativo", type: "text" },
+      { key: "fabricante", label: "Fabricante", type: "text" },
+      { key: "registro", label: "Registro/Mapa", type: "text" },
+      { key: "preco", label: "Preço por unidade (R$)", type: "number", placeholder: "Ex: 45.90" },
+      { key: "carenciaDias", label: "Carência (dias)", type: "number" },
+      { key: "reentradaHoras", label: "Reentrada (horas)", type: "number" },
+      { key: "unidade", label: "Unidade padrão", type: "text", placeholder: "L / kg" },
+      { key: "pragasAlvo", label: "Pragas alvo (separadas por vírgula)", type: "text", placeholder: "ferrugem, lagarta" },
+      { key: "obs", label: "Observações", type: "textarea", full: true }
+    ],
+    columns: [
+      { key: "tipo", label: "Tipo" },
+      { key: "nome", label: "Produto" },
+      { key: "ingrediente", label: "Ingrediente" },
+      { key: "preco", label: "Preço (R$)" },
+      { key: "unidade", label: "Unid." }
+    ],
+    helpers: {
+      onDelete: (id, db) => {
+        db.estoque = (db.estoque || []).filter(s => s.produtoId !== id);
+      },
+      beforeSave: (obj, db) => {
+        if (obj.pragasAlvo && typeof obj.pragasAlvo === 'string') {
+          obj.pragasAlvo = obj.pragasAlvo.split(',').map(s => s.trim()).filter(s => s);
+        } else {
+          obj.pragasAlvo = obj.pragasAlvo || [];
+        }
+      }
+    }
+  });
+}
+
