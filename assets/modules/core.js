@@ -16,7 +16,7 @@ let userRole = localStorage.getItem("agro_role") || "admin";
 
 // Páginas BLOQUEADAS por plano (não aparecem na sidebar nem podem ser acessadas)
 const PLAN_BLOCKED_PAGES = {
-  'Free':   ['colheitas','manutencao','clima','relatorios','centralgestao','copilot','combustivel','aplicacoes','estoque','equipe','maquinas','insumosbase'],
+  'Free':   ['colheitas','manutencao','clima','relatorios','centralgestao','copilot','combustivel','aplicacoes','estoque','equipe','maquinas','insumosbase','config'],
   'Pro':    [],
   'Master': [],
   'Trial':  [] // legado — tratar como Free se aparecer
@@ -41,21 +41,21 @@ function getPlanBlockedPages() {
 
 const ROLE_PERMISSIONS = {
   admin: {
-    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda','pagamento'],
+    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda','propriedade'],
     canCreate: true,
     canDelete: true,
     canSeeFinanceiro: true,
     label: 'Administrador'
   },
   gerente: {
-    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda','pagamento'],
+    pages: ['dashboard','copilot','centralgestao','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda','propriedade'],
     canCreate: true,
     canDelete: true,
     canSeeFinanceiro: false,
     label: 'Gerente'
   },
   funcionario: {
-    pages: ['dashboard','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','ajuda','pagamento'],
+    pages: ['dashboard','safras','fazendas','talhoes','produtos','estoque','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','ajuda','propriedade'],
     canCreate: false, // default false, override por pagina
     canDelete: false,
     canSeeFinanceiro: false,
@@ -527,26 +527,23 @@ function getSafraAtual() {
 
 /* ------------------ UI shell ------------------ */
 const PAGES = [
-  { href: "index.html", label: "Dashboard", key: "dashboard", icon: "📊" },
-  { href: "copilot.html", label: "Agro-Copilot (IA)", key: "copilot", icon: "🤖" },
-  { href: "centralgestao.html", label: "Central de Gestão", key: "centralgestao", icon: "🛰️" },
-  { href: "safras.html", label: "Safras", key: "safras", icon: "🌱" },
-  { href: "fazendas.html", label: "Fazendas", key: "fazendas", icon: "🌾" },
-  { href: "talhoes.html", label: "Talhões", key: "talhoes", icon: "🧭" },
-  { href: "produtos.html", label: "Produtos", key: "produtos", icon: "🧪" },
-  { href: "estoque.html", label: "Estoque", key: "estoque", icon: "📦" },
-  { href: "insumosbase.html", label: "Insumos Base", key: "insumosbase", icon: "🌱" },
-  { href: "aplicacoes.html", label: "Aplicações", key: "aplicacoes", icon: "🚜" },
-  { href: "combustivel.html", label: "Combustível", key: "combustivel", icon: "⛽" },
-  { href: "clima.html", label: "Clima/Chuva", key: "clima", icon: "🌧️" },
-  { href: "colheitas.html", label: "Colheitas", key: "colheitas", icon: "🌾" },
-  { href: "manutencao.html", label: "Manutenção", key: "manutencao", icon: "🔧" },
-  { href: "equipe.html", label: "Equipe", key: "equipe", icon: "👷" },
-  { href: "maquinas.html", label: "Máquinas", key: "maquinas", icon: "🛠️" },
-  { href: "relatorios.html", label: "Relatórios", key: "relatorios", icon: "🧾" },
-  { href: "configuracoes.html", label: "Configurações", key: "config", icon: "⚙️" },
-  { href: "ajuda.html", label: "Ajuda & Suporte", key: "ajuda", icon: "❓" },
-  { href: "pagamento.html", label: "Pagamento", key: "pagamento", icon: "💳" }
+  { href: "index.html",         label: "Dashboard",          key: "dashboard",     icon: "📊" },
+  { href: "copilot.html",       label: "Agro-Copilot (IA)",  key: "copilot",       icon: "🤖" },
+  { href: "centralgestao.html", label: "Central de Gestão",  key: "centralgestao", icon: "🛰️" },
+  { href: "propriedade.html",   label: "Minha Propriedade",  key: "propriedade",   icon: "🏡" },
+  { href: "produtos.html",      label: "Produtos",           key: "produtos",      icon: "🧪" },
+  { href: "estoque.html",       label: "Estoque",            key: "estoque",       icon: "📦" },
+  { href: "insumosbase.html",   label: "Insumos Base",       key: "insumosbase",   icon: "🌱" },
+  { href: "aplicacoes.html",    label: "Aplicações",         key: "aplicacoes",    icon: "🚜" },
+  { href: "combustivel.html",   label: "Combustível",        key: "combustivel",   icon: "⛽" },
+  { href: "clima.html",         label: "Clima/Chuva",        key: "clima",         icon: "🌧️" },
+  { href: "colheitas.html",     label: "Colheitas",          key: "colheitas",     icon: "🌾" },
+  { href: "manutencao.html",    label: "Manutenção",         key: "manutencao",    icon: "🔧" },
+  { href: "equipe.html",        label: "Equipe",             key: "equipe",        icon: "👷" },
+  { href: "maquinas.html",      label: "Máquinas",           key: "maquinas",      icon: "🛠️" },
+  { href: "relatorios.html",    label: "Relatórios",         key: "relatorios",    icon: "🧾" },
+  { href: "configuracoes.html", label: "Configurações",      key: "config",        icon: "⚙️" },
+  { href: "ajuda.html",         label: "Ajuda & Suporte",    key: "ajuda",         icon: "❓" }
 ];
 
 // ============================================================

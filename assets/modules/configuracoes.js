@@ -26,42 +26,124 @@ function pageConfiguracoes() {
 
     <div class="config-section">
       ${userRole === 'admin' ? `<div class="config-card">
-        <h3>💎 Planos e Assinatura</h3>` : '<!-- Planos ocultos para não-admin --><div style="display:none;">'}
-        <p>Seu plano atual: <b>${planoAtual}</b></p>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-top:16px; text-align:left;">
+        <h3>💎 Plano & Assinatura</h3>
+
+        <!-- Status do plano atual -->
+        <div style="
+          background: linear-gradient(135deg, var(--sidebar-bg) 0%, #243824 100%);
+          border-radius: var(--radius);
+          padding: var(--space-5) var(--space-6);
+          display: flex; align-items: center; justify-content: space-between;
+          gap: var(--space-5); flex-wrap: wrap; margin-bottom: var(--space-5);
+        ">
+          <div>
+            <div style="font-size:11px; color:rgba(255,255,255,.5); font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px;">Seu plano atual</div>
+            <div style="font-size:26px; font-weight:800; color:#fff; letter-spacing:-0.5px;">
+              ${planoAtual} ${planoAtual==='Pro'?'⭐':planoAtual==='Master'?'👑':''}
+            </div>
+            <div style="font-size:12.5px; color:rgba(255,255,255,.5); margin-top:4px;">
+              ${planoAtual==='Free'
+                ? 'Acesso gratuito limitado — faça upgrade para usar todas as funcionalidades'
+                : 'Assinatura ativa — obrigado por confiar no Agro Pro!'}
+            </div>
+          </div>
+          ${planoAtual==='Free' ? `
+            <a href="https://wa.me/5599991360547?text=Olá!%20Quero%20assinar%20o%20Agro%20Pro%20(Plano%20Pro%20R%24199%2Fmês)" target="_blank"
+              style="background:var(--brand-light); color:#fff; padding:11px 22px; border-radius:var(--radius-sm); font-weight:700; font-size:13.5px; text-decoration:none; white-space:nowrap; box-shadow:var(--shadow-brand);">
+              ⬆ Fazer Upgrade
+            </a>` : ''}
+        </div>
+
+        <!-- Grid de planos -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:var(--space-4); margin-bottom:var(--space-5);">
+
           <!-- FREE -->
-          <div style="padding:16px; border-radius:10px; border:${planoAtual==='Free'?'3px solid #64748b':'1px solid #e2e8f0'}; background:${planoAtual==='Free'?'#f1f5f9':'white'};">
-            <h4 style="margin:0 0 4px; color:#64748b; font-size:13px; font-weight:800;">FREE</h4>
-            <p style="font-size:22px; font-weight:800; margin:3px 0; color:#1e293b;">R$ 0<small style="font-size:11px; font-weight:400;">/mês</small></p>
-            <small style="color:#94a3b8; line-height:1.7; display:block;">1 fazenda, 1 talhão<br>Apenas visualização<br>Sem produção ou estoque</small>
-            ${planoAtual==='Free' ? '<div style="margin-top:10px; padding:6px; background:#e2e8f0; border-radius:6px; text-align:center; color:#64748b; font-size:11px; font-weight:700;">PLANO ATUAL</div>' : ''}
+          <div style="padding:var(--space-5); border-radius:var(--radius); border:2px solid ${planoAtual==='Free'?'var(--border-medium)':'var(--border)'}; background:${planoAtual==='Free'?'var(--neutral-bg)':'var(--surface)'};">
+            <div style="font-size:13px; font-weight:800; color:var(--neutral); letter-spacing:.5px; margin-bottom:8px;">FREE</div>
+            <div style="font-size:28px; font-weight:800; color:var(--text); letter-spacing:-1px; line-height:1; margin-bottom:12px;">
+              R$ 0<small style="font-size:13px; font-weight:400; color:var(--text-muted);">/mês</small>
+            </div>
+            <ul style="list-style:none; padding:0; margin:0 0 16px; font-size:12.5px; color:var(--text-muted); line-height:2;">
+              <li>✓ 1 fazenda e 1 talhão</li>
+              <li>✓ Apenas visualização</li>
+              <li style="opacity:.5;">✗ Estoque e aplicações</li>
+              <li style="opacity:.5;">✗ Relatórios e IA</li>
+            </ul>
+            <div style="padding:8px; background:var(--neutral-bg); border-radius:var(--radius-sm); text-align:center; color:var(--neutral); font-size:11px; font-weight:700; letter-spacing:.5px;">
+              ${planoAtual==='Free'?'PLANO ATUAL':'GRATUITO'}
+            </div>
           </div>
+
           <!-- PRO -->
-          <div style="padding:16px; border-radius:10px; border:${planoAtual==='Pro'?'3px solid #10b981':'1px solid #e2e8f0'}; background:${planoAtual==='Pro'?'#ecfdf5':'white'}; position:relative;">
-            ${planoAtual==='Pro' ? '<div style="position:absolute;top:-10px;right:10px;background:#10b981;color:white;padding:2px 10px;border-radius:8px;font-size:10px;font-weight:700;">ATIVO</div>' : ''}
-            <h4 style="margin:0 0 4px; color:#065f46; font-size:13px; font-weight:800;">PRO</h4>
-            <p style="font-size:22px; font-weight:800; margin:3px 0; color:#1e293b;">R$ 199<small style="font-size:11px; font-weight:400;">/mês</small></p>
-            <small style="color:#374151; line-height:1.7; display:block;">5 fazendas, talhões ilimitados<br>Máquinas, equipe (15 membros)<br>Aplicações, estoque, colheitas<br>Relatórios + IA Copilot</small><br>
-            <a href="https://wa.me/5599991360547?text=Quero%20assinar%20o%20Plano%20Pro%20R%24199" target="_blank" style="display:block;margin-top:10px;padding:8px;background:#10b981;color:white;border-radius:7px;font-weight:700;font-size:12px;text-decoration:none;text-align:center;">💬 Assinar — R$199/mês</a>
+          <div style="padding:var(--space-5); border-radius:var(--radius); border:2px solid ${planoAtual==='Pro'?'var(--success)':'var(--border)'}; background:${planoAtual==='Pro'?'var(--success-bg)':'var(--surface)'}; position:relative;">
+            <div style="position:absolute;top:-11px;left:50%;transform:translateX(-50%); background:var(--success); color:#fff; padding:2px 14px; border-radius:999px; font-size:10px; font-weight:700; white-space:nowrap; letter-spacing:.5px;">⭐ MAIS POPULAR</div>
+            <div style="font-size:13px; font-weight:800; color:var(--success); letter-spacing:.5px; margin-bottom:8px;">PRO</div>
+            <div style="font-size:28px; font-weight:800; color:var(--text); letter-spacing:-1px; line-height:1; margin-bottom:12px;">
+              R$ 199<small style="font-size:13px; font-weight:400; color:var(--text-muted);">/mês</small>
+            </div>
+            <ul style="list-style:none; padding:0; margin:0 0 16px; font-size:12.5px; color:var(--text-secondary); line-height:2;">
+              <li>✓ 5 fazendas · talhões ilimitados</li>
+              <li>✓ Aplicações, estoque, colheitas</li>
+              <li>✓ Equipe (15) e máquinas</li>
+              <li>✓ Relatórios + IA Copilot</li>
+            </ul>
+            ${planoAtual==='Pro'
+              ? `<div style="padding:8px; background:var(--success-bg); border:1px solid var(--success); border-radius:var(--radius-sm); text-align:center; color:var(--success); font-size:11px; font-weight:700; letter-spacing:.5px;">✓ PLANO ATIVO</div>`
+              : `<a href="https://wa.me/5599991360547?text=Olá!%20Quero%20assinar%20o%20Agro%20Pro%20(Plano%20Pro%20R%24199%2Fmês)" target="_blank"
+                  style="display:block; padding:9px; background:var(--success); color:#fff; border-radius:var(--radius-sm); font-weight:700; font-size:13px; text-decoration:none; text-align:center;">
+                  💬 Assinar Pro — R$199/mês
+                </a>`}
           </div>
+
           <!-- MASTER -->
-          <div style="padding:16px; border-radius:10px; border:${planoAtual==='Master'?'3px solid #f59e0b':'1px solid #e2e8f0'}; background:${planoAtual==='Master'?'#fffbeb':'white'}; position:relative;">
-            ${planoAtual==='Master' ? '<div style="position:absolute;top:-10px;right:10px;background:#f59e0b;color:#1e293b;padding:2px 10px;border-radius:8px;font-size:10px;font-weight:700;">ATIVO</div>' : ''}
-            <h4 style="margin:0 0 4px; color:#92400e; font-size:13px; font-weight:800;">MASTER</h4>
-            <p style="font-size:22px; font-weight:800; margin:3px 0; color:#1e293b;">R$ 299<small style="font-size:11px; font-weight:400;">/mês</small></p>
-            <small style="color:#374151; line-height:1.7; display:block;">Tudo do Pro<br>Fazendas <b>ilimitadas</b><br>Equipe e admins ilimitados<br>Suporte prioritário 24h</small><br>
-            <a href="https://wa.me/5599991360547?text=Quero%20assinar%20o%20Plano%20Master%20R%24299" target="_blank" style="display:block;margin-top:10px;padding:8px;background:#f59e0b;color:#1e293b;border-radius:7px;font-weight:700;font-size:12px;text-decoration:none;text-align:center;">💬 Assinar — R$299/mês</a>
+          <div style="padding:var(--space-5); border-radius:var(--radius); border:2px solid ${planoAtual==='Master'?'var(--warning)':'var(--border)'}; background:${planoAtual==='Master'?'var(--accent-subtle)':'var(--surface)'}; position:relative;">
+            <div style="position:absolute;top:-11px;left:50%;transform:translateX(-50%); background:var(--warning); color:#fff; padding:2px 14px; border-radius:999px; font-size:10px; font-weight:700; white-space:nowrap; letter-spacing:.5px;">👑 ILIMITADO</div>
+            <div style="font-size:13px; font-weight:800; color:var(--warning); letter-spacing:.5px; margin-bottom:8px;">MASTER</div>
+            <div style="font-size:28px; font-weight:800; color:var(--text); letter-spacing:-1px; line-height:1; margin-bottom:12px;">
+              R$ 299<small style="font-size:13px; font-weight:400; color:var(--text-muted);">/mês</small>
+            </div>
+            <ul style="list-style:none; padding:0; margin:0 0 16px; font-size:12.5px; color:var(--text-secondary); line-height:2;">
+              <li>✓ Fazendas <b>ilimitadas</b></li>
+              <li>✓ Equipe e admins ilimitados</li>
+              <li>✓ Tudo do Pro incluso</li>
+              <li>✓ Suporte prioritário 24h</li>
+            </ul>
+            ${planoAtual==='Master'
+              ? `<div style="padding:8px; background:var(--accent-subtle); border:1px solid var(--warning); border-radius:var(--radius-sm); text-align:center; color:var(--warning); font-size:11px; font-weight:700; letter-spacing:.5px;">✓ PLANO ATIVO</div>`
+              : `<a href="https://wa.me/5599991360547?text=Olá!%20Quero%20assinar%20o%20Agro%20Pro%20(Plano%20Master%20R%24299%2Fmês)" target="_blank"
+                  style="display:block; padding:9px; background:var(--warning); color:#fff; border-radius:var(--radius-sm); font-weight:700; font-size:13px; text-decoration:none; text-align:center;">
+                  💬 Assinar Master — R$299/mês
+                </a>`}
           </div>
         </div>
-        <div style="margin-top:14px; padding-top:14px; border-top:1px solid #e2e8f0;">
-          <p style="font-size:12px; color:#64748b; margin:0 0 8px;">Para ativar seu plano após pagamento, entre em contato:</p>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <a href="mailto:suporteagropro@gmail.com?subject=Assinatura Agro Pro" style="padding:7px 14px; background:#3b82f6; color:white; border-radius:6px; text-decoration:none; font-size:12px; font-weight:600;">📧 E-mail</a>
-            <a href="https://wa.me/5599991360547?text=Olá!%20Quero%20assinar%20o%20Agro%20Pro" target="_blank" style="padding:7px 14px; background:#25d366; color:white; border-radius:6px; text-decoration:none; font-size:12px; font-weight:600;">💬 WhatsApp</a>
+
+        <!-- Como ativar — mensagem profissional -->
+        <div style="
+          background: var(--info-bg);
+          border: 1px solid rgba(3,105,161,0.2);
+          border-left: 3px solid var(--info);
+          border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+          padding: var(--space-4) var(--space-5);
+        ">
+          <div style="font-size:13.5px; font-weight:700; color:var(--info); margin-bottom:8px;">📋 Como ativar seu plano</div>
+          <ol style="margin:0; padding-left:18px; font-size:13px; color:var(--text-secondary); line-height:2;">
+            <li>Escolha seu plano acima e clique em <b>Assinar</b></li>
+            <li>Realize o pagamento via WhatsApp com o suporte</li>
+            <li>Em <b>poucos minutos</b>, seu plano será ativado e todas as funcionalidades estarão disponíveis automaticamente</li>
+          </ol>
+          <div style="margin-top:var(--space-3); display:flex; gap:var(--space-3); flex-wrap:wrap;">
+            <a href="https://wa.me/5599991360547?text=Olá!%20Preciso%20de%20ajuda%20com%20minha%20assinatura%20do%20Agro%20Pro"
+              target="_blank"
+              style="display:inline-flex; align-items:center; gap:8px; padding:8px 16px; background:#25d366; color:#fff; border-radius:var(--radius-sm); text-decoration:none; font-size:13px; font-weight:600;">
+              💬 WhatsApp: (99) 99136-0547
+            </a>
+            <a href="mailto:suporteagropro@gmail.com?subject=Assinatura%20Agro%20Pro"
+              style="display:inline-flex; align-items:center; gap:8px; padding:8px 16px; background:var(--info); color:#fff; border-radius:var(--radius-sm); text-decoration:none; font-size:13px; font-weight:600;">
+              📧 suporteagropro@gmail.com
+            </a>
           </div>
         </div>
-      </div>
-      ${userRole === 'admin' ? '' : '</div>'}
+      </div>` : '<!-- Planos ocultos para não-admin -->'}
 
       ${userRole !== 'funcionario' ? `<div class="config-card">
         <h3>🤖 Inteligência Artificial</h3>` : '<div style="display:none;">'}
@@ -150,7 +232,7 @@ function pageConfiguracoes() {
       <div class="config-card">
         <h3>👤 Conta</h3>
         <p style="color:#64748b; font-size:13px;">Usuário: <b>${escapeHtml(userSession?.user?.email || 'N/A')}</b></p>
-        <button class="btn" id="btnLogout" style="margin-top:10px; background: #ef4444; color: white;">Sair da Conta</button>
+        <button class="btn" id="btnLogout" style="margin-top:10px;">🚪 Sair da Conta</button>
       </div>
     </div>
   `;
