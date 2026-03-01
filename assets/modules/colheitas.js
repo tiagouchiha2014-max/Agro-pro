@@ -1,6 +1,8 @@
 // ============================================================================
-// PÁGINA COLHEITAS — PREMIUM v2.0
-// Produção, Frete Duplo, Dados de Caminhão, Motorista, Nota Fiscal, Romaneio
+// PÁGINA COLHEITAS — PREMIUM v3.0
+// Produção, Classificação Silo, Descontos, Frete Duplo, Dados de Caminhão
+// Novos campos v9.7: umidade padrão, impureza, ardidos, esverdeados,
+//   quebrados, CPO, taxa armazenagem, peso líquido estimado
 // ============================================================================
 
 function pageColheitas() {
@@ -49,6 +51,9 @@ function pageColheitas() {
   const mediaUmidade     = colheitas.filter(c => c.umidade).length > 0
     ? (colheitas.reduce((s, c) => s + Number(c.umidade || 0), 0) / colheitas.filter(c => c.umidade).length).toFixed(1)
     : '-';
+
+  // Peso líquido total (após descontos silo)
+  const pesoLiquidoTotalKg = colheitas.reduce((s, c) => s + Number(c.pesoLiquidoEstimado || 0), 0);
 
   // Custo frete por talhão
   const fretePorTalhao = new Map();
@@ -278,6 +283,12 @@ function pageColheitas() {
       <div class="ch-kpi-val">${mediaUmidade}${mediaUmidade !== '-' ? '%' : ''}</div>
       <div class="ch-kpi-sub">na colheita</div>
     </div>
+    <div class="ch-kpi-card" style="--kpi-color:#16a34a;">
+      <div class="ch-kpi-icon">⚖️</div>
+      <div class="ch-kpi-label">Peso Líquido Total</div>
+      <div class="ch-kpi-val">${pesoLiquidoTotalKg > 0 ? num(pesoLiquidoTotalKg / 1000, 2) + ' t' : '—'}</div>
+      <div class="ch-kpi-sub">após descontos silo</div>
+    </div>
   </div>
 
   <!-- ══════════ FORMULÁRIO DE COLHEITA ══════════ -->
@@ -310,10 +321,63 @@ function pageColheitas() {
             <option value="t">toneladas</option>
           </select>
         </div>
-        <div><small>💧 Umidade (%)</small><input class="input" name="umidade" type="number" step="0.1" min="0" max="100" placeholder="Ex: 13.5"></div>
+        <div><small>💧 Umidade (%)</small><input class="input" name="umidade" type="number" step="0.1" min="0" max="100" placeholder="Ex: 13.5" oninput="window.__calcularDescontosSilo()"></div>
         <div><small>🌡 Temperatura (°C)</small><input class="input" name="temperatura" type="number" step="0.1" placeholder="Temperatura na colheita"></div>
         <div><small>📄 Nº Romaneio / NF</small><input class="input" name="romaneio" placeholder="Ex: ROM-001 ou NF-12345"></div>
         <div><small>📝 Observações</small><input class="input" name="obs" placeholder="Condições da lavoura, notas gerais..."></div>
+
+        <!-- ── Classificação / Descontos no Silo ── -->
+        <div class="ch-section-title full">🏭 Classificação e Descontos no Silo</div>
+        <div style="grid-column:1/-1; background:#fefce8; border:1px solid #fde68a; border-radius:10px; padding:12px 16px; font-size:12px; color:#78350f; margin-bottom:4px;">
+          💡 <b>Descontos de recebimento</b> aplicados pelo armazém/silo. O sistema calcula o peso líquido após os descontos e o impacto financeiro estimado.
+        </div>
+        <div>
+          <small>💧 Umidade Padrão (%)</small>
+          <input class="input" name="umidadePadrao" type="number" step="0.1" min="0" max="30" placeholder="Ex: 13.0 (padrão soja)" value="13.0" oninput="window.__calcularDescontosSilo()">
+        </div>
+        <div>
+          <small>🌾 Impureza / Matéria Estranha (%)</small>
+          <input class="input" name="impureza" type="number" step="0.01" min="0" max="20" placeholder="Ex: 1.0" oninput="window.__calcularDescontosSilo()">
+        </div>
+        <div>
+          <small>🔥 Ardidos / Queimados (%)</small>
+          <input class="input" name="ardidos" type="number" step="0.01" min="0" max="10" placeholder="Ex: 0.5" oninput="window.__calcularDescontosSilo()">
+        </div>
+        <div>
+          <small>🌿 Esverdeados / Imaturos (%)</small>
+          <input class="input" name="esverdeados" type="number" step="0.01" min="0" max="20" placeholder="Ex: 2.0" oninput="window.__calcularDescontosSilo()">
+        </div>
+        <div>
+          <small>💔 Quebrados / Avariados (%)</small>
+          <input class="input" name="quebrados" type="number" step="0.01" min="0" max="20" placeholder="Ex: 3.0" oninput="window.__calcularDescontosSilo()">
+        </div>
+        <div>
+          <small>🫙 CPO / Óleo / Grão Duro (%)</small>
+          <input class="input" name="cpo" type="number" step="0.01" min="0" max="10" placeholder="Ex: 0.5" oninput="window.__calcularDescontosSilo()">
+        </div>
+        <div>
+          <small>💰 Preço base (R$/saca 60kg)</small>
+          <input class="input" name="precoBaseSaca" type="number" step="0.01" min="0" placeholder="Ex: 120.00" oninput="window.__calcularDescontosSilo()">
+        </div>
+        <div>
+          <small>🏦 Taxa Armazenagem (%/mês)</small>
+          <input class="input" name="taxaArmazenagem" type="number" step="0.01" min="0" max="5" placeholder="Ex: 0.35" oninput="window.__calcularDescontosSilo()">
+        </div>
+
+        <!-- Painel de resultado dos descontos -->
+        <div class="full" id="siloDescontoResultado" style="display:none;">
+          <div style="background:linear-gradient(135deg,#1e3a5f,#2d6a4f); border-radius:12px; padding:16px 20px; color:white;">
+            <div style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; opacity:.8; margin-bottom:12px;">📊 Resultado da Classificação</div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px;">
+              <div><div style="font-size:11px;opacity:.7;">Desc. Umidade</div><div id="siloDescUmidade" style="font-size:18px;font-weight:800;color:#fbbf24;">—</div></div>
+              <div><div style="font-size:11px;opacity:.7;">Desc. Impurezas</div><div id="siloDescImpureza" style="font-size:18px;font-weight:800;color:#fb923c;">—</div></div>
+              <div><div style="font-size:11px;opacity:.7;">Desc. Avarias</div><div id="siloDescAvaria" style="font-size:18px;font-weight:800;color:#f87171;">—</div></div>
+              <div><div style="font-size:11px;opacity:.7;">Peso Bruto</div><div id="siloPesoBruto" style="font-size:18px;font-weight:800;color:#86efac;">—</div></div>
+              <div><div style="font-size:11px;opacity:.7;">Peso Líquido</div><div id="siloPesoLiquido" style="font-size:18px;font-weight:800;color:#4ade80;">—</div></div>
+              <div><div style="font-size:11px;opacity:.7;">Perda Financeira</div><div id="siloPerdaFinanceira" style="font-size:18px;font-weight:800;color:#fca5a5;">—</div></div>
+            </div>
+          </div>
+        </div>
 
         <!-- ── Máquinas ── -->
         <div class="full">
@@ -518,7 +582,7 @@ function pageColheitas() {
             <th>Talhão</th>
             <th>Produção</th>
             <th>Umidade</th>
-            <th>Romaneio/NF</th>
+            <th>Classif./Romaneio</th>
             <th>Frete 1</th>
             <th>Frete 2</th>
             <th>Custo Frete</th>
@@ -530,6 +594,62 @@ function pageColheitas() {
     </div>
   </div>
   `;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CÁLCULO DESCONTOS SILO (tempo real)
+  // ═══════════════════════════════════════════════════════════════════════════
+  window.__calcularDescontosSilo = () => {
+    const gn = name => { const el = document.querySelector(`[name="${name}"]`); return el ? Number(el.value) || 0 : 0; };
+    const producao     = gn('producaoTotal');
+    const unidade      = (() => { const el = document.querySelector('select[name="unidade"]'); return el ? el.value : 'kg'; })();
+    const pesoPadrao   = 60;
+
+    // Convert to kg
+    let pesoBrutoKg = producao;
+    if (unidade === 'sc')  pesoBrutoKg = producao * pesoPadrao;
+    if (unidade === 't')   pesoBrutoKg = producao * 1000;
+
+    if (pesoBrutoKg <= 0) { document.getElementById('siloDescontoResultado').style.display = 'none'; return; }
+
+    const umidade        = gn('umidade');
+    const umidadePadrao  = gn('umidadePadrao') || 13.0;
+    const impureza       = gn('impureza');
+    const ardidos        = gn('ardidos');
+    const esverdeados    = gn('esverdeados');
+    const quebrados      = gn('quebrados');
+    const cpo            = gn('cpo');
+    const precoSaca      = gn('precoBaseSaca');
+
+    // Desconto umidade (fórmula padrão: (umidade - padrao) / (100 - padrao) × peso)
+    const descUmidadePct  = umidade > umidadePadrao ? (umidade - umidadePadrao) / (100 - umidadePadrao) : 0;
+    const descUmidadeKg   = pesoBrutoKg * descUmidadePct;
+
+    // Desconto impurezas (direto no peso bruto)
+    const descImpurezaKg  = pesoBrutoKg * (impureza / 100);
+
+    // Desconto avarias (ardidos + esverdeados + quebrados + CPO) — taxa reduzida padrão MAPA: 50% do %
+    const pctAvaria       = Math.min((ardidos + esverdeados + quebrados + cpo), 100);
+    const descAvariaKg    = pesoBrutoKg * (pctAvaria / 100) * 0.5;
+
+    const totalDescKg     = descUmidadeKg + descImpurezaKg + descAvariaKg;
+    const pesoLiquidoKg   = Math.max(pesoBrutoKg - totalDescKg, 0);
+
+    // Perda financeira
+    const perdaKg         = pesoBrutoKg - pesoLiquidoKg;
+    const perdaSacas      = perdaKg / pesoPadrao;
+    const perdaFinanceira = precoSaca > 0 ? perdaSacas * precoSaca : 0;
+
+    const fmt = v => v.toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+    const fmtKg = v => (v / 1000).toFixed(2) + ' t';
+
+    document.getElementById('siloDescontoResultado').style.display = 'block';
+    document.getElementById('siloPesoBruto').textContent    = fmtKg(pesoBrutoKg);
+    document.getElementById('siloDescUmidade').textContent  = fmtKg(descUmidadeKg) + ` (${(descUmidadePct * 100).toFixed(2)}%)`;
+    document.getElementById('siloDescImpureza').textContent = fmtKg(descImpurezaKg) + ` (${impureza.toFixed(2)}%)`;
+    document.getElementById('siloDescAvaria').textContent   = fmtKg(descAvariaKg) + ` (${pctAvaria.toFixed(2)}% × 50%)`;
+    document.getElementById('siloPesoLiquido').textContent  = fmtKg(pesoLiquidoKg);
+    document.getElementById('siloPerdaFinanceira').textContent = perdaFinanceira > 0 ? fmt(perdaFinanceira) : '—';
+  };
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CÁLCULO DINÂMICO DE FRETES
@@ -650,9 +770,15 @@ function pageColheitas() {
       return `<tr>
         <td>${c.dataColheita || '—'}</td>
         <td><b>${escapeHtml(talhaoNome)}</b>${maqStr ? `<br><span style="font-size:11px;color:#64748b;">${escapeHtml(maqStr)}</span>` : ''}</td>
-        <td><b>${num(c.producaoTotal || 0, 0)}</b> ${c.unidade || 'kg'}${c.temperatura ? `<br><span style='font-size:11px;'>🌡 ${c.temperatura}°C</span>` : ''}</td>
-        <td>${c.umidade ? c.umidade + '%' : '—'}</td>
-        <td style="font-size:12px;">${c.romaneio ? `📄 ${escapeHtml(c.romaneio)}` : '—'}</td>
+        <td><b>${num(c.producaoTotal || 0, 0)}</b> ${c.unidade || 'kg'}${c.temperatura ? `<br><span style='font-size:11px;'>🌡 ${c.temperatura}°C</span>` : ''}${c.pesoLiquidoEstimado > 0 ? `<br><span style='font-size:11px;color:#16a34a;'>💧 Liq: ${(c.pesoLiquidoEstimado/1000).toFixed(2)}t</span>` : ''}</td>
+        <td>${c.umidade ? `<b>${c.umidade}%</b>${c.umidadePadrao && c.umidade > c.umidadePadrao ? `<br><span style="font-size:10px;color:#ef4444;">▲ pad. ${c.umidadePadrao}%</span>` : ''}` : '—'}</td>
+        <td style="font-size:11px;">${[
+          c.impureza    > 0 ? `Imp: ${c.impureza}%`     : '',
+          c.ardidos     > 0 ? `Ard: ${c.ardidos}%`     : '',
+          c.esverdeados > 0 ? `Esv: ${c.esverdeados}%` : '',
+          c.quebrados   > 0 ? `Qbr: ${c.quebrados}%`   : '',
+          c.cpo         > 0 ? `CPO: ${c.cpo}%`         : ''
+        ].filter(Boolean).join(' | ') || (c.romaneio ? `📄 ${escapeHtml(c.romaneio)}` : '—')}</td>
         <td style="font-size:12px;">${f1Cell}</td>
         <td style="font-size:12px;">${f2Cell}</td>
         <td><b style="color:#b45309;font-size:15px;">${kbrl(custoFreteCol)}</b></td>
@@ -723,21 +849,52 @@ function pageColheitas() {
     const frete1 = getFrete('frete1');
     const frete2 = getFrete('frete2');
 
+    // Classificação silo
+    const gfn = f => fd.get(f) ? Number(fd.get(f)) : null;
+    const umidadeVal      = gfn('umidade');
+    const umidadePadrao   = gfn('umidadePadrao') || 13.0;
+    const impureza        = gfn('impureza');
+    const ardidos         = gfn('ardidos');
+    const esverdeados     = gfn('esverdeados');
+    const quebrados       = gfn('quebrados');
+    const cpo             = gfn('cpo');
+    const taxaArmazenagem = gfn('taxaArmazenagem');
+    const precoBaseSaca   = gfn('precoBaseSaca');
+
+    // Peso líquido estimado após descontos
+    const pesoPadrao2 = 60;
+    let pesoBrutoKg2 = producaoTotal;
+    if (fd.get('unidade') === 'sc') pesoBrutoKg2 = producaoTotal * pesoPadrao2;
+    if (fd.get('unidade') === 't')  pesoBrutoKg2 = producaoTotal * 1000;
+    const descUmPct2   = umidadeVal && umidadeVal > umidadePadrao ? (umidadeVal - umidadePadrao) / (100 - umidadePadrao) : 0;
+    const pctAv2       = (ardidos||0) + (esverdeados||0) + (quebrados||0) + (cpo||0);
+    const pesoLiqEst   = Math.max(pesoBrutoKg2 * (1 - descUmPct2) - pesoBrutoKg2 * ((impureza||0)/100) - pesoBrutoKg2 * (pctAv2/100) * 0.5, 0);
+
     const obj = {
-      id:          uid('col'),
-      safraId:     getSafraId(),
-      dataColheita:fd.get('dataColheita') || nowISO(),
+      id:            uid('col'),
+      safraId:       getSafraId(),
+      dataColheita:  fd.get('dataColheita') || nowISO(),
       talhaoId,
       producaoTotal,
-      unidade:     fd.get('unidade') || 'kg',
-      umidade:     fd.get('umidade') ? Number(fd.get('umidade')) : null,
-      temperatura: fd.get('temperatura') ? Number(fd.get('temperatura')) : null,
-      romaneio:    fd.get('romaneio')?.trim() || '',
-      observacoes: fd.get('obs')?.trim() || '',
-      maquinas:    maquinasArr,
+      unidade:       fd.get('unidade') || 'kg',
+      umidade:       umidadeVal,
+      temperatura:   gfn('temperatura'),
+      romaneio:      fd.get('romaneio')?.trim() || '',
+      observacoes:   fd.get('obs')?.trim() || '',
+      maquinas:      maquinasArr,
+      // Classificação silo
+      umidadePadrao,
+      impureza,
+      ardidos,
+      esverdeados,
+      quebrados,
+      cpo,
+      taxaArmazenagem,
+      precoBaseSaca,
+      pesoLiquidoEstimado: Math.round(pesoLiqEst),
       frete1,
       frete2,
-      fretes:      [frete1, frete2].filter(Boolean)
+      fretes:        [frete1, frete2].filter(Boolean)
     };
 
     const db2 = getDB();
@@ -766,7 +923,16 @@ function pageColheitas() {
         Produção:              c.producaoTotal,
         Unidade:               c.unidade,
         Umidade_pct:           c.umidade || '',
+        Umidade_Padrao_pct:    c.umidadePadrao || '',
         Temperatura_C:         c.temperatura || '',
+        Impureza_pct:          c.impureza || '',
+        Ardidos_pct:           c.ardidos || '',
+        Esverdeados_pct:       c.esverdeados || '',
+        Quebrados_pct:         c.quebrados || '',
+        CPO_pct:               c.cpo || '',
+        Taxa_Armazenagem_pct:  c.taxaArmazenagem || '',
+        Preco_Base_Saca:       c.precoBaseSaca || '',
+        Peso_Liquido_Estimado_kg: c.pesoLiquidoEstimado || '',
         Romaneio_NF:           c.romaneio || '',
         Frete1_Armazem:        f1.armazem || '',
         Frete1_Cidade:         f1.cidade || '',
@@ -807,24 +973,34 @@ function pageColheitas() {
       if (c.frete1) allFretes.push(c.frete1);
       if (c.frete2) allFretes.push(c.frete2);
       const custo = allFretes.reduce((s, f) => s + Number(f.custoFrete || 0), 0);
+      const classif = [
+        c.impureza > 0 ? `Imp:${c.impureza}%` : '',
+        c.ardidos > 0 ? `Ard:${c.ardidos}%` : '',
+        c.esverdeados > 0 ? `Esv:${c.esverdeados}%` : '',
+        c.quebrados > 0 ? `Qbr:${c.quebrados}%` : '',
+        c.cpo > 0 ? `CPO:${c.cpo}%` : ''
+      ].filter(Boolean).join(', ') || '—';
+      const pesoLiq = c.pesoLiquidoEstimado > 0 ? `${(c.pesoLiquidoEstimado/1000).toFixed(2)}t` : '—';
       return `<tr>
         <td>${c.dataColheita}</td>
         <td>${escapeHtml(findNameById(talhoes, c.talhaoId))}</td>
         <td>${num(c.producaoTotal,0)} ${c.unidade}</td>
-        <td>${c.umidade ? c.umidade + '%' : '—'}</td>
+        <td>${c.umidade ? c.umidade + '%' : '—'}${c.umidadePadrao ? ` (pad. ${c.umidadePadrao}%)` : ''}</td>
+        <td>${classif}</td>
+        <td style="color:#16a34a;font-weight:700;">${pesoLiq}</td>
         <td>${c.romaneio || '—'}</td>
-        <td>${allFretes.map(f => f.armazem ? `${f.armazem} (${num(f.toneladas||0,2)}t)` : '').filter(Boolean).join(', ') || '—'}</td>
+        <td>${allFretes.map(f => f.armazem ? `${escapeHtml(f.armazem)} (${num(f.toneladas||0,2)}t)` : '').filter(Boolean).join(', ') || '—'}</td>
         <td>${kbrl(custo)}</td>
       </tr>`;
     }).join('');
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório Colheitas</title>
-    <style>body{font-family:Arial,sans-serif;padding:20px}h1{color:#1e3a5f}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 8px;font-size:12px}th{background:#1e3a5f;color:white}tr:nth-child(even){background:#f5f5f5}.total{font-weight:bold;font-size:14px;margin-top:12px}</style>
+    <style>body{font-family:Arial,sans-serif;padding:20px}h1{color:#1e3a5f}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 8px;font-size:11px}th{background:#1e3a5f;color:white}tr:nth-child(even){background:#f5f5f5}.total{font-weight:bold;font-size:14px;margin-top:12px}</style>
     </head><body>
     <h1>🌾 Relatório de Colheitas — Agro Pro</h1>
     <p style="color:#666;font-size:12px;">Gerado em ${new Date().toLocaleString('pt-BR')} | Produção: ${num(producaoTotalKg/1000,2)}t | Frete Total: ${kbrl(custoFreteTotal)}</p>
-    <table><thead><tr><th>Data</th><th>Talhão</th><th>Produção</th><th>Umidade</th><th>Romaneio/NF</th><th>Armazéns</th><th>Custo Frete</th></tr></thead>
-    <tbody>${linhas || '<tr><td colspan="7">Nenhuma colheita</td></tr>'}</tbody></table>
+    <table><thead><tr><th>Data</th><th>Talhão</th><th>Produção</th><th>Umidade</th><th>Classificação</th><th>Peso Líq.</th><th>Romaneio/NF</th><th>Armazéns</th><th>Custo Frete</th></tr></thead>
+    <tbody>${linhas || '<tr><td colspan="9">Nenhuma colheita</td></tr>'}</tbody></table>
     <div class="total">Total Produção: ${num(producaoTotalKg/1000,2)} toneladas | Total Frete: ${kbrl(custoFreteTotal)}</div>
     </body></html>`;
 

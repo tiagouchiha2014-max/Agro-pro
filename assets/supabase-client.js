@@ -245,6 +245,11 @@ var FIELD_MAP = {
   custoUnitario: 'custo_unitario', custoTotal: 'custo_total', volumeCalda: 'volume_calda',
   condicaoClima: 'condicao_clima', areaColhida: 'area_colhida', producaoTotal: 'producao_total',
   pesoLiquido: 'peso_liquido', sacasHa: 'sacas_ha',
+  // colheita silo descontos
+  umidadePadrao: 'umidade_padrao', impureza: 'impureza', ardidos: 'ardidos',
+  esverdeados: 'esverdeados', quebrados: 'quebrados', cpo: 'cpo',
+  taxaArmazenagem: 'taxa_armazenagem', precoBaseSaca: 'preco_base_saca',
+  pesoLiquidoEstimado: 'peso_liquido_estimado',
   armazem1: 'armazem_1', tonArmazem1: 'ton_armazem_1', frete1Ton: 'frete_1_ton',
   armazem2: 'armazem_2', tonArmazem2: 'ton_armazem_2', frete2Ton: 'frete_2_ton',
   precoVenda: 'preco_venda', receitaTotal: 'receita_total',
@@ -338,7 +343,8 @@ function _quickHash(obj) {
 function cloudSync() {
   if (_syncTimer) clearTimeout(_syncTimer);
   _syncPending = true;
-  _syncTimer = setTimeout(function() { _doCloudSync(); }, 2000);
+  // 3s debounce — evita sobrecarga de requisições durante edição rápida
+  _syncTimer = setTimeout(function() { _doCloudSync(); }, 3000);
 }
 
 async function cloudSyncImmediate() {

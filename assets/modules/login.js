@@ -118,7 +118,16 @@ function pageLogin() {
   };
 
   // ===== LOGIN =====
+  let _loginAttempts = 0;
+  let _loginBlockedUntil = 0;
   document.getElementById("btnEntrar").onclick = async () => {
+    // Rate limit: bloqueia após 5 tentativas por 60s
+    const now = Date.now();
+    if (now < _loginBlockedUntil) {
+      const seg = Math.ceil((_loginBlockedUntil - now) / 1000);
+      return toast("Aguarde", `Muitas tentativas. Tente novamente em ${seg}s.`);
+    }
+
     const email = document.getElementById("loginEmail").value.trim();
     const pass  = document.getElementById("loginPass").value;
     if (!email || !pass) return toast("Erro", "Preencha e-mail e senha.");
@@ -134,16 +143,23 @@ function pageLogin() {
     try {
       const { data, error } = await AuthService.signIn(email, pass);
       if (error) {
+        _loginAttempts++;
+        if (_loginAttempts >= 5) {
+          _loginBlockedUntil = Date.now() + 60000;
+          _loginAttempts = 0;
+          return toast("Bloqueado", "5 tentativas falhadas. Aguarde 60 segundos antes de tentar novamente.");
+        }
         const msg = error.message || '';
         // Tratar erro específico de e-mail não confirmado
         if (msg.toLowerCase().includes('email not confirmed') || msg.toLowerCase().includes('not confirmed')) {
           return toast("E-mail não confirmado", "Verifique sua caixa de entrada e confirme o e-mail antes de entrar. Verifique também o spam.");
         }
         if (msg.toLowerCase().includes('invalid login') || msg.toLowerCase().includes('invalid credentials')) {
-          return toast("Erro", "E-mail ou senha incorretos.");
+          return toast("Erro", `E-mail ou senha incorretos. (${_loginAttempts}/5 tentativas)`);
         }
         return toast("Erro", "Não foi possível entrar: " + msg);
       }
+      _loginAttempts = 0; // reset on success
 
       if (!data?.user) {
         return toast("Erro", "Resposta inválida do servidor. Tente novamente.");
