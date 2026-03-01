@@ -4,12 +4,7 @@
   "outputDirectory": ".",
   "installCommand": "",
   "framework": null,
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
-  ],
+  "cleanUrls": false,
   "headers": [
     {
       "source": "/assets/(.*)",
