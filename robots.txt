@@ -1,0 +1,10 @@
+# Agro Pro — robots.txt
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://agro-pro-refatorar.vercel.app/sitemap.xml
+
+# Block sensitive paths
+Disallow: /assets/supabase-client.js
+Disallow: /_vercel/
