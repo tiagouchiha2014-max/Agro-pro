@@ -193,12 +193,12 @@ function pageLogin() {
       try {
         const restored = await cloudRestore();
         if (!restored && typeof cloudSyncImmediate === 'function') await cloudSyncImmediate();
-      } catch (e) { console.warn('Login restore:', e.message); }
+      } catch (e) { /* silenciado */ }
 
       toast("Bem-vindo!", `Olá, ${userName}!`);
       setTimeout(() => location.reload(), 600);
     } catch (err) {
-      console.error("Erro no login:", err);
+      /* Erro login — silenciado */
       toast("Erro", "Falha no login: " + (err.message || "tente novamente."));
     }
   };
@@ -290,12 +290,12 @@ function pageLogin() {
 
       try {
         if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate();
-      } catch (e) { console.warn('Signup sync:', e.message); }
+      } catch (e) { /* silenciado */ }
 
       toast("Conta criada!", `Bem-vindo ao Agro Pro, ${nome}! Você está no Plano Free.`);
       setTimeout(() => location.reload(), 1200);
     } catch (err) {
-      console.error("Erro no cadastro:", err);
+      /* Erro cadastro — silenciado */
       toast("Erro", "Não foi possível criar a conta: " + (err.message || "tente novamente."));
     }
   };

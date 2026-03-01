@@ -140,7 +140,7 @@ function boot() {
           const cachedSess = localStorage.getItem("agro_session");
           if (cachedSess) {
             // Sessão em cache disponível — usar fallback sem forçar logout
-            console.warn('[Auth] Profile não encontrado, mas sessão em cache disponível — usando modo cache');
+            /* Auth: profile indisponível, usando cache */
             try {
               userSession = JSON.parse(cachedSess);
               userRole = userSession?.user?.role || localStorage.getItem("agro_role") || 'admin';
@@ -151,7 +151,7 @@ function boot() {
             } catch (_e) {}
           }
           // Sem cache — sessão JWT válida mas sem perfil: forçar logout
-          console.warn('[Auth] Sessão ativa mas profile não encontrado e sem cache — forçando logout');
+          /* Auth: sem profile e sem cache — logout */
           ['agro_session','agro_role','agro_trial','agro_plano'].forEach(k => localStorage.removeItem(k));
           if (isSupabaseReady()) await AuthService.signOut().catch(() => {});
           pageLogin();

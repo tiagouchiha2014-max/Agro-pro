@@ -317,10 +317,10 @@ window.setPlano = async (p) => {
       const planMap = { 'Free': 'free', 'Pro': 'pro', 'Master': 'master' };
       const result = await AuthService.updateProfile({ plan_type: planMap[p] || 'free' });
       if (result?.error) {
-        console.warn('[Plano] Erro ao salvar no Supabase:', result.error.message);
+        /* warn silenciado em produção */
       }
     } catch (e) {
-      console.warn('[Plano] Exceção ao atualizar plano:', e.message);
+      /* warn silenciado em produção */
     }
   }
   location.reload();

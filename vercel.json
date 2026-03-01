@@ -23,7 +23,7 @@
         { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.vercel-insights.com https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://nhxkgrczipcqexyaqdmf.supabase.co wss://nhxkgrczipcqexyaqdmf.supabase.co https://vitals.vercel-insights.com; img-src 'self' data: https:; frame-ancestors 'none';"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.vercel-insights.com https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://nhxkgrczipcqexyaqdmf.supabase.co wss://nhxkgrczipcqexyaqdmf.supabase.co https://vitals.vercel-insights.com https://api.open-meteo.com https://api.hgbrasil.com https://economia.awesomeapi.com.br https://api.openai.com; img-src 'self' data: https:; frame-ancestors 'none';"
         }
       ]
     },

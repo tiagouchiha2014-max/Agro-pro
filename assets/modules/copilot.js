@@ -297,12 +297,12 @@ async function _callAI(userMessage) {
       const errData = await resp.json().catch(() => ({}));
       // Chave inválida ou expirada → avisar e tentar Edge Function
       if (resp.status === 401) {
-        console.warn('[Copilot] Chave OpenAI inválida/expirada. Verifique em Configurações.');
+        /* Chave OpenAI inválida/expirada */
         return { ok: false, msg: 'Chave OpenAI inválida ou expirada. Acesse Configurações → IA e salve uma chave válida (começa com sk-).' };
       }
       throw new Error(errData.error?.message || `HTTP ${resp.status}`);
     } catch (e) {
-      console.warn('[Copilot] Erro ao chamar OpenAI diretamente:', e.message);
+      /* Erro chamada OpenAI direta — silenciado */
       // Se for erro de rede, cair no fallback local
       if (e.name === 'TypeError' || e.message.includes('fetch')) {
         return _localFallbackAI(userMessage);
@@ -333,7 +333,7 @@ async function _callAI(userMessage) {
       throw new Error(errData.error?.message || `HTTP ${resp.status}`);
     }
   } catch (e) {
-    console.warn('[Copilot] Edge Function falhou:', e.message);
+    /* Edge Function falhou — silenciado */
   }
 
   // ── 3. Fallback local (sem nenhuma API) ───────────────────────────────────

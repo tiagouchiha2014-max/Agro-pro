@@ -11,7 +11,7 @@ async function buscarClimaOpenMeteo(latitude, longitude) {
     const data = await resp.json();
     return data;
   } catch (e) {
-    console.error("Erro ao buscar clima:", e);
+    /* Erro ao buscar clima — silenciado */
     return null;
   }
 }
@@ -232,7 +232,7 @@ Responda de forma objetiva e prática, como um consultor agronômico falaria com
     const texto = data.choices?.[0]?.message?.content || "Sem resposta da IA.";
     return { ok: true, texto, talhao: talhao.nome, cultura: talhao.cultura };
   } catch (e) {
-    console.error("Erro IA:", e);
+    /* Erro IA — silenciado */
     return { ok: false, msg: "Erro ao consultar IA: " + e.message };
   }
 }
@@ -602,7 +602,7 @@ function iniciarMonitoramentoAlertas() {
       localStorage.setItem('agro_last_alert_check', new Date().toISOString());
       localStorage.setItem('agro_alert_count', String(alertas.length));
     } catch (e) {
-      console.warn('[Alertas] Erro no monitoramento:', e);
+      /* Erro no monitoramento — silenciado */
     }
   }
 
