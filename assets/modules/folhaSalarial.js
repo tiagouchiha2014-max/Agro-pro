@@ -130,17 +130,17 @@ function pageFolhaSalarial() {
       </div>
       <div class="fs-kpi azul">
         <div class="label">💰 Total Bruto</div>
-        <div class="value">${moeda(totalBruto)}</div>
+        <div class="value">${brl(totalBruto)}</div>
         <div class="sub">${mesSel ? 'mês ' + _formatCompetencia(mesSel) : 'geral'}</div>
       </div>
       <div class="fs-kpi vermelho">
         <div class="label">➖ Descontos</div>
-        <div class="value">${moeda(totalDescontos)}</div>
+        <div class="value">${brl(totalDescontos)}</div>
         <div class="sub">INSS + outros</div>
       </div>
       <div class="fs-kpi">
         <div class="label">✅ Total Líquido</div>
-        <div class="value">${moeda(totalLiquido)}</div>
+        <div class="value">${brl(totalLiquido)}</div>
         <div class="sub">a pagar</div>
       </div>
       <div class="fs-kpi amarelo">
@@ -320,17 +320,17 @@ function pageFolhaSalarial() {
     document.getElementById('fsResumoLive').style.display = 'block';
     document.getElementById('fsResumoTexto').innerHTML = `
       <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; font-size:12px;">
-        <div><b>Salário Proporcional:</b><br>${moeda(salarioProp)}</div>
-        <div><b>Horas Extras:</b><br>${moeda(valorHorasExtras)} (${num(hExtra)}h)</div>
-        <div><b>INSS (desconto):</b><br><span class="valor-desconto">${moeda(inss)}</span></div>
-        <div><b>VT + VA + Outros:</b><br>${moeda(vt + va + extras)}</div>
-        <div><b>Adiantamento:</b><br><span class="valor-desconto">${moeda(adiantamento)}</span></div>
-        <div><b>Outros Descontos:</b><br><span class="valor-desconto">${moeda(descontosExtras)}</span></div>
+        <div><b>Salário Proporcional:</b><br>${brl(salarioProp)}</div>
+        <div><b>Horas Extras:</b><br>${brl(valorHorasExtras)} (${num(hExtra)}h)</div>
+        <div><b>INSS (desconto):</b><br><span class="valor-desconto">${brl(inss)}</span></div>
+        <div><b>VT + VA + Outros:</b><br>${brl(vt + va + extras)}</div>
+        <div><b>Adiantamento:</b><br><span class="valor-desconto">${brl(adiantamento)}</span></div>
+        <div><b>Outros Descontos:</b><br><span class="valor-desconto">${brl(descontosExtras)}</span></div>
       </div>
       <div style="margin-top:10px; padding-top:10px; border-top:1px solid #86efac; display:flex; gap:20px;">
-        <div><b>Salário Bruto:</b> <span style="font-size:16px; font-weight:800; color:#2563eb;">${moeda(bruto)}</span></div>
-        <div><b>Total Descontos:</b> <span style="font-size:16px; font-weight:800; color:#ef4444;">${moeda(totalDesc)}</span></div>
-        <div><b>Salário Líquido:</b> <span style="font-size:16px; font-weight:800; color:#10b981;">${moeda(liquido)}</span></div>
+        <div><b>Salário Bruto:</b> <span style="font-size:16px; font-weight:800; color:#2563eb;">${brl(bruto)}</span></div>
+        <div><b>Total Descontos:</b> <span style="font-size:16px; font-weight:800; color:#ef4444;">${brl(totalDesc)}</span></div>
+        <div><b>Salário Líquido:</b> <span style="font-size:16px; font-weight:800; color:#10b981;">${brl(liquido)}</span></div>
       </div>
     `;
   };
@@ -348,9 +348,9 @@ function pageFolhaSalarial() {
     const competencia = document.getElementById('fsCompetencia').value;
     const base = parseFloat(document.getElementById('fsSalarioBase').value || 0);
 
-    if (!funcionarioId) return showToast('Selecione um funcionário', 'error');
-    if (!competencia)   return showToast('Informe a competência (mês/ano)', 'error');
-    if (!base || base <= 0) return showToast('Informe o salário base', 'error');
+    if (!funcionarioId) return toast('❌ Erro', 'Selecione um funcionário');
+    if (!competencia)   return toast('Agro Pro', 'Informe a competência (mês/ano)', 'error');
+    if (!base || base <= 0) return toast('❌ Erro', 'Informe o salário base');
 
     const funcionario = equipe.find(e => e.id === funcionarioId);
     const dias = parseInt(document.getElementById('fsDiasTrabalhados').value || 30);
@@ -415,8 +415,8 @@ function pageFolhaSalarial() {
     const dbNow = getDB();
     dbNow.folhaSalarial = dbNow.folhaSalarial || [];
     dbNow.folhaSalarial.push(registro);
-    saveDB(dbNow);
-    showToast(`✅ Folha de ${funcionario?.nome} salva! Líquido: ${moeda(salarioLiquido)}`, 'success');
+    setDB(dbNow);
+    toast('Agro Pro', `✅ Folha de ${funcionario?.nome} salva! Líquido: ${brl(salarioLiquido)}`, 'success');
     pageFolhaSalarial();
   });
 
@@ -469,7 +469,7 @@ function pageFolhaSalarial() {
         <div class="comp-group">
           <div class="comp-header">
             <span>📅 ${_formatCompetencia(mes)} — ${itens.length} funcionário(s)</span>
-            <span>Bruto: ${moeda(totalBrt)} | Líquido: <b style="color:#10b981;">${moeda(totalLiq)}</b></span>
+            <span>Bruto: ${brl(totalBrt)} | Líquido: <b style="color:#10b981;">${brl(totalLiq)}</b></span>
           </div>
           <div class="fs-table-wrap">
             <table class="fs-table">
@@ -494,10 +494,10 @@ function pageFolhaSalarial() {
                     <td data-label="Função">${escapeHtml(f.funcionarioFuncao || '—')}</td>
                     <td data-label="Dias" style="text-align:center;">${f.diasTrabalhados || 30}</td>
                     <td data-label="H. Extras" style="text-align:center;">${num(f.horasExtras || 0)}h</td>
-                    <td data-label="Bruto"><b style="color:#2563eb;">${moeda(f.salarioBruto)}</b></td>
-                    <td data-label="INSS"><span style="color:#ef4444;">${moeda(f.inss || 0)}</span></td>
-                    <td data-label="Descontos"><span style="color:#ef4444;">${moeda(f.totalDescontos || 0)}</span></td>
-                    <td data-label="Líquido"><b class="valor-destaque">${moeda(f.salarioLiquido)}</b></td>
+                    <td data-label="Bruto"><b style="color:#2563eb;">${brl(f.salarioBruto)}</b></td>
+                    <td data-label="INSS"><span style="color:#ef4444;">${brl(f.inss || 0)}</span></td>
+                    <td data-label="Descontos"><span style="color:#ef4444;">${brl(f.totalDescontos || 0)}</span></td>
+                    <td data-label="Líquido"><b class="valor-destaque">${brl(f.salarioLiquido)}</b></td>
                     <td data-label="Status"><span class="fs-badge badge-${f.status || 'pendente'}">${_statusLabel(f.status)}</span></td>
                     <td data-label="Ações" style="white-space:nowrap;">
                       <button class="btn" style="padding:3px 8px; font-size:11px;" onclick="_fsPagarFolha('${f.id}')">✅ Pagar</button>
@@ -554,10 +554,10 @@ function pageFolhaSalarial() {
                 <td><b>${escapeHtml(r.e.nome)}</b></td>
                 <td>${escapeHtml(r.e.funcao || '—')}</td>
                 <td style="text-align:center;">${r.minhas.length}</td>
-                <td><b style="color:#2563eb;">${moeda(r.totalBruto)}</b></td>
-                <td><b class="valor-destaque">${moeda(r.totalLiquido)}</b></td>
+                <td><b style="color:#2563eb;">${brl(r.totalBruto)}</b></td>
+                <td><b class="valor-destaque">${brl(r.totalLiquido)}</b></td>
                 <td style="text-align:center;">${num(r.totalHorasExtras)}h</td>
-                <td><b style="color:${r.pendentes > 0 ? '#f59e0b' : '#10b981'};">${r.pendentes > 0 ? moeda(r.pendentes) : '✅ Em dia'}</b></td>
+                <td><b style="color:${r.pendentes > 0 ? '#f59e0b' : '#10b981'};">${r.pendentes > 0 ? brl(r.pendentes) : '✅ Em dia'}</b></td>
               </tr>
             `).join('')}
           </tbody>
@@ -577,8 +577,8 @@ function pageFolhaSalarial() {
     if (idx < 0) return;
     dbNow.folhaSalarial[idx].status = 'pago';
     dbNow.folhaSalarial[idx].dataPagamento = new Date().toISOString().split('T')[0];
-    saveDB(dbNow);
-    showToast('✅ Marcado como pago!', 'success');
+    setDB(dbNow);
+    toast('✅ Sucesso', '✅ Marcado como pago!');
     renderHistorico();
     renderResumoPorFuncionario();
   };
@@ -587,8 +587,8 @@ function pageFolhaSalarial() {
     if (!confirm('Excluir este registro de folha?')) return;
     const dbNow = getDB();
     dbNow.folhaSalarial = (dbNow.folhaSalarial || []).filter(f => f.id !== id);
-    saveDB(dbNow);
-    showToast('Registro excluído.', 'info');
+    setDB(dbNow);
+    toast('ℹ️ Info', 'Registro excluído.');
     pageFolhaSalarial();
   };
 
@@ -596,7 +596,7 @@ function pageFolhaSalarial() {
   document.getElementById('btnExportFolhaCSV')?.addEventListener('click', () => {
     const dbNow = getDB();
     const lista = onlySafra(dbNow.folhaSalarial || []);
-    if (!lista.length) return showToast('Nenhum dado para exportar', 'error');
+    if (!lista.length) return toast('❌ Erro', 'Nenhum dado para exportar');
     const header = ['Funcionário','Função','Competência','Dias Trab.','H. Extras','Salário Base','Bruto','INSS','Total Descontos','Líquido','VT','VA','Adiantamento','Status','Data Pagamento','Obs'];
     const rows = lista.map(f => [
       f.funcionarioNome, f.funcionarioFuncao,

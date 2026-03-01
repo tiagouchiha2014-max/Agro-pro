@@ -483,9 +483,9 @@ function pageAnaliseSolo() {
     const data = document.getElementById('asData').value;
     const ph = document.getElementById('asPH').value;
 
-    if (!talhaoId) return showToast('Selecione um talhão', 'error');
-    if (!data)     return showToast('Informe a data da coleta', 'error');
-    if (!ph)       return showToast('Informe o pH do solo', 'error');
+    if (!talhaoId) return toast('❌ Erro', 'Selecione um talhão');
+    if (!data)     return toast('❌ Erro', 'Informe a data da coleta');
+    if (!ph)       return toast('❌ Erro', 'Informe o pH do solo');
 
     const talhao = talhoes.find(t => t.id === talhaoId);
     const fazenda = fazendas.find(f => f.id === talhao?.fazendaId);
@@ -539,8 +539,8 @@ function pageAnaliseSolo() {
     const dbNow = getDB();
     dbNow.analiseSolo = dbNow.analiseSolo || [];
     dbNow.analiseSolo.push(registro);
-    saveDB(dbNow);
-    showToast(`✅ Análise do talhão "${talhao?.nome}" salva com sucesso!`, 'success');
+    setDB(dbNow);
+    toast('Agro Pro', `✅ Análise do talhão "${talhao?.nome}" salva com sucesso!`, 'success');
     pageAnaliseSolo();
   });
 
@@ -658,7 +658,7 @@ function pageAnaliseSolo() {
           ` : ''}
           <div class="row">
             <span>🌱 Insumos base aplicados:</span>
-            <span><b>${meusInsumos.length} lançamento(s)</b> — ${moeda(custoInsumos)}</span>
+            <span><b>${meusInsumos.length} lançamento(s)</b> — ${brl(custoInsumos)}</span>
           </div>
           ${_asAlertaIntegracao(maisRecente, meusInsumos, t)}
           <div style="margin-top:10px;">
@@ -674,7 +674,7 @@ function pageAnaliseSolo() {
   // ── Recomendações IA ───────────────────────────────────
   document.getElementById('btnGerarRecomIA')?.addEventListener('click', () => {
     const talhaoId = document.getElementById('asRecomTalhao')?.value;
-    if (!talhaoId) return showToast('Selecione um talhão', 'error');
+    if (!talhaoId) return toast('❌ Erro', 'Selecione um talhão');
 
     const talhao = talhoes.find(t => t.id === talhaoId);
     const dbNow = getDB();
@@ -747,7 +747,7 @@ function pageAnaliseSolo() {
   document.getElementById('btnExportAnaliseSoloCSV')?.addEventListener('click', () => {
     const dbNow = getDB();
     const lista = onlySafra(dbNow.analiseSolo || []);
-    if (!lista.length) return showToast('Nenhum dado para exportar', 'error');
+    if (!lista.length) return toast('❌ Erro', 'Nenhum dado para exportar');
     const header = ['Data','Talhão','Fazenda','Área(ha)','Cultura','pH','M.O.','P','K','Ca','Mg','Al','H+Al','S','B','Cu','Fe','Mn','Zn','CTC','V%','m%','Areia%','Silte%','Argila%','Textura','Profundidade','Rec.Calagem(t/ha)','Rec.Gessagem(t/ha)','Rec.Adubação','Lab','Laudo','Obs'];
     const rows = lista.map(a => [
       a.data, a.talhaoNome, a.fazendaNome, a.talhaoArea, a.talhaoCultura,
@@ -770,8 +770,8 @@ function pageAnaliseSolo() {
     if (!confirm('Excluir esta análise de solo?')) return;
     const dbNow = getDB();
     dbNow.analiseSolo = (dbNow.analiseSolo || []).filter(a => a.id !== id);
-    saveDB(dbNow);
-    showToast('Análise excluída.', 'info');
+    setDB(dbNow);
+    toast('ℹ️ Info', 'Análise excluída.');
     _asRenderHistorico();
   };
 

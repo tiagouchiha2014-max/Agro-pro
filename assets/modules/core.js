@@ -31,12 +31,15 @@ const PLAN_LIMITS = {
 };
 
 function getPlanLimits() {
-  return PLAN_LIMITS[planoAtual] || PLAN_LIMITS['Free'];
+  // Sempre lê do localStorage para capturar o plano atualizado pelo Supabase
+  const plano = localStorage.getItem("agro_plano") || planoAtual || "Free";
+  return PLAN_LIMITS[plano] || PLAN_LIMITS['Free'];
 }
 
 function getPlanBlockedPages() {
-  // Free e Trial (legado) têm as mesmas restrições
-  return PLAN_BLOCKED_PAGES[planoAtual] || PLAN_BLOCKED_PAGES['Free'];
+  // Sempre lê do localStorage para capturar o plano atualizado pelo Supabase
+  const plano = localStorage.getItem("agro_plano") || planoAtual || "Free";
+  return PLAN_BLOCKED_PAGES[plano] || PLAN_BLOCKED_PAGES['Free'];
 }
 
 const ROLE_PERMISSIONS = {
@@ -493,6 +496,8 @@ function getDB() {
   db.pragas = db.pragas || [];
   db.manutencoes = db.manutencoes || [];
   db.insumosBase = db.insumosBase || [];
+  db.folhaSalarial = db.folhaSalarial || [];
+  db.analiseSolo = db.analiseSolo || [];
 
   db.clima.forEach(c => { if (c.talhaoId == null) c.talhaoId = ""; });
 

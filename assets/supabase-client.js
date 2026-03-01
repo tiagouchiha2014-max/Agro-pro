@@ -201,14 +201,17 @@ var TABLE_MAP = {
   dieselEntradas: 'diesel_entradas', dieselEstoque: 'diesel_estoque',
   clima: 'clima', manutencoes: 'manutencoes', equipe: 'equipe',
   maquinas: 'maquinas', insumosBase: 'insumos_base',
-  lembretes: 'lembretes', pragas: 'pragas'
+  lembretes: 'lembretes', pragas: 'pragas',
+  folhaSalarial: 'folha_salarial',
+  analiseSolo: 'analise_solo'
 };
 
 var SYNC_ORDER = [
   'safras', 'fazendas', 'talhoes', 'maquinas', 'equipe',
   'produtos', 'estoque', 'aplicacoes', 'colheitas',
   'combustivel', 'dieselEntradas', 'dieselEstoque',
-  'clima', 'manutencoes', 'insumosBase', 'lembretes', 'pragas'
+  'clima', 'manutencoes', 'insumosBase', 'lembretes', 'pragas',
+  'folhaSalarial', 'analiseSolo'
 ];
 
 var FIELD_MAP = {
@@ -257,6 +260,25 @@ var FIELD_MAP = {
   kmOuHora: 'km_ou_hora',
   dataAdmissao: 'data_admissao', dataEntrada: 'data_entrada', tipoProduto: 'tipo_produto',
   obs: 'observacoes',
+  // folha_salarial
+  funcionarioId: 'funcionario_id', funcionarioNome: 'funcionario_nome',
+  funcionarioFuncao: 'funcionario_funcao', competencia: 'competencia',
+  salarioBase: 'salario_base', diasTrabalhados: 'dias_trabalhados',
+  horasExtras: 'horas_extras', valorHoraExtra: 'valor_hora_extra',
+  valorHorasExtras: 'valor_horas_extras', adiantamento: 'adiantamento',
+  valeTransporte: 'vale_transporte', valeAlimentacao: 'vale_alimentacao',
+  outrosBeneficios: 'outros_beneficios', inss: 'inss',
+  descontosExtras: 'descontos_extras', totalDescontos: 'total_descontos',
+  salarioBruto: 'salario_bruto', salarioLiquido: 'salario_liquido',
+  dataPagamento: 'data_pagamento',
+  // analise_solo
+  talhaoNome: 'talhao_nome', talhaoArea: 'talhao_area', talhaoCultura: 'talhao_cultura',
+  fazendaNome: 'fazenda_nome', laboratorio: 'laboratorio', profundidade: 'profundidade',
+  textura: 'textura', numeroLaudo: 'numero_laudo',
+  mo: 'mo', hAl: 'h_al', ctc: 'ctc', vPct: 'v_pct', mPct: 'm_pct',
+  areia: 'areia', silte: 'silte', argila: 'argila',
+  recomCalagem: 'recom_calagem', recomGessagem: 'recom_gessagem',
+  recomAdubacao: 'recom_adubacao', criadoEm: 'criado_em',
   userId: 'user_id', createdAt: 'created_at', updatedAt: 'updated_at'
 };
 
@@ -597,7 +619,8 @@ async function _restoreFromTables(userId) {
       fetchTable('colheitas'), fetchTable('combustivel'), fetchTable('diesel_entradas'),
       fetchTable('diesel_estoque'), fetchTable('clima'), fetchTable('manutencoes'),
       fetchTable('equipe'), fetchTable('maquinas'), fetchTable('insumos_base'),
-      fetchTable('lembretes'), fetchTable('pragas')
+      fetchTable('lembretes'), fetchTable('pragas'),
+      fetchTable('folha_salarial'), fetchTable('analise_solo')
     ]);
 
     if (results[0].length === 0) return false;
@@ -631,6 +654,8 @@ async function _restoreFromTables(userId) {
       insumosBase: _mergeByField(results[14], existingLocal.insumosBase || [], 'id'),
       lembretes: _mergeByField(results[15], existingLocal.lembretes || [], 'id'),
       pragas: _mergeByField(results[16], existingLocal.pragas || [], 'id'),
+      folhaSalarial: _mergeByField(results[17], existingLocal.folhaSalarial || [], 'id'),
+      analiseSolo: _mergeByField(results[18], existingLocal.analiseSolo || [], 'id'),
       parametros: parametros
     };
     // safraId: manter a sessão atual se válida, senão usa a ativa do servidor
