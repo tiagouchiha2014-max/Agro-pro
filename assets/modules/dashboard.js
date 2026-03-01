@@ -179,6 +179,29 @@ function pageDashboard() {
           </p>
         </div>
       ` : ''}
+
+      <!-- Copilot & WhatsApp Alerts Banner -->
+      ${planoAtual !== 'Free' ? `
+      <div class="card" style="background:linear-gradient(135deg,#1e3a5f,#2d6a4f); color:white; border:none; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+          <div style="width:44px; height:44px; background:rgba(255,255,255,.15); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">🤖</div>
+          <div>
+            <div style="font-weight:700; font-size:15px;">Agro-Copilot está ativo!</div>
+            <div style="opacity:.75; font-size:12px; margin-top:2px;">Converse com seus dados, receba sugestões e alertas de manejo.</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <a href="copilot.html" style="background:rgba(255,255,255,.2); color:white; padding:9px 18px; border-radius:8px; font-size:13px; font-weight:700; text-decoration:none; border:1px solid rgba(255,255,255,.3);">
+            💬 Abrir Copilot
+          </a>
+          <button onclick="enviarTodosAlertasWhatsApp()" style="background:#25d366; color:white; padding:9px 18px; border-radius:8px; font-size:13px; font-weight:700; border:none; cursor:pointer;">
+            📱 Alertas WhatsApp
+          </button>
+        </div>
+      </div>` : `
+      <div class="card" style="text-align:center; padding:18px; border:1px dashed var(--border);">
+        <span style="font-size:13px; color:var(--text-muted);">🔒 Plano Free — <a href="configuracoes.html" style="color:var(--brand); font-weight:600;">Faça upgrade</a> para acessar o Agro-Copilot (IA) e alertas automáticos.</span>
+      </div>`}
     </div>
   `;
 

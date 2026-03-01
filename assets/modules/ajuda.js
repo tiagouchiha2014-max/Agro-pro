@@ -214,7 +214,7 @@ function pageAjuda() {
     </div>
 
     <div class="ah-footer">
-      Agro Pro v9.3 — &copy; ${new Date().getFullYear()} Tiago Santos. Todos os direitos reservados.<br>
+      Agro Pro v9.4 — &copy; ${new Date().getFullYear()} Tiago Santos. Todos os direitos reservados.<br>
       Desenvolvido com ❤️ para o produtor rural brasileiro.
     </div>
   `;

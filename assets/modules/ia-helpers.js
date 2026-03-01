@@ -345,3 +345,289 @@ async function buscarPrecoGraos(cultura, latitude, longitude) {
 }
 
 
+// ============================================================================
+// SISTEMA DE ALERTAS VIA WHATSAPP — AGRO PRO v9.4
+// ============================================================================
+
+/**
+ * Envia uma mensagem de alerta para o WhatsApp do produtor.
+ * Abre wa.me em nova aba com a mensagem pré-preenchida.
+ * @param {string} mensagem  - Texto do alerta
+ * @param {string} [numero]  - Número destino (sem +, ex: "5599991360547"). Opcional.
+ */
+function enviarAlertaWhatsApp(mensagem, numero) {
+  // Tentar obter o telefone do perfil salvo ou do DB
+  let num = numero || '';
+  if (!num) {
+    try {
+      const session = JSON.parse(localStorage.getItem('agro_session') || '{}');
+      num = (session?.user?.phone || '').replace(/\D/g, '');
+    } catch(_) {}
+  }
+  if (!num) {
+    try {
+      const db = getDB();
+      num = (db?.meta?.whatsappAlertas || '').replace(/\D/g, '');
+    } catch(_) {}
+  }
+  // Fallback: número de suporte
+  if (!num || num.length < 10) num = '5599991360547';
+  if (!num.startsWith('55')) num = '55' + num;
+
+  const texto = `🌾 *Agro Pro — Alerta*\n\n${mensagem}\n\n📅 ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
+  const url   = `https://wa.me/${num}?text=${encodeURIComponent(texto)}`;
+  window.open(url, '_blank');
+  if (typeof toast === 'function') toast('📱 WhatsApp', 'Abrindo WhatsApp com o alerta...', 4000);
+}
+
+/**
+ * Executa uma verificação completa de alertas automáticos e retorna um array.
+ * Verifica: estoque baixo, manutenções pendentes, risco climático,
+ *           aplicações com produto errado e colheitas próximas.
+ */
+function verificarAlertasAutomaticos() {
+  const db = getDB();
+  const safraId = (typeof getSafraId === 'function') ? getSafraId() : db?.session?.safraId;
+  const onlyCurrent = arr =>
+    (arr || []).filter(r => !safraId || r.safraId === safraId || !r.safraId);
+
+  const alertas = [];
+
+  // ── 1. Estoque baixo ──────────────────────────────────────────────────────
+  const estoque  = onlyCurrent(db.estoque);
+  const produtos = db.produtos || [];
+  estoque.forEach(e => {
+    const qtd = Number(e.qtd || 0);
+    const min = Number(e.qtdMinima || 0);
+    if (min > 0 && qtd <= min) {
+      const p = produtos.find(x => x.id === e.produtoId);
+      alertas.push({
+        tipo: 'estoque_baixo',
+        nivel: 'aviso',
+        icone: '📦',
+        titulo: 'Estoque Baixo',
+        mensagem: `${p?.nome || e.produtoNome || 'Produto'} com ${qtd} ${e.unidade || 'un'} (mínimo configurado: ${min}).`,
+        pagina: 'insumos'
+      });
+    }
+  });
+
+  // ── 2. Manutenções pendentes / atrasadas ──────────────────────────────────
+  const manutencoes = onlyCurrent(db.manutencoes);
+  const pendentes   = manutencoes.filter(m => m.status === 'pendente' || m.status === 'atrasado');
+  if (pendentes.length > 0) {
+    alertas.push({
+      tipo: 'manutencao_pendente',
+      nivel: 'atencao',
+      icone: '🔧',
+      titulo: 'Manutenção Pendente',
+      mensagem: `${pendentes.length} serviço(s) pendente(s): ${pendentes.slice(0,3).map(m => m.tipo || m.descricao || 'N/I').join(', ')}.`,
+      pagina: 'manutencao'
+    });
+  }
+
+  // ── 3. Risco climático (ferrugem) ─────────────────────────────────────────
+  const clima = onlyCurrent(db.clima)
+    .sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+    .slice(0, 7);
+  if (clima.length >= 3) {
+    const umidMedia   = clima.reduce((s, c) => s + Number(c.umidade  || 0), 0) / clima.length;
+    const chuvaTotal  = clima.reduce((s, c) => s + Number(c.chuvaMm  || 0), 0);
+    const tempMedia   = clima.reduce((s, c) => s + Number(c.tempMax  || 0), 0) / clima.length;
+
+    if (umidMedia > 75 && tempMedia >= 20 && tempMedia <= 30) {
+      alertas.push({
+        tipo: 'risco_ferrugem',
+        nivel: 'critico',
+        icone: '🍄',
+        titulo: 'Risco de Ferrugem Asiática',
+        mensagem: `Umidade média de ${umidMedia.toFixed(0)}% e ${chuvaTotal.toFixed(1)}mm nos últimos ${clima.length} dias. Temperatura ${tempMedia.toFixed(0)}°C — condições favoráveis para Ferrugem Asiática. Avalie aplicação preventiva de fungicida (Fox, Elatus, Opera).`,
+        pagina: 'clima'
+      });
+    }
+
+    if (umidMedia > 85) {
+      alertas.push({
+        tipo: 'risco_mofo_branco',
+        nivel: 'aviso',
+        icone: '🌫',
+        titulo: 'Risco de Mofo-branco',
+        mensagem: `Umidade acima de 85% — condições favoráveis para Sclerotinia. Avalie fungicidas com ação no solo.`,
+        pagina: 'clima'
+      });
+    }
+  }
+
+  // ── 4. Aplicação com produto errado ───────────────────────────────────────
+  const aplicacoes = onlyCurrent(db.aplicacoes);
+  const fungicidas  = (typeof defensivosDBExpandida !== 'undefined')
+    ? defensivosDBExpandida.fungicidas.map(f => f.nome.toLowerCase()) : [];
+  const inseticidas = (typeof defensivosDBExpandida !== 'undefined')
+    ? defensivosDBExpandida.inseticidas.map(i => i.nome.toLowerCase()) : [];
+  const pragasAlvo   = ['lagarta','percevejo','mosca-branca','ácaro','acaro','tripes','pulgão','pulgao'];
+  const doencasAlvo  = ['ferrugem','mancha-alvo','antracnose','oídio','oidio','cercospora','mofo'];
+
+  aplicacoes.slice(-30).forEach(a => {
+    (a.produtos || []).forEach(p => {
+      const nomeProd   = (p.produtoNome || '').toLowerCase();
+      const alvo       = (a.alvo || '').toLowerCase();
+      const ehFungi    = fungicidas.includes(nomeProd);
+      const ehInseti   = inseticidas.includes(nomeProd);
+      const alvoPraga  = pragasAlvo.some(x => alvo.includes(x));
+      const alvoDoenca = doencasAlvo.some(x => alvo.includes(x));
+
+      if (ehFungi && alvoPraga) {
+        alertas.push({
+          tipo: 'aplicacao_errada',
+          nivel: 'critico',
+          icone: '❌',
+          titulo: 'Aplicação Incorreta',
+          mensagem: `Fungicida "${p.produtoNome}" foi usado para "${a.alvo}" em ${a.data || 'N/I'}. Fungicidas não controlam pragas. Use um inseticida adequado.`,
+          pagina: 'aplicacoes'
+        });
+      }
+      if (ehInseti && alvoDoenca) {
+        alertas.push({
+          tipo: 'aplicacao_errada',
+          nivel: 'critico',
+          icone: '❌',
+          titulo: 'Aplicação Incorreta',
+          mensagem: `Inseticida "${p.produtoNome}" foi usado para "${a.alvo}" em ${a.data || 'N/I'}. Inseticidas não controlam doenças fúngicas. Use um fungicida adequado.`,
+          pagina: 'aplicacoes'
+        });
+      }
+    });
+  });
+
+  // ── 5. Colheita iminente (data próxima) ───────────────────────────────────
+  const colheitas = onlyCurrent(db.colheitas);
+  const hoje = new Date();
+  colheitas.forEach(c => {
+    if (!c.dataPrevistaColheita) return;
+    const diasRestantes = Math.floor((new Date(c.dataPrevistaColheita) - hoje) / 86400000);
+    if (diasRestantes >= 0 && diasRestantes <= 14) {
+      const talhao = (db.talhoes || []).find(t => t.id === c.talhaoId);
+      alertas.push({
+        tipo: 'colheita_proxima',
+        nivel: 'info',
+        icone: '🌾',
+        titulo: 'Colheita Próxima',
+        mensagem: `Talhão "${talhao?.nome || c.talhaoId}" com colheita prevista em ${c.dataPrevistaColheita} (${diasRestantes} dias). Verifique disponibilidade de colhedoras e logística.`,
+        pagina: 'colheitas'
+      });
+    }
+  });
+
+  // ── 6. Diesel baixo ───────────────────────────────────────────────────────
+  const dieselEstoque = db.dieselEstoque || [];
+  dieselEstoque.forEach(d => {
+    if (Number(d.litros || 0) < 500) {
+      alertas.push({
+        tipo: 'diesel_baixo',
+        nivel: 'aviso',
+        icone: '⛽',
+        titulo: 'Diesel Baixo',
+        mensagem: `Estoque de diesel com apenas ${d.litros || 0} litros (depósito: ${d.deposito || 'N/I'}). Reabastecimento recomendado.`,
+        pagina: 'combustivel'
+      });
+    }
+  });
+
+  return alertas;
+}
+
+/**
+ * Gera um resumo textual dos alertas para WhatsApp.
+ * @param {Array} alertas - Array retornado por verificarAlertasAutomaticos()
+ * @returns {string}
+ */
+function formatarAlertasWhatsApp(alertas) {
+  if (!alertas || alertas.length === 0) return '✅ Nenhum alerta pendente.';
+  const criticos = alertas.filter(a => a.nivel === 'critico');
+  const atencao  = alertas.filter(a => a.nivel === 'atencao');
+  const avisos   = alertas.filter(a => a.nivel === 'aviso' || a.nivel === 'info');
+
+  let texto = `🌾 *Agro Pro — Relatório de Alertas*\n📅 ${new Date().toLocaleDateString('pt-BR')}\n\n`;
+
+  if (criticos.length > 0) {
+    texto += `🔴 *CRÍTICOS (${criticos.length}):*\n`;
+    criticos.forEach(a => { texto += `${a.icone} *${a.titulo}*: ${a.mensagem}\n`; });
+    texto += '\n';
+  }
+  if (atencao.length > 0) {
+    texto += `🟡 *ATENÇÃO (${atencao.length}):*\n`;
+    atencao.forEach(a => { texto += `${a.icone} *${a.titulo}*: ${a.mensagem}\n`; });
+    texto += '\n';
+  }
+  if (avisos.length > 0) {
+    texto += `🟢 *AVISOS (${avisos.length}):*\n`;
+    avisos.forEach(a => { texto += `${a.icone} *${a.titulo}*: ${a.mensagem}\n`; });
+    texto += '\n';
+  }
+  texto += `_Agro Pro · Verifique o aplicativo para detalhes_`;
+  return texto;
+}
+
+/**
+ * Verifica alertas e envia TODOS para o WhatsApp de uma vez.
+ * @param {string} [numero] - Número destino opcional
+ */
+function enviarTodosAlertasWhatsApp(numero) {
+  const alertas = verificarAlertasAutomaticos();
+  if (alertas.length === 0) {
+    if (typeof toast === 'function') toast('✅ Sem alertas', 'Nenhum alerta pendente no momento.', 3000);
+    return;
+  }
+  const mensagem = formatarAlertasWhatsApp(alertas);
+  enviarAlertaWhatsApp(mensagem, numero);
+}
+
+/**
+ * Inicia monitoramento periódico (a cada 30 min enquanto a aba estiver aberta).
+ * Exibe um toast quando alertas críticos aparecerem.
+ */
+function iniciarMonitoramentoAlertas() {
+  function _verificar() {
+    try {
+      const alertas  = verificarAlertasAutomaticos();
+      const criticos = alertas.filter(a => a.nivel === 'critico');
+      if (criticos.length > 0 && typeof toast === 'function') {
+        toast(
+          `⚡ ${criticos.length} alerta(s) crítico(s)`,
+          criticos[0].mensagem + (criticos.length > 1 ? ` (+${criticos.length - 1} mais)` : ''),
+          6000
+        );
+      }
+      // Salvar último check no localStorage
+      localStorage.setItem('agro_last_alert_check', new Date().toISOString());
+      localStorage.setItem('agro_alert_count', String(alertas.length));
+    } catch (e) {
+      console.warn('[Alertas] Erro no monitoramento:', e);
+    }
+  }
+
+  // Verificar imediatamente ao carregar (após 3s para o DB estar pronto)
+  setTimeout(_verificar, 3000);
+
+  // Depois a cada 30 minutos
+  const intervalo = setInterval(_verificar, 30 * 60 * 1000);
+
+  // Expor para cancelamento externo se necessário
+  window._alertaIntervalId = intervalo;
+  return intervalo;
+}
+
+// Iniciar monitoramento automaticamente quando o módulo carregar
+if (typeof window !== 'undefined') {
+  // Só inicia se não estiver na tela de login
+  const pKey = document.body?.getAttribute?.('data-page') || '';
+  if (pKey !== 'login') {
+    // Aguardar DOM+DB prontos
+    if (document.readyState === 'complete') {
+      iniciarMonitoramentoAlertas();
+    } else {
+      window.addEventListener('load', iniciarMonitoramentoAlertas);
+    }
+  }
+}
+
