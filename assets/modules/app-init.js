@@ -109,6 +109,8 @@ function boot() {
     relatorios: ["Relatórios", "Exportação de dados da safra"],
     config: ["Configurações", "Parâmetros e backup"],
     copilot: ["Agro-Copilot", "Assistente de IA para sua fazenda"],
+    ia: ["Inteligência Artificial", "Funcionalidades IA — em desenvolvimento"],
+    "ia-preditiva": ["IA Preditiva", "Previsões e análises avançadas — em desenvolvimento"],
     ajuda: ["Ajuda & Suporte", "Centro de Ajuda e Documentação"],
     propriedade: ["Minha Propriedade", "Safras, fazendas e talhões"]
   };
@@ -295,6 +297,19 @@ function _renderPageAfterAuth(pageKey, titles) {
     else if (pageKey === "maquinas") pageMaquinas();
     else if (pageKey === "relatorios") pageRelatorios();
     else if (pageKey === "copilot") pageCopilot();
+    else if (pageKey === "ia" || pageKey === "ia-preditiva") {
+      // Redirecionar páginas IA legadas para a tela "Em Breve"
+      document.getElementById('content').innerHTML = _renderIAComingSoon(
+        pageKey === 'ia' ? 'Inteligência Artificial' : 'IA Preditiva',
+        'Estamos desenvolvendo funcionalidades avançadas de IA para potencializar sua gestão agrícola.',
+        [
+          { icon: '🧠', title: 'IA Preditiva', desc: 'Previsão de produtividade e análise de risco por talhão' },
+          { icon: '🌿', title: 'Detecção de Pragas', desc: 'Identificação automática com base em dados climáticos' },
+          { icon: '💊', title: 'Receituário IA', desc: 'Recomendações de defensivos baseadas no seu histórico' },
+          { icon: '📈', title: 'Tendências', desc: 'Análise de tendências de preço e produtividade' }
+        ]
+      );
+    }
     else if (pageKey === "ajuda") pageAjuda();
     else if (pageKey === "config") pageConfiguracoes();
     else if (pageKey === "propriedade") pagePropriedade();

@@ -930,15 +930,18 @@ async function _asConsultarIAParaTalhao(analise, talhao, insumos) {
   const iaBox = document.getElementById('asIaBox');
   if (!iaBox) return;
 
-  const hasEdgeFunction = typeof SUPABASE_URL !== 'undefined' && typeof AuthService !== 'undefined';
-  if (!hasEdgeFunction) {
-    iaBox.innerHTML = `
-      <div style="background:#f1f5f9; border-radius:10px; padding:16px; font-size:13px; color:#64748b; text-align:center;">
-        <b>🤖 Análise aprofundada via IA</b> — Faça login para acessar recomendações avançadas via Agro-Copilot.
+  // IA temporariamente desativada
+  iaBox.innerHTML = `
+    <div style="background:linear-gradient(135deg, #0f172a, #1e3a5f); border-radius:12px; padding:24px; text-align:center; color:white;">
+      <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(251,191,36,0.2); padding:4px 12px; border-radius:20px; font-size:11px; font-weight:700; color:#fbbf24; margin-bottom:12px;">
+        <span style="display:inline-block; width:6px; height:6px; background:#fbbf24; border-radius:50%; animation:pulse 2s infinite;"></span>
+        EM DESENVOLVIMENTO
       </div>
-    `;
-    return;
-  }
+      <h3 style="margin:0 0 8px; font-size:16px;">🤖 Recomendação IA — Em Breve</h3>
+      <p style="margin:0; opacity:0.8; font-size:13px; line-height:1.5;">A análise de solo com IA está sendo aprimorada. Em breve você receberá recomendações de calagem, adubação e manejo personalizadas por talhão.</p>
+    </div>
+  `;
+  return;
 
   try {
     const contexto = `

@@ -7,7 +7,7 @@ function renderShell(pageKey, title, subtitle) {
   const allowedPages = PAGES.filter(p => canAccessPage(p.key));
   const nav = allowedPages.map(p => {
     const active = (p.key === pageKey) ? "active" : "";
-    return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span> ${escapeHtml(p.label)}</a>`;
+    return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span> ${escapeHtml(p.label)}${p.badge ? ` <span style="background:#fbbf24; color:#0f172a; font-size:9px; padding:1px 6px; border-radius:8px; font-weight:800; vertical-align:middle; margin-left:4px;">${p.badge}</span>` : ''}</a>`;
   }).join("");
 
   const safraOptions = db.safras.length > 0

@@ -178,6 +178,13 @@ function pageLogin() {
       const userName = profile?.full_name || data.user.user_metadata?.full_name || email.split('@')[0];
       const role = profile?.user_role || 'admin';
 
+      // Bloquear contas desativadas
+      if (role === 'desativado') {
+        await AuthService.signOut();
+        toast("Acesso bloqueado", "Sua conta foi desativada pelo administrador. Entre em contato com o responsável.");
+        return;
+      }
+
       localStorage.setItem("agro_session", JSON.stringify({
         user: { id: data.user.id, email: data.user.email, nome: userName, role }
       }));
