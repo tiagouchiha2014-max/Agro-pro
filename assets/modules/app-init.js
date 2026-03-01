@@ -113,8 +113,9 @@ function boot() {
     propriedade: ["Minha Propriedade", "Safras, fazendas e talhões"]
   };
 
-  // Limpar apenas a chave legada (nome antigo); a nova chave 'agro_openai_key' é preservada
+  // Limpar chaves OpenAI legadas do localStorage (agora gerenciadas no servidor)
   localStorage.removeItem("agro_pro_openai_key");
+  localStorage.removeItem("agro_openai_key");
   sessionStorage.removeItem("agro_pro_openai_key");
 
   // Verificar Sessão — Online (Supabase) ou Offline (localStorage cache)

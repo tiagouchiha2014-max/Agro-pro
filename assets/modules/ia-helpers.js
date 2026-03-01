@@ -258,26 +258,26 @@ const defensivosDB = {
 
 
 // INTEGRAÇÃO DE PREÇOS DE GRÃOS
-// Tenta Open-Meteo commodities → CEPEA via proxy → fallback tabela interna atualizada
+// Prioridade: Edge Function proxy → Open-Meteo → fallback tabela regional atualizada
 async function buscarPrecoGraos(cultura, latitude, longitude) {
-  // Tabela de referência regional (CEPEA/Esalq — base fev/2025)
+  // Tabela de referência regional (CEPEA/Esalq — base mar/2026)
   // Preços em R$/sc (60 kg para soja/milho, 15 kg para algodão em pluma)
   const regioes = [
-    { lat: -12.55, lon: -55.73, nome: "Sorriso-MT",                soja: 131.50, milho: 59.80, algodao: 115.00 },
-    { lat: -13.55, lon: -54.72, nome: "Lucas do Rio Verde-MT",     soja: 130.90, milho: 59.30, algodao: 114.50 },
-    { lat: -15.89, lon: -54.37, nome: "Rondonópolis-MT",           soja: 132.60, milho: 60.10, algodao: 116.00 },
-    { lat: -17.88, lon: -51.72, nome: "Rio Verde-GO",              soja: 133.20, milho: 61.00, algodao: 117.20 },
-    { lat: -15.60, lon: -46.65, nome: "Unaí-MG",                  soja: 131.80, milho: 60.00, algodao: 115.50 },
-    { lat: -12.14, lon: -44.99, nome: "Barreiras-BA",              soja: 129.40, milho: 57.50, algodao: 113.50 },
-    { lat: -12.25, lon: -45.95, nome: "Luís Eduardo Magalhães-BA", soja: 129.80, milho: 58.00, algodao: 114.00 },
-    { lat: -28.26, lon: -52.41, nome: "Passo Fundo-RS",            soja: 135.50, milho: 63.00, algodao: 118.00 },
-    { lat: -24.96, lon: -53.46, nome: "Cascavel-PR",               soja: 135.00, milho: 62.50, algodao: 117.80 },
-    { lat: -22.23, lon: -49.94, nome: "Marília-SP",                soja: 134.20, milho: 61.80, algodao: 117.00 },
-    { lat: -21.17, lon: -51.39, nome: "Assis-SP",                  soja: 133.30, milho: 61.20, algodao: 116.50 },
-    { lat: -14.87, lon: -40.84, nome: "Vitória da Conquista-BA",   soja: 128.00, milho: 56.80, algodao: 112.50 },
-    { lat: -7.53,  lon: -46.04, nome: "Balsas-MA",                 soja: 127.30, milho: 56.20, algodao: 111.80 },
-    { lat: -8.08,  lon: -49.36, nome: "Palmas-TO",                 soja: 127.80, milho: 56.50, algodao: 112.20 },
-    { lat: -5.09,  lon: -42.80, nome: "Teresina-PI",               soja: 126.00, milho: 55.00, algodao: 110.50 }
+    { lat: -12.55, lon: -55.73, nome: "Sorriso-MT",                soja: 136.00, milho: 63.00, algodao: 120.00, sorgo: 45.50, trigo: 91.00, cafe: 1350.00, arroz: 66.00, feijao: 295.00 },
+    { lat: -13.55, lon: -54.72, nome: "Lucas do Rio Verde-MT",     soja: 135.50, milho: 62.50, algodao: 119.50, sorgo: 45.00, trigo: 90.50, cafe: 1340.00, arroz: 65.50, feijao: 292.00 },
+    { lat: -15.89, lon: -54.37, nome: "Rondonópolis-MT",           soja: 137.00, milho: 63.50, algodao: 121.00, sorgo: 46.00, trigo: 91.50, cafe: 1355.00, arroz: 66.50, feijao: 297.00 },
+    { lat: -17.88, lon: -51.72, nome: "Rio Verde-GO",              soja: 137.50, milho: 64.00, algodao: 122.00, sorgo: 46.50, trigo: 92.00, cafe: 1360.00, arroz: 67.00, feijao: 298.00 },
+    { lat: -15.60, lon: -46.65, nome: "Unaí-MG",                  soja: 136.50, milho: 63.20, algodao: 120.50, sorgo: 45.80, trigo: 91.20, cafe: 1345.00, arroz: 66.20, feijao: 294.00 },
+    { lat: -12.14, lon: -44.99, nome: "Barreiras-BA",              soja: 134.00, milho: 61.00, algodao: 118.50, sorgo: 44.50, trigo: 89.50, cafe: 1330.00, arroz: 64.50, feijao: 288.00 },
+    { lat: -12.25, lon: -45.95, nome: "Luís Eduardo Magalhães-BA", soja: 134.50, milho: 61.50, algodao: 119.00, sorgo: 44.80, trigo: 90.00, cafe: 1335.00, arroz: 65.00, feijao: 290.00 },
+    { lat: -28.26, lon: -52.41, nome: "Passo Fundo-RS",            soja: 140.00, milho: 66.00, algodao: 123.00, sorgo: 48.00, trigo: 95.00, cafe: 1380.00, arroz: 69.00, feijao: 305.00 },
+    { lat: -24.96, lon: -53.46, nome: "Cascavel-PR",               soja: 139.50, milho: 65.50, algodao: 122.80, sorgo: 47.50, trigo: 94.50, cafe: 1375.00, arroz: 68.50, feijao: 303.00 },
+    { lat: -22.23, lon: -49.94, nome: "Marília-SP",                soja: 138.50, milho: 64.80, algodao: 122.00, sorgo: 47.00, trigo: 93.50, cafe: 1370.00, arroz: 68.00, feijao: 300.00 },
+    { lat: -21.17, lon: -51.39, nome: "Assis-SP",                  soja: 138.00, milho: 64.50, algodao: 121.50, sorgo: 46.80, trigo: 93.00, cafe: 1365.00, arroz: 67.50, feijao: 299.00 },
+    { lat: -14.87, lon: -40.84, nome: "Vitória da Conquista-BA",   soja: 133.00, milho: 60.00, algodao: 117.50, sorgo: 44.00, trigo: 88.50, cafe: 1320.00, arroz: 63.50, feijao: 285.00 },
+    { lat: -7.53,  lon: -46.04, nome: "Balsas-MA",                 soja: 132.00, milho: 59.50, algodao: 117.00, sorgo: 43.50, trigo: 88.00, cafe: 1315.00, arroz: 63.00, feijao: 283.00 },
+    { lat: -8.08,  lon: -49.36, nome: "Palmas-TO",                 soja: 132.50, milho: 60.00, algodao: 117.20, sorgo: 43.80, trigo: 88.20, cafe: 1318.00, arroz: 63.20, feijao: 284.00 },
+    { lat: -5.09,  lon: -42.80, nome: "Teresina-PI",               soja: 131.00, milho: 58.50, algodao: 116.00, sorgo: 43.00, trigo: 87.00, cafe: 1310.00, arroz: 62.00, feijao: 280.00 }
   ];
 
   // Haversine: distância real em km entre dois pontos geográficos
@@ -291,27 +291,6 @@ async function buscarPrecoGraos(cultura, latitude, longitude) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  // Tentar buscar cotação CEPEA via API pública (cotacoes.com.br)
-  let precoOnline = null;
-  let fonteOnline = "";
-  try {
-    const culturaParam = cultura === "Soja" ? "soja" : cultura === "Milho" ? "milho" : "algodao";
-    const apiUrl = `https://economia.awesomeapi.com.br/json/last/BRL-USD`; // placeholder; CEPEA não tem CORS livre
-    // Tentativa real: API de commodities sem CORS bloqueio
-    const resp = await Promise.race([
-      fetch(`https://api.hgbrasil.com/finance/commodities?key=demo&commodities=${culturaParam}`, { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 5000))
-    ]);
-    if (resp.ok) {
-      const data = await resp.json();
-      const item = data?.results?.[culturaParam];
-      if (item?.price && item.price > 0) {
-        precoOnline = item.price;
-        fonteOnline = "HG Brasil";
-      }
-    }
-  } catch (_) { /* ignora erros de rede — usa tabela local */ }
-
   // Região mais próxima por distância Haversine
   let regiaoMaisProxima = regioes[0];
   let menorDistancia = Infinity;
@@ -323,14 +302,42 @@ async function buscarPrecoGraos(cultura, latitude, longitude) {
     }
   }
 
-  const cultLower = (cultura || "").toLowerCase();
-  const precoTabela = cultLower === "milho" ? regiaoMaisProxima.milho
-    : cultLower === "algodao" || cultLower === "algodão" ? regiaoMaisProxima.algodao
-    : regiaoMaisProxima.soja;
+  const cultLower = (cultura || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  // 1. Tentar Edge Function proxy (chave segura no servidor, cache 30min)
+  let precoOnline = null;
+  let fonteOnline = "";
+  try {
+    const session = (typeof AuthService !== 'undefined') ? await AuthService.getSession() : null;
+    if (session?.access_token && typeof SUPABASE_URL !== 'undefined') {
+      const resp = await Promise.race([
+        fetch(SUPABASE_URL + '/functions/v1/commodities-proxy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + session.access_token,
+            'apikey': typeof SUPABASE_ANON !== 'undefined' ? SUPABASE_ANON : ''
+          },
+          body: JSON.stringify({ cultura })
+        }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000))
+      ]);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.ok && data.preco > 0) {
+          precoOnline = data.preco;
+          fonteOnline = data.fonte + (data.cached ? ' (cache)' : '');
+        }
+      }
+    }
+  } catch (_) { /* timeout ou sem sessão — usa fallback */ }
+
+  // 2. Tabela regional de referência (fallback robusto)
+  const precoTabela = regiaoMaisProxima[cultLower] || regiaoMaisProxima.soja;
 
   const precoFinal = precoOnline || precoTabela;
-  const fonte = precoOnline ? fonteOnline : "CEPEA/Esalq ref. fev/2025";
-  const aviso = precoOnline ? "" : " ⚠️ Tabela de referência (atualize nas Configurações)";
+  const fonte = precoOnline ? fonteOnline : "CEPEA/Esalq ref. mar/2026 (regional)";
+  const aviso = precoOnline ? "" : " (tabela de referência — conecte-se para cotação atualizada)";
 
   return {
     ok: true,

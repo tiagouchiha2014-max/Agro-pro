@@ -277,41 +277,7 @@ async function _callAI(userMessage) {
     temperature: 0.7
   };
 
-  // ── 1. Chave OpenAI salva diretamente no dispositivo (Configurações) ──────
-  const localKey = localStorage.getItem('agro_openai_key') || '';
-  if (localKey && localKey.startsWith('sk-')) {
-    try {
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localKey
-        },
-        body: JSON.stringify(payload)
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        const text = data.choices?.[0]?.message?.content || 'Sem resposta.';
-        return { ok: true, text };
-      }
-      const errData = await resp.json().catch(() => ({}));
-      // Chave inválida ou expirada → avisar e tentar Edge Function
-      if (resp.status === 401) {
-        /* Chave OpenAI inválida/expirada */
-        return { ok: false, msg: 'Chave OpenAI inválida ou expirada. Acesse Configurações → IA e salve uma chave válida (começa com sk-).' };
-      }
-      throw new Error(errData.error?.message || `HTTP ${resp.status}`);
-    } catch (e) {
-      /* Erro chamada OpenAI direta — silenciado */
-      // Se for erro de rede, cair no fallback local
-      if (e.name === 'TypeError' || e.message.includes('fetch')) {
-        return _localFallbackAI(userMessage);
-      }
-      return { ok: false, msg: 'Erro ao chamar OpenAI: ' + e.message };
-    }
-  }
-
-  // ── 2. Edge Function do Supabase (quando sem chave local) ─────────────────
+  // ── 1. Edge Function do Supabase (chave segura no servidor) ─────────────────
   try {
     const session = (typeof AuthService !== 'undefined') ? await AuthService.getSession() : null;
     if (session?.access_token && typeof SUPABASE_URL !== 'undefined') {
@@ -330,13 +296,23 @@ async function _callAI(userMessage) {
         return { ok: true, text };
       }
       const errData = await resp.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `HTTP ${resp.status}`);
+      const errMsg = errData.error?.message || errData.error || `HTTP ${resp.status}`;
+      if (resp.status === 429) {
+        return { ok: false, msg: 'Limite de consultas por hora atingido. Aguarde alguns minutos.' };
+      }
+      if (resp.status === 401) {
+        return { ok: false, msg: 'Sessão expirada. Faça login novamente.' };
+      }
+      throw new Error(errMsg);
     }
   } catch (e) {
-    /* Edge Function falhou — silenciado */
+    if (e.name === 'TypeError' || e.message.includes('fetch')) {
+      return _localFallbackAI(userMessage);
+    }
+    return { ok: false, msg: 'Erro ao consultar IA: ' + e.message };
   }
 
-  // ── 3. Fallback local (sem nenhuma API) ───────────────────────────────────
+  // ── 2. Fallback local (sem nenhuma API) ───────────────────────────────────
   return _localFallbackAI(userMessage);
 }
 
@@ -787,9 +763,8 @@ function pageCopilot() {
     return;
   }
 
-  // Chave OpenAI (deve ser calculada ANTES do innerHTML)
-  const localKey = localStorage.getItem('agro_openai_key') || '';
-  const hasKey   = localKey.startsWith('sk-');
+  // IA via Edge Function (servidor seguro)
+  const hasKey = typeof SUPABASE_URL !== 'undefined' && typeof AuthService !== 'undefined';
 
   // Gerar alertas automáticos proativos
   const alertasAuto = _gerarAlertasAutomaticos();
@@ -892,18 +867,17 @@ function pageCopilot() {
     }, 800);
   }
 
-  // Se não tiver chave, mostrar dica inline
+  // Se não tiver conexão com servidor, mostrar aviso
   if (!hasKey) {
     const box = document.getElementById('copilotMessages');
     if (box) {
       box.insertAdjacentHTML('beforeend', `
         <div style="background:#fffbeb; border:1px solid #f59e0b; border-radius:10px; padding:14px 16px; font-size:13px; color:#78350f; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-          <span style="font-size:22px;">🔑</span>
+          <span style="font-size:22px;">📡</span>
           <div style="flex:1;">
-            <strong>Ative a IA completa em 30 segundos:</strong><br>
-            Vá em <strong>Configurações → IA</strong>, cole sua chave OpenAI (<code>sk-proj-...</code>) e toque em <strong>Salvar Chave</strong>. Grátis pelo site: <a href="https://platform.openai.com/api-keys" target="_blank" style="color:#92400e;">platform.openai.com/api-keys</a>
+            <strong>Modo offline ativo.</strong> O Copilot está usando respostas baseadas em regras locais.
+            Conecte-se à internet e faça login para acessar a IA completa (GPT-4o) via servidor seguro.
           </div>
-          <a href="configuracoes.html" style="background:#f59e0b; color:white; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:700; text-decoration:none; white-space:nowrap;">⚙️ Configurar agora</a>
         </div>`);
       _scrollToBottom();
     }
