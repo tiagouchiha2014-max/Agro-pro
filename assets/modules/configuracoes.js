@@ -137,76 +137,27 @@ function pageConfiguracoes() {
   ` : '';
 
   // ── Seção IA ─────────────────────────────────────────────────────────────────
-  const savedKey = localStorage.getItem('agro_openai_key') || '';
-  const keyMasked = savedKey ? savedKey.substring(0,7) + '••••••••••••••••••••' + savedKey.slice(-4) : '';
   const iaSection = userRole !== 'funcionario' ? `
     <div class="cfg-card page-enter">
       <div class="cfg-card-header">
         <span class="cfg-card-icon">🤖</span>
         <div>
-          <h3 class="cfg-card-title">Inteligência Artificial — Chave OpenAI</h3>
-          <p class="cfg-card-sub">Insira sua chave da OpenAI para ativar o Agro-Copilot diretamente no seu dispositivo</p>
+          <h3 class="cfg-card-title">Inteligência Artificial — Agro-Copilot</h3>
+          <p class="cfg-card-sub">IA integrada via servidor seguro (Edge Function)</p>
         </div>
       </div>
 
-      <!-- Status atual -->
       <div class="cfg-ia-status" style="margin-bottom:16px;">
-        ${savedKey
-          ? `<span class="tag tag-success">✅ Chave configurada</span>
-             <span style="color:var(--text-muted); font-size:13px; margin-left:8px;">${keyMasked}</span>`
-          : `<span class="tag" style="background:#fef3c7; color:#92400e;">⚠️ Nenhuma chave configurada</span>
-             <span style="color:var(--text-muted); font-size:13px; margin-left:8px;">O Copilot usará modo offline (regras locais) até você inserir a chave.</span>`
-        }
+        <span class="tag tag-success">🔒 IA protegida no servidor</span>
+        <span style="color:var(--text-muted); font-size:13px; margin-left:8px;">Chave OpenAI gerenciada no backend — nunca exposta no navegador.</span>
       </div>
 
-      <!-- Formulário de chave -->
-      <div class="form-group" style="max-width:520px;">
-        <label style="font-size:13px; font-weight:600; color:var(--text); display:block; margin-bottom:6px;">🔑 Sua Chave OpenAI (começa com <code>sk-</code>)</label>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input
-            id="inputOpenAIKey"
-            type="password"
-            class="input"
-            placeholder="sk-proj-..."
-            value="${savedKey}"
-            autocomplete="off"
-            spellcheck="false"
-            style="flex:1; font-family:monospace; font-size:13px; letter-spacing:.05em;"
-          />
-          <button type="button" id="btnToggleKey"
-            style="padding:10px 14px; background:var(--bg); border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:16px;"
-            title="Mostrar/ocultar chave">👁</button>
-        </div>
-        <p style="font-size:11.5px; color:var(--text-muted); margin:6px 0 0;">
-          Acesse <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--brand);">platform.openai.com/api-keys</a> para obter sua chave. A chave fica salva apenas neste dispositivo.
-        </p>
-      </div>
-
-      <!-- Botões -->
-      <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
-        <button type="button" id="btnSaveOpenAIKey"
-          class="btn primary"
-          style="font-size:13px;">
-          💾 Salvar Chave
-        </button>
-        <button type="button" id="btnTestOpenAIKey"
-          class="btn"
-          style="font-size:13px;">
-          🧪 Testar Conexão
-        </button>
-        ${savedKey ? `<button type="button" id="btnClearOpenAIKey"
-          class="btn"
-          style="font-size:13px; color:var(--danger,#b91c1c); border-color:var(--danger,#b91c1c);">
-          🗑 Remover Chave
-        </button>` : ''}
-      </div>
-
-      <!-- Dica tablet -->
-      <div style="margin-top:16px; padding:12px 14px; background:var(--info-bg,#eff6ff); border-radius:8px; border-left:3px solid var(--info,#3b82f6);">
+      <div style="padding:12px 14px; background:var(--info-bg,#eff6ff); border-radius:8px; border-left:3px solid var(--info,#3b82f6);">
         <p style="margin:0; font-size:12.5px; color:var(--info-text,#1e40af); line-height:1.7;">
-          📱 <strong>Usando tablet ou celular?</strong> Cole sua chave OpenAI no campo acima e toque em <strong>Salvar Chave</strong>.
-          Depois abra o <strong>Agro-Copilot</strong> e ele estará totalmente ativo com o modelo <strong>gpt-4o</strong>.
-          Sua chave fica salva apenas neste dispositivo (localStorage) — nunca é enviada para nossos servidores.
+          🛡️ <strong>Segurança:</strong> O Agro-Copilot usa um proxy seguro no servidor (Supabase Edge Function)
+          para acessar a OpenAI. Sua chave API nunca é armazenada no navegador.<br>
+          📊 <strong>Limite:</strong> 20 consultas por hora por usuário (planos Pro e Master).<br>
+          💬 Acesse o <a href="copilot.html" style="color:var(--brand);">Agro-Copilot</a> para conversar com a IA.
         </p>
       </div>
     </div>
@@ -716,49 +667,7 @@ function pageConfiguracoes() {
     setTimeout(() => location.reload(), 200);
   });
 
-  // Botão Salvar Chave OpenAI
-  document.getElementById('btnSaveOpenAIKey')?.addEventListener('click', () => {
-    const val = (document.getElementById('inputOpenAIKey')?.value || '').trim();
-    if (!val) { toast('Atenção', 'Cole sua chave OpenAI antes de salvar.'); return; }
-    if (!val.startsWith('sk-')) { toast('Chave inválida', 'A chave OpenAI deve começar com sk-.'); return; }
-    localStorage.setItem('agro_openai_key', val);
-    toast('✅ Chave salva!', 'O Agro-Copilot está pronto para usar.', 4000);
-    setTimeout(() => pageConfiguracoes(), 600);
-  });
-
-  // Botão Mostrar/ocultar chave
-  document.getElementById('btnToggleKey')?.addEventListener('click', () => {
-    const inp = document.getElementById('inputOpenAIKey');
-    if (!inp) return;
-    inp.type = inp.type === 'password' ? 'text' : 'password';
-  });
-
-  // Botão Testar Conexão
-  document.getElementById('btnTestOpenAIKey')?.addEventListener('click', async () => {
-    const key = localStorage.getItem('agro_openai_key') || (document.getElementById('inputOpenAIKey')?.value || '').trim();
-    if (!key || !key.startsWith('sk-')) { toast('Sem chave', 'Salve sua chave primeiro.'); return; }
-    toast('Testando...', 'Conectando à OpenAI...', 5000);
-    try {
-      const r = await fetch('https://api.openai.com/v1/models', {
-        headers: { 'Authorization': 'Bearer ' + key }
-      });
-      if (r.ok) {
-        toast('✅ Conexão OK!', 'Sua chave OpenAI é válida e o Copilot está ativo!', 5000);
-      } else {
-        const err = await r.json().catch(() => ({}));
-        toast('❌ Chave inválida', err.error?.message || 'Verifique sua chave e tente novamente.', 5000);
-      }
-    } catch(e) {
-      toast('Erro de rede', 'Verifique sua conexão com a internet.', 4000);
-    }
-  });
-
-  // Botão Remover Chave
-  document.getElementById('btnClearOpenAIKey')?.addEventListener('click', () => {
-    localStorage.removeItem('agro_openai_key');
-    toast('Chave removida', 'O Copilot voltará ao modo offline.', 3000);
-    setTimeout(() => pageConfiguracoes(), 400);
-  });
+  // (Seção chave OpenAI removida — agora gerenciada no servidor via Edge Function)
 
   // Cloud Sync Manual
   document.getElementById("btnForceSync")?.addEventListener("click", async () => {

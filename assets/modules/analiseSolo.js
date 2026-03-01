@@ -930,13 +930,11 @@ async function _asConsultarIAParaTalhao(analise, talhao, insumos) {
   const iaBox = document.getElementById('asIaBox');
   if (!iaBox) return;
 
-  const apiKey = localStorage.getItem('agro_openai_key');
-  if (!apiKey) {
+  const hasEdgeFunction = typeof SUPABASE_URL !== 'undefined' && typeof AuthService !== 'undefined';
+  if (!hasEdgeFunction) {
     iaBox.innerHTML = `
       <div style="background:#f1f5f9; border-radius:10px; padding:16px; font-size:13px; color:#64748b; text-align:center;">
-        <b>🤖 Análise aprofundada via GPT-4o</b> — Para recomendações avançadas personalizadas,
-        configure sua chave da OpenAI em
-        <a href="configuracoes.html" style="color:#2563eb;">Configurações</a>.
+        <b>🤖 Análise aprofundada via IA</b> — Faça login para acessar recomendações avançadas via Agro-Copilot.
       </div>
     `;
     return;
@@ -956,9 +954,16 @@ Insumos base já aplicados: ${insumos.length} lançamentos (${insumos.map(i=>i.t
 
     const prompt = `Como agrônomo especialista, analise este laudo de solo e forneça recomendações técnicas detalhadas:\n\n${contexto}\n\nForneça: 1) Diagnóstico completo do estado nutricional, 2) Programa de calagem/gessagem, 3) Plano de adubação de base (NPK + micronutrientes), 4) Alerta sobre deficiências críticas, 5) Estratégia de manutenção para próximas safras. Seja específico em doses e produtos.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const session = await AuthService.getSession();
+    if (!session) throw new Error('Faça login para usar a IA.');
+
+    const response = await fetch(SUPABASE_URL + '/functions/v1/openai-proxy', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + session.access_token,
+        'apikey': SUPABASE_ANON
+      },
       body: JSON.stringify({
         model: 'gpt-4o',
         messages: [
