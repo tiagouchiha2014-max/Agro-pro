@@ -123,7 +123,29 @@ function _buildFullContext() {
   /* ── Combustível ─────────────────────────────────── */
   const combustivelTotal = combustivel.reduce((acc, c) => acc + Number(c.litros || 0), 0);
 
-  /* ── Equipe ──────────────────────────────────────── */
+  /* ── Análises de Solo ────────────────────────────── */
+  const analiseSolo = onlyCurrent(db.analiseSolo || []).sort((a,b) => (b.data||'').localeCompare(a.data||''));
+
+  const analiseSoloStr = analiseSolo.length > 0
+    ? analiseSolo.slice(0, 10).map(a => {
+        const talhao = talhoes.find(t => t.id === a.talhaoId);
+        return `  Talhão: ${a.talhaoNome || talhao?.nome || 'N/I'} | Data: ${a.data} | pH: ${a.ph ?? 'N/I'} | V%: ${a.vPct ?? 'N/I'} | M.O.: ${a.mo ?? 'N/I'} g/dm³ | P: ${a.p ?? 'N/I'} | K: ${a.k ?? 'N/I'} | Ca: ${a.ca ?? 'N/I'} | Mg: ${a.mg ?? 'N/I'} | CTC: ${a.ctc ?? 'N/I'} | Textura: ${a.textura || 'N/I'} | Calagem: ${a.recomCalagem ? a.recomCalagem + ' t/ha' : 'N/I'} | Rec: ${a.recomAdubacao || 'N/I'}`;
+      }).join('\n')
+    : '  Nenhuma análise de solo registrada ainda.';
+
+  /* ── Folha Salarial ──────────────────────────────── */
+  const folhaSalarial = onlyCurrent(db.folhaSalarial || []);
+  const folhaTotalMes = (() => {
+    const mesAtual = new Date().toISOString().substring(0, 7);
+    const mesAtualFolhas = folhaSalarial.filter(f => (f.competencia || '').startsWith(mesAtual));
+    return {
+      bruto: mesAtualFolhas.reduce((s, f) => s + Number(f.salarioBruto || 0), 0),
+      liquido: mesAtualFolhas.reduce((s, f) => s + Number(f.salarioLiquido || 0), 0),
+      pendentes: mesAtualFolhas.filter(f => f.status !== 'pago').reduce((s, f) => s + Number(f.salarioLiquido || 0), 0),
+      n: mesAtualFolhas.length
+    };
+  })();
+
   const equipeStr = equipe.length > 0
     ? equipe.map(e => `${e.nome} (${e.cargo || e.funcao || 'N/I'})`).join(', ')
     : 'Sem equipe cadastrada';
@@ -175,6 +197,12 @@ ${manPendentes.length > 0 ? `  ⚠️ MANUTENÇÕES PENDENTES: ${manPendentes.ma
 
 👥 EQUIPE:
   ${equipeStr}
+
+💰 FOLHA SALARIAL (mês atual):
+  Registros: ${folhaTotalMes.n} | Bruto: R$${fmtNum(folhaTotalMes.bruto)} | Líquido: R$${fmtNum(folhaTotalMes.liquido)} | A pagar: R$${fmtNum(folhaTotalMes.pendentes)}
+
+🔬 ANÁLISE DE SOLO (${analiseSolo.length} laudo(s) registrado(s)):
+${analiseSoloStr}
 
 💰 PARÂMETROS DE MERCADO:
   Soja: R$${params.precoSoja || 120}/sc | Prod: ${params.produtividadeMinSoja||65}–${params.produtividadeMaxSoja||75} sc/ha
@@ -396,6 +424,49 @@ function _localFallbackAI(pergunta) {
       resp += pendentes.map(m => `• ⚠️ **${m.tipo || m.descricao}** — Máquina: ${m.maquinaId || 'N/I'} — Prevista: ${m.dataManutencao || 'N/I'}`).join('\n');
     } else {
       resp = `✅ Nenhuma manutenção pendente no momento.`;
+    }
+  }
+
+  // ─── Análise de Solo ──────────────────────────────
+  else if (q.includes('solo') || q.includes('ph') || q.includes('fertilidade') || q.includes('laudo') || q.includes('calagem') || q.includes('gessagem') || q.includes('v%') || q.includes('saturação de bases') || q.includes('nutrientes')) {
+    const analises = onlyCurrent(db.analiseSolo || []).sort((a,b) => (b.data||'').localeCompare(a.data||''));
+    resp = `## 🔬 Análise de Solo\n\n`;
+    if (analises.length === 0) {
+      resp += `Nenhuma análise de solo registrada ainda.\n\n👉 Acesse **Análise de Solo** no menu para registrar laudos de fertilidade.\nCom os dados do laudo, poderei fazer recomendações de calagem, gessagem e adubação de base personalizadas.`;
+    } else {
+      resp += `**${analises.length} análise(s) registrada(s):**\n\n`;
+      analises.slice(0, 5).forEach(a => {
+        const phStatus = a.ph < 5.5 ? '⚠️ Ácido' : a.ph <= 7.0 ? '✅ Ideal' : '🔵 Alcalino';
+        resp += `• **${a.talhaoNome || 'N/I'}** (${a.data}): pH ${a.ph ?? 'N/I'} ${phStatus} | V%: ${a.vPct ?? 'N/I'}% | M.O.: ${a.mo ?? 'N/I'} g/dm³\n`;
+        if (a.recomCalagem) resp += `  📌 Calagem: ${a.recomCalagem} t/ha\n`;
+      });
+      const semAnalise = talhoes.filter(t => !analises.find(a => a.talhaoId === t.id));
+      if (semAnalise.length > 0) {
+        resp += `\n⚠️ **${semAnalise.length} talhão(ões) sem análise de solo:** ${semAnalise.map(t=>t.nome).join(', ')}`;
+      }
+      resp += `\n\n👉 Acesse **Análise de Solo** para detalhes completos e recomendações por talhão.`;
+    }
+  }
+
+  // ─── Folha Salarial ───────────────────────────────
+  else if (q.includes('folha') || q.includes('salarial') || q.includes('salário') || q.includes('pagamento') || q.includes('funcionário') || q.includes('inss') || q.includes('horas extras')) {
+    const folhas = onlyCurrent(db.folhaSalarial || []);
+    const totalBruto = folhas.reduce((s,f) => s+Number(f.salarioBruto||0), 0);
+    const totalLiq   = folhas.reduce((s,f) => s+Number(f.salarioLiquido||0), 0);
+    const pendentes  = folhas.filter(f => f.status !== 'pago').reduce((s,f) => s+Number(f.salarioLiquido||0), 0);
+    resp = `## 💰 Folha Salarial\n\n`;
+    if (folhas.length === 0) {
+      resp += `Nenhum registro de folha salarial ainda.\n\n👉 Acesse **Folha Salarial** no menu para lançar pagamentos.`;
+    } else {
+      resp += `**${folhas.length} registro(s)** de folha:\n\n`;
+      resp += `• 💰 Total Bruto: **R$ ${totalBruto.toFixed(2).replace('.', ',')}**\n`;
+      resp += `• ✅ Total Líquido: **R$ ${totalLiq.toFixed(2).replace('.', ',')}**\n`;
+      if (pendentes > 0) {
+        resp += `• ⏳ **A pagar: R$ ${pendentes.toFixed(2).replace('.', ',')}** — há salários pendentes!\n`;
+      } else {
+        resp += `• ✅ Nenhum pagamento pendente.\n`;
+      }
+      resp += `\n👉 Acesse **Folha Salarial** para detalhes e marcar como pago.`;
     }
   }
 
@@ -766,7 +837,7 @@ function pageCopilot() {
       <!-- Sugestões Rápidas -->
       <div style="background:var(--card-bg,white); border:1px solid var(--border,#e2e8f0); border-top:none; padding:12px 16px; display:flex; gap:8px; flex-wrap:wrap;">
         <span style="font-size:12px; color:var(--text-muted,#64748b); align-self:center;">Perguntar sobre:</span>
-        ${['💰 Custos','🌦 Clima','📦 Estoque','🔧 Manutenção','🌱 Talhões','📊 Financeiro','🧪 Aplicações','⚠️ Alertas'].map(s =>
+        ${['💰 Custos','🌦 Clima','📦 Estoque','🔧 Manutenção','🌱 Talhões','📊 Financeiro','🧪 Aplicações','🔬 Solo','⚠️ Alertas'].map(s =>
           `<button onclick="document.getElementById('copilotInput').value='${s.replace(/['"]/g,'')}'; _sendMessage();"
             style="background:var(--bg,#f8fafc); border:1px solid var(--border,#e2e8f0); border-radius:20px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .2s;"
             onmouseover="this.style.background='var(--brand,#2e7d32)'; this.style.color='white';"
@@ -809,6 +880,17 @@ function pageCopilot() {
   const welcomeText = `${saudacao}, **${nome}**! 👋\n\nSou o **Agro-Copilot**, seu assistente agronômico com acesso a todos os dados da sua propriedade.\n\n**Resumo rápido:**\n• 🌾 ${safra ? `Safra ativa: ${safra.nome}` : 'Nenhuma safra selecionada'}\n• 🌱 ${talhoes.length} talhão(ões) cadastrado(s)\n• 📅 Data: ${new Date().toLocaleDateString('pt-BR', {weekday:'long', day:'numeric', month:'long', year:'numeric'})}\n• 🔒 Plano: ${plano}\n${keyStatus}\n${alertasAuto.length > 0 ? `• ⚡ **${alertasAuto.length} alerta(s) automático(s) detectado(s)**` : '• ✅ Nenhum alerta pendente'}\n\nO que você gostaria de saber hoje?`;
 
   _addMessage('bot', welcomeText);
+
+  // Auto-query vindo de outra página (ex: Análise de Solo → "Aprofundar no Copilot")
+  const autoQuery = sessionStorage.getItem('_copilotAutoQuery');
+  if (autoQuery) {
+    sessionStorage.removeItem('_copilotAutoQuery');
+    setTimeout(() => {
+      const inp = document.getElementById('copilotInput');
+      if (inp) { inp.value = autoQuery; }
+      _sendMessage();
+    }, 800);
+  }
 
   // Se não tiver chave, mostrar dica inline
   if (!hasKey) {

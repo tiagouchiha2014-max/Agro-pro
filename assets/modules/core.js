@@ -16,7 +16,7 @@ let userRole = localStorage.getItem("agro_role") || "admin";
 
 // Páginas BLOQUEADAS por plano (não aparecem na sidebar nem podem ser acessadas)
 const PLAN_BLOCKED_PAGES = {
-  'Free':   ['colheitas','manutencao','clima','relatorios','centralgestao','copilot','combustivel','aplicacoes','insumos','estoque','equipe','maquinas','insumosbase','config'],
+  'Free':   ['colheitas','manutencao','clima','relatorios','centralgestao','copilot','combustivel','aplicacoes','insumos','estoque','equipe','maquinas','insumosbase','config','folhasalarial','analisesolo'],
   'Pro':    [],
   'Master': [],
   'Trial':  [] // legado — tratar como Free se aparecer
@@ -41,21 +41,21 @@ function getPlanBlockedPages() {
 
 const ROLE_PERMISSIONS = {
   admin: {
-    pages: ['dashboard','copilot','centralgestao','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda'],
+    pages: ['dashboard','copilot','centralgestao','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','folhasalarial','analisesolo','maquinas','relatorios','config','ajuda'],
     canCreate: true,
     canDelete: true,
     canSeeFinanceiro: true,
     label: 'Administrador'
   },
   gerente: {
-    pages: ['dashboard','copilot','centralgestao','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','relatorios','config','ajuda'],
+    pages: ['dashboard','copilot','centralgestao','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','folhasalarial','analisesolo','maquinas','relatorios','config','ajuda'],
     canCreate: true,
     canDelete: true,
     canSeeFinanceiro: false,
     label: 'Gerente'
   },
   funcionario: {
-    pages: ['dashboard','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','ajuda'],
+    pages: ['dashboard','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','analisesolo','ajuda'],
     canCreate: false, // default false, override por pagina
     canDelete: false,
     canSeeFinanceiro: false,
@@ -77,6 +77,7 @@ const ROLE_PERMISSIONS = {
       manutencao:   { view: true, create: true,  delete: false },  // Registrar manutenção
       equipe:       { view: true, create: false, delete: false },  // Apenas visualizar
       maquinas:     { view: true, create: false, delete: false },
+      analisesolo:  { view: true, create: false, delete: false },
       ajuda:        { view: true, create: false, delete: false }
     }
   }
@@ -540,6 +541,8 @@ const PAGES = [
   { href: "colheitas.html",     label: "Colheitas",          key: "colheitas",     icon: "🌾" },
   { href: "manutencao.html",    label: "Manutenção",         key: "manutencao",    icon: "🔧" },
   { href: "equipe.html",        label: "Equipe",             key: "equipe",        icon: "👷" },
+  { href: "folhasalarial.html", label: "Folha Salarial",     key: "folhasalarial", icon: "💰" },
+  { href: "analisesolo.html",   label: "Análise de Solo",    key: "analisesolo",   icon: "🔬" },
   { href: "maquinas.html",      label: "Máquinas",           key: "maquinas",      icon: "🛠️" },
   { href: "relatorios.html",    label: "Relatórios",         key: "relatorios",    icon: "🧾" },
   { href: "configuracoes.html", label: "Configurações",      key: "config",        icon: "⚙️" },

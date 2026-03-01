@@ -103,6 +103,8 @@ function boot() {
     colheitas: ["Colheitas", "Produção real e frete da safra"],
     manutencao: ["Manutenção", "Manutenção de máquinas e equipamentos"],
     equipe: ["Equipe", "Colaboradores da safra"],
+    folhasalarial: ["Folha Salarial", "Gestão de pagamentos e salários da equipe"],
+    analisesolo: ["Análise de Solo", "Laudos, fertilidade e recomendações por talhão"],
     maquinas: ["Máquinas", "Equipamentos da safra"],
     relatorios: ["Relatórios", "Exportação de dados da safra"],
     config: ["Configurações", "Parâmetros e backup"],
@@ -272,6 +274,8 @@ function _renderPageAfterAuth(pageKey, titles) {
     else if (pageKey === "colheitas") pageColheitas();
     else if (pageKey === "manutencao") pageManutencao();
     else if (pageKey === "equipe") pageEquipe();
+    else if (pageKey === "folhasalarial") pageFolhaSalarial();
+    else if (pageKey === "analisesolo") pageAnaliseSolo();
     else if (pageKey === "maquinas") pageMaquinas();
     else if (pageKey === "relatorios") pageRelatorios();
     else if (pageKey === "copilot") pageCopilot();
