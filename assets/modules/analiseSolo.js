@@ -991,7 +991,7 @@ Insumos base já aplicados: ${insumos.length} lançamentos (${insumos.map(i=>i.t
     }
   } catch (e) {
     if (iaBox) {
-      iaBox.innerHTML = `<div style="color:#ef4444; font-size:12px; padding:10px;">⚠️ Erro ao consultar IA: ${e.message}. Use o Copilot para análise manual.</div>`;
+      iaBox.innerHTML = `<div style="color:#ef4444; font-size:12px; padding:10px;">⚠️ Erro ao consultar IA: ${escapeHtml(String(e.message || e))}. Use o Copilot para análise manual.</div>`;
     }
   }
 }

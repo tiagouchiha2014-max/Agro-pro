@@ -261,23 +261,23 @@ const defensivosDB = {
 // Prioridade: Edge Function proxy → Open-Meteo → fallback tabela regional atualizada
 async function buscarPrecoGraos(cultura, latitude, longitude) {
   // Tabela de referência regional (CEPEA/Esalq — base mar/2026)
-  // Preços em R$/sc (60 kg para soja/milho, 15 kg para algodão em pluma)
+  // Preços em R$/sc — 11 culturas × 15 regiões (CEPEA/Esalq ref. mar/2026)
   const regioes = [
-    { lat: -12.55, lon: -55.73, nome: "Sorriso-MT",                soja: 136.00, milho: 63.00, algodao: 120.00, sorgo: 45.50, trigo: 91.00, cafe: 1350.00, arroz: 66.00, feijao: 295.00 },
-    { lat: -13.55, lon: -54.72, nome: "Lucas do Rio Verde-MT",     soja: 135.50, milho: 62.50, algodao: 119.50, sorgo: 45.00, trigo: 90.50, cafe: 1340.00, arroz: 65.50, feijao: 292.00 },
-    { lat: -15.89, lon: -54.37, nome: "Rondonópolis-MT",           soja: 137.00, milho: 63.50, algodao: 121.00, sorgo: 46.00, trigo: 91.50, cafe: 1355.00, arroz: 66.50, feijao: 297.00 },
-    { lat: -17.88, lon: -51.72, nome: "Rio Verde-GO",              soja: 137.50, milho: 64.00, algodao: 122.00, sorgo: 46.50, trigo: 92.00, cafe: 1360.00, arroz: 67.00, feijao: 298.00 },
-    { lat: -15.60, lon: -46.65, nome: "Unaí-MG",                  soja: 136.50, milho: 63.20, algodao: 120.50, sorgo: 45.80, trigo: 91.20, cafe: 1345.00, arroz: 66.20, feijao: 294.00 },
-    { lat: -12.14, lon: -44.99, nome: "Barreiras-BA",              soja: 134.00, milho: 61.00, algodao: 118.50, sorgo: 44.50, trigo: 89.50, cafe: 1330.00, arroz: 64.50, feijao: 288.00 },
-    { lat: -12.25, lon: -45.95, nome: "Luís Eduardo Magalhães-BA", soja: 134.50, milho: 61.50, algodao: 119.00, sorgo: 44.80, trigo: 90.00, cafe: 1335.00, arroz: 65.00, feijao: 290.00 },
-    { lat: -28.26, lon: -52.41, nome: "Passo Fundo-RS",            soja: 140.00, milho: 66.00, algodao: 123.00, sorgo: 48.00, trigo: 95.00, cafe: 1380.00, arroz: 69.00, feijao: 305.00 },
-    { lat: -24.96, lon: -53.46, nome: "Cascavel-PR",               soja: 139.50, milho: 65.50, algodao: 122.80, sorgo: 47.50, trigo: 94.50, cafe: 1375.00, arroz: 68.50, feijao: 303.00 },
-    { lat: -22.23, lon: -49.94, nome: "Marília-SP",                soja: 138.50, milho: 64.80, algodao: 122.00, sorgo: 47.00, trigo: 93.50, cafe: 1370.00, arroz: 68.00, feijao: 300.00 },
-    { lat: -21.17, lon: -51.39, nome: "Assis-SP",                  soja: 138.00, milho: 64.50, algodao: 121.50, sorgo: 46.80, trigo: 93.00, cafe: 1365.00, arroz: 67.50, feijao: 299.00 },
-    { lat: -14.87, lon: -40.84, nome: "Vitória da Conquista-BA",   soja: 133.00, milho: 60.00, algodao: 117.50, sorgo: 44.00, trigo: 88.50, cafe: 1320.00, arroz: 63.50, feijao: 285.00 },
-    { lat: -7.53,  lon: -46.04, nome: "Balsas-MA",                 soja: 132.00, milho: 59.50, algodao: 117.00, sorgo: 43.50, trigo: 88.00, cafe: 1315.00, arroz: 63.00, feijao: 283.00 },
-    { lat: -8.08,  lon: -49.36, nome: "Palmas-TO",                 soja: 132.50, milho: 60.00, algodao: 117.20, sorgo: 43.80, trigo: 88.20, cafe: 1318.00, arroz: 63.20, feijao: 284.00 },
-    { lat: -5.09,  lon: -42.80, nome: "Teresina-PI",               soja: 131.00, milho: 58.50, algodao: 116.00, sorgo: 43.00, trigo: 87.00, cafe: 1310.00, arroz: 62.00, feijao: 280.00 }
+    { lat: -12.55, lon: -55.73, nome: "Sorriso-MT",                soja: 136.00, milho: 63.00, algodao: 120.00, sorgo: 45.50, trigo: 91.00, cafe: 1350.00, arroz: 66.00, feijao: 295.00, canola: 145.00, girassol: 95.00, amendoim: 230.00 },
+    { lat: -13.55, lon: -54.72, nome: "Lucas do Rio Verde-MT",     soja: 135.50, milho: 62.50, algodao: 119.50, sorgo: 45.00, trigo: 90.50, cafe: 1340.00, arroz: 65.50, feijao: 292.00, canola: 144.00, girassol: 94.50, amendoim: 228.00 },
+    { lat: -15.89, lon: -54.37, nome: "Rondonópolis-MT",           soja: 137.00, milho: 63.50, algodao: 121.00, sorgo: 46.00, trigo: 91.50, cafe: 1355.00, arroz: 66.50, feijao: 297.00, canola: 146.00, girassol: 95.50, amendoim: 231.00 },
+    { lat: -17.88, lon: -51.72, nome: "Rio Verde-GO",              soja: 137.50, milho: 64.00, algodao: 122.00, sorgo: 46.50, trigo: 92.00, cafe: 1360.00, arroz: 67.00, feijao: 298.00, canola: 146.50, girassol: 96.00, amendoim: 232.00 },
+    { lat: -15.60, lon: -46.65, nome: "Unaí-MG",                  soja: 136.50, milho: 63.20, algodao: 120.50, sorgo: 45.80, trigo: 91.20, cafe: 1345.00, arroz: 66.20, feijao: 294.00, canola: 145.50, girassol: 95.20, amendoim: 230.50 },
+    { lat: -12.14, lon: -44.99, nome: "Barreiras-BA",              soja: 134.00, milho: 61.00, algodao: 118.50, sorgo: 44.50, trigo: 89.50, cafe: 1330.00, arroz: 64.50, feijao: 288.00, canola: 143.00, girassol: 93.50, amendoim: 226.00 },
+    { lat: -12.25, lon: -45.95, nome: "Luís Eduardo Magalhães-BA", soja: 134.50, milho: 61.50, algodao: 119.00, sorgo: 44.80, trigo: 90.00, cafe: 1335.00, arroz: 65.00, feijao: 290.00, canola: 143.50, girassol: 94.00, amendoim: 227.00 },
+    { lat: -28.26, lon: -52.41, nome: "Passo Fundo-RS",            soja: 140.00, milho: 66.00, algodao: 123.00, sorgo: 48.00, trigo: 95.00, cafe: 1380.00, arroz: 69.00, feijao: 305.00, canola: 150.00, girassol: 98.00, amendoim: 238.00 },
+    { lat: -24.96, lon: -53.46, nome: "Cascavel-PR",               soja: 139.50, milho: 65.50, algodao: 122.80, sorgo: 47.50, trigo: 94.50, cafe: 1375.00, arroz: 68.50, feijao: 303.00, canola: 149.50, girassol: 97.50, amendoim: 237.00 },
+    { lat: -22.23, lon: -49.94, nome: "Marília-SP",                soja: 138.50, milho: 64.80, algodao: 122.00, sorgo: 47.00, trigo: 93.50, cafe: 1370.00, arroz: 68.00, feijao: 300.00, canola: 148.50, girassol: 97.00, amendoim: 235.00 },
+    { lat: -21.17, lon: -51.39, nome: "Assis-SP",                  soja: 138.00, milho: 64.50, algodao: 121.50, sorgo: 46.80, trigo: 93.00, cafe: 1365.00, arroz: 67.50, feijao: 299.00, canola: 148.00, girassol: 96.50, amendoim: 234.00 },
+    { lat: -14.87, lon: -40.84, nome: "Vitória da Conquista-BA",   soja: 133.00, milho: 60.00, algodao: 117.50, sorgo: 44.00, trigo: 88.50, cafe: 1320.00, arroz: 63.50, feijao: 285.00, canola: 142.00, girassol: 93.00, amendoim: 225.00 },
+    { lat: -7.53,  lon: -46.04, nome: "Balsas-MA",                 soja: 132.00, milho: 59.50, algodao: 117.00, sorgo: 43.50, trigo: 88.00, cafe: 1315.00, arroz: 63.00, feijao: 283.00, canola: 141.00, girassol: 92.50, amendoim: 224.00 },
+    { lat: -8.08,  lon: -49.36, nome: "Palmas-TO",                 soja: 132.50, milho: 60.00, algodao: 117.20, sorgo: 43.80, trigo: 88.20, cafe: 1318.00, arroz: 63.20, feijao: 284.00, canola: 141.50, girassol: 92.80, amendoim: 224.50 },
+    { lat: -5.09,  lon: -42.80, nome: "Teresina-PI",               soja: 131.00, milho: 58.50, algodao: 116.00, sorgo: 43.00, trigo: 87.00, cafe: 1310.00, arroz: 62.00, feijao: 280.00, canola: 140.00, girassol: 92.00, amendoim: 222.00 }
   ];
 
   // Haversine: distância real em km entre dois pontos geográficos

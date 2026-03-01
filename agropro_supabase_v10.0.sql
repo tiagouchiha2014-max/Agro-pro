@@ -48,6 +48,7 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY IF NOT EXISTS profiles_sel ON profiles FOR SELECT USING ((SELECT auth.uid()) = id);
 CREATE POLICY IF NOT EXISTS profiles_ins ON profiles FOR INSERT WITH CHECK ((SELECT auth.uid()) = id);
 CREATE POLICY IF NOT EXISTS profiles_upd ON profiles FOR UPDATE USING ((SELECT auth.uid()) = id);
+CREATE POLICY IF NOT EXISTS profiles_del ON profiles FOR DELETE USING ((SELECT auth.uid()) = id);
 DROP TRIGGER IF EXISTS trg_profiles_upd ON profiles;
 CREATE TRIGGER trg_profiles_upd BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
