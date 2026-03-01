@@ -111,7 +111,7 @@ function boot() {
     propriedade: ["Minha Propriedade", "Safras, fazendas e talhões"]
   };
 
-  // API Key removida do front-end — IA processada via Edge Function no servidor
+  // Limpar apenas a chave legada (nome antigo); a nova chave 'agro_openai_key' é preservada
   localStorage.removeItem("agro_pro_openai_key");
   sessionStorage.removeItem("agro_pro_openai_key");
 

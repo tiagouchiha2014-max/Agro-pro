@@ -242,7 +242,48 @@ async function _callAI(userMessage) {
     { role: 'user', content: userMessage }
   ];
 
-  // Tentar Edge Function do Supabase
+  const payload = {
+    model: 'gpt-4o',
+    messages,
+    max_tokens: 2000,
+    temperature: 0.7
+  };
+
+  // ── 1. Chave OpenAI salva diretamente no dispositivo (Configurações) ──────
+  const localKey = localStorage.getItem('agro_openai_key') || '';
+  if (localKey && localKey.startsWith('sk-')) {
+    try {
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + localKey
+        },
+        body: JSON.stringify(payload)
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const text = data.choices?.[0]?.message?.content || 'Sem resposta.';
+        return { ok: true, text };
+      }
+      const errData = await resp.json().catch(() => ({}));
+      // Chave inválida ou expirada → avisar e tentar Edge Function
+      if (resp.status === 401) {
+        console.warn('[Copilot] Chave OpenAI inválida/expirada. Verifique em Configurações.');
+        return { ok: false, msg: 'Chave OpenAI inválida ou expirada. Acesse Configurações → IA e salve uma chave válida (começa com sk-).' };
+      }
+      throw new Error(errData.error?.message || `HTTP ${resp.status}`);
+    } catch (e) {
+      console.warn('[Copilot] Erro ao chamar OpenAI diretamente:', e.message);
+      // Se for erro de rede, cair no fallback local
+      if (e.name === 'TypeError' || e.message.includes('fetch')) {
+        return _localFallbackAI(userMessage);
+      }
+      return { ok: false, msg: 'Erro ao chamar OpenAI: ' + e.message };
+    }
+  }
+
+  // ── 2. Edge Function do Supabase (quando sem chave local) ─────────────────
   try {
     const session = (typeof AuthService !== 'undefined') ? await AuthService.getSession() : null;
     if (session?.access_token && typeof SUPABASE_URL !== 'undefined') {
@@ -253,12 +294,7 @@ async function _callAI(userMessage) {
           'Authorization': 'Bearer ' + session.access_token,
           'apikey': typeof SUPABASE_ANON !== 'undefined' ? SUPABASE_ANON : ''
         },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages,
-          max_tokens: 2000,
-          temperature: 0.7
-        })
+        body: JSON.stringify(payload)
       });
       if (resp.ok) {
         const data = await resp.json();
@@ -272,7 +308,7 @@ async function _callAI(userMessage) {
     console.warn('[Copilot] Edge Function falhou:', e.message);
   }
 
-  // Fallback: análise local (sem IA externa) — respostas baseadas em regras
+  // ── 3. Fallback local (sem nenhuma API) ───────────────────────────────────
   return _localFallbackAI(userMessage);
 }
 
@@ -708,7 +744,7 @@ function pageCopilot() {
           </div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <span style="background:rgba(255,255,255,.2); padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600;">${plano.toUpperCase()}</span>
-            <span style="background:rgba(37,211,102,.3); padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600;">● Online</span>
+            <span style="background:${hasKey ? 'rgba(37,211,102,.3)' : 'rgba(245,158,11,.4)'}; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600;">${hasKey ? '● GPT-4o Ativo' : '⚠ Sem Chave OpenAI'}</span>
           </div>
         </div>
       </div>
@@ -761,10 +797,33 @@ function pageCopilot() {
       </div>
     </div>`;
 
+  const localKey = localStorage.getItem('agro_openai_key') || '';
+  const hasKey   = localKey.startsWith('sk-');
+  const keyStatus = hasKey
+    ? `• 🔑 Chave OpenAI configurada — GPT-4o ativo`
+    : `• ⚠️ Sem chave OpenAI — [configurar agora](configuracoes.html) para IA completa`;
+
   // Mensagem de boas-vindas automática
-  const welcomeText = `${saudacao}, **${nome}**! 👋\n\nSou o **Agro-Copilot**, seu assistente agronômico com acesso a todos os dados da sua propriedade.\n\n**Resumo rápido:**\n• 🌾 ${safra ? `Safra ativa: ${safra.nome}` : 'Nenhuma safra selecionada'}\n• 🌱 ${talhoes.length} talhão(ões) cadastrado(s)\n• 📅 Data: ${new Date().toLocaleDateString('pt-BR', {weekday:'long', day:'numeric', month:'long', year:'numeric'})}\n• 🔒 Plano: ${plano}\n${alertasAuto.length > 0 ? `• ⚡ **${alertasAuto.length} alerta(s) automático(s) detectado(s)**` : '• ✅ Nenhum alerta pendente'}\n\nO que você gostaria de saber hoje?`;
+  const welcomeText = `${saudacao}, **${nome}**! 👋\n\nSou o **Agro-Copilot**, seu assistente agronômico com acesso a todos os dados da sua propriedade.\n\n**Resumo rápido:**\n• 🌾 ${safra ? `Safra ativa: ${safra.nome}` : 'Nenhuma safra selecionada'}\n• 🌱 ${talhoes.length} talhão(ões) cadastrado(s)\n• 📅 Data: ${new Date().toLocaleDateString('pt-BR', {weekday:'long', day:'numeric', month:'long', year:'numeric'})}\n• 🔒 Plano: ${plano}\n${keyStatus}\n${alertasAuto.length > 0 ? `• ⚡ **${alertasAuto.length} alerta(s) automático(s) detectado(s)**` : '• ✅ Nenhum alerta pendente'}\n\nO que você gostaria de saber hoje?`;
 
   _addMessage('bot', welcomeText);
+
+  // Se não tiver chave, mostrar dica inline
+  if (!hasKey) {
+    const box = document.getElementById('copilotMessages');
+    if (box) {
+      box.insertAdjacentHTML('beforeend', `
+        <div style="background:#fffbeb; border:1px solid #f59e0b; border-radius:10px; padding:14px 16px; font-size:13px; color:#78350f; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <span style="font-size:22px;">🔑</span>
+          <div style="flex:1;">
+            <strong>Ative a IA completa em 30 segundos:</strong><br>
+            Vá em <strong>Configurações → IA</strong>, cole sua chave OpenAI (<code>sk-proj-...</code>) e toque em <strong>Salvar Chave</strong>. Grátis pelo site: <a href="https://platform.openai.com/api-keys" target="_blank" style="color:#92400e;">platform.openai.com/api-keys</a>
+          </div>
+          <a href="configuracoes.html" style="background:#f59e0b; color:white; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:700; text-decoration:none; white-space:nowrap;">⚙️ Configurar agora</a>
+        </div>`);
+      _scrollToBottom();
+    }
+  }
 
   // Foco no input
   setTimeout(() => { const inp = document.getElementById('copilotInput'); if (inp) inp.focus(); }, 100);
