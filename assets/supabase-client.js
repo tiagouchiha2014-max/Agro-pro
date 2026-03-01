@@ -1,21 +1,24 @@
 /* ============================================================
-   AGRO PRO — supabase-client.js (v5.0 — CHECKLIST COMPLETO)
-   Auth + Sync Incremental + Soft Delete + RLS
-   
-   CORREÇÕES v5.0:
-   - Sync incremental com updated_at
-   - Soft delete (deleted_at)
-   - Detecção de IDs locais via UUID regex
-   - Mapeamento de referências cruzadas
-   - Indicador de status confiável
-   - Logs sem dados sensíveis
+   AGRO PRO — supabase-client.js (v7.2)
+   Auth + Sync Granular + RLS
+
+   CORREÇÕES v7.2:
+   - _doCloudSync: hash agora ignora IDs locais (não-UUID) para
+     forçar sync sempre que houver registros não enviados
+   - _syncGranular: erros de insert/upsert agora logados via
+     console.warn (não mais silenciados)
+   - _restoreFromTables: condição de bloqueio de sync reverso
+     corrigida para não travar quando local tem IDs locais
    ============================================================ */
 
 // ============================================================
-// CONFIGURAÇÃO
+// CONFIGURAÇÃO — PROJETO SUPABASE
+// ⚠️  Após criar um novo projeto no supabase.com, substitua:
+//    SUPABASE_URL  → Settings > API > Project URL
+//    SUPABASE_ANON → Settings > API > anon (public) key
 // ============================================================
-var SUPABASE_URL  = "https://cqckmitwbevwkkxlzxdl.supabase.co";
-var SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxY2ttaXR3YmV2d2treGx6eGRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NTY5NzUsImV4cCI6MjA4NzEzMjk3NX0.rzuZ3DjmoJY8KaKEOb62TP7E74h-pU1KO9ZGoYNYTYg";
+var SUPABASE_URL  = "https://nhxkgrczipcqexyaqdmf.supabase.co";
+var SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oeGtncmN6aXBjcWV4eWFxZG1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMDYxMjAsImV4cCI6MjA4NzU4MjEyMH0.4GxUI-s0A5gXVkTy-onXtTdo5OCJChFa_3vsL3nNrtU";
 
 // ============================================================
 // INICIALIZAÇÃO
@@ -27,9 +30,28 @@ function initSupabase() {
   if (_supabaseClient) return true;
   if (!SUPABASE_URL || !SUPABASE_ANON) return false;
   try {
-    var sdk = (typeof window !== 'undefined' && window.supabase) || (typeof globalThis !== 'undefined' && globalThis.supabase);
-    if (!sdk || !sdk.createClient) return false;
-    _supabaseClient = sdk.createClient(SUPABASE_URL, SUPABASE_ANON);
+    // O UMD do @supabase/supabase-js exporta para window.supabase (via this.supabase)
+    // Tentamos múltiplas formas para garantir compatibilidade
+    var sdk = (typeof window !== 'undefined' && (
+      window.supabase ||          // UMD padrão (dist/umd/supabase.js)
+      window.Supabase ||          // alguns builds capitalizam
+      window.SupabaseJS
+    )) || (typeof globalThis !== 'undefined' && (
+      globalThis.supabase ||
+      globalThis.Supabase
+    ));
+
+    // Fallback: o createClient pode estar exposto diretamente
+    var createClientFn = (sdk && sdk.createClient) ||
+                         (typeof createClient !== 'undefined' && createClient) ||
+                         null;
+
+    if (!createClientFn) {
+      console.warn('[Supabase] SDK não encontrado em window.supabase — CDN pode não ter carregado');
+      return false;
+    }
+
+    _supabaseClient = createClientFn(SUPABASE_URL, SUPABASE_ANON);
     _supabaseReady = true;
     window._supabaseReady = true;
     window._supabaseClient = _supabaseClient;
@@ -84,13 +106,29 @@ function isUUID(str) {
 // AUTH SERVICE
 // ============================================================
 var AuthService = {
-  async signUp(email, password, fullName) {
+  async signUp(email, password, fullName, cpf, phone) {
     if (!isSupabaseReady()) return { data: null, error: { message: "Supabase não configurado" } };
     var result = await _supabaseClient.auth.signUp({
       email: email, password: password,
-      options: { data: { full_name: fullName } }
+      options: { data: { full_name: fullName, cpf: cpf || null, phone: phone || null } }
     });
     return { data: result.data, error: result.error };
+  },
+
+  async checkCpfExists(cpf) {
+    if (!isSupabaseReady() || !cpf) return false;
+    try {
+      var result = await _supabaseClient.from('profiles').select('id').eq('cpf', cpf).maybeSingle();
+      return result.data !== null;
+    } catch (e) { return false; }
+  },
+
+  async checkPhoneExists(phone) {
+    if (!isSupabaseReady() || !phone) return false;
+    try {
+      var result = await _supabaseClient.from('profiles').select('id').eq('phone', phone).maybeSingle();
+      return result.data !== null;
+    } catch (e) { return false; }
   },
 
   async signIn(email, password) {
@@ -127,11 +165,21 @@ var AuthService = {
   async getUserProfile() {
     var user = await this.getUser();
     if (!user) return null;
-    try {
-      var result = await _supabaseClient
-        .from('profiles').select('*').eq('id', user.id).single();
-      return result.error ? null : result.data;
-    } catch (e) { return null; }
+    // Retry até 3x: o trigger SQL pode levar alguns ms para criar o perfil
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        var result = await _supabaseClient
+          .from('profiles').select('*').eq('id', user.id).single();
+        if (!result.error && result.data) return result.data;
+        // PGRST116 = no rows found (perfil ainda não criado) — espera e tenta de novo
+        if (result.error?.code === 'PGRST116' && attempt < 2) {
+          await new Promise(function(r) { setTimeout(r, 700); });
+          continue;
+        }
+        return null;
+      } catch (e) { return null; }
+    }
+    return null;
   },
 
   async updateProfile(updates) {
@@ -287,8 +335,21 @@ async function _doCloudSync() {
     var db;
     try { db = JSON.parse(raw); } catch(e) { _syncPending = false; return false; }
 
+    // Hash que ignora registros com IDs locais (não-UUID) para garantir
+    // que sync sempre rode quando houver dados não enviados ao servidor
+    var _hasLocalIds = function(db) {
+      for (var k in TABLE_MAP) {
+        var arr = db[k];
+        if (!arr || !Array.isArray(arr)) continue;
+        for (var i = 0; i < arr.length; i++) {
+          if (arr[i] && arr[i].id && !isUUID(arr[i].id)) return true;
+        }
+      }
+      return false;
+    };
     var hash = _quickHash(db);
-    if (hash === _lastSyncedHash) { _syncPending = false; return true; }
+    // Só pular sync se hash igual E não houver IDs locais pendentes
+    if (hash === _lastSyncedHash && !_hasLocalIds(db)) { _syncPending = false; return true; }
 
     // 1. Backup JSON (fallback seguro)
     var backupResult = await _supabaseClient
@@ -399,13 +460,15 @@ async function _syncGranular(userId, db) {
         if (!alreadySynced) {
           var insertData = _prepareForInsert(item, userId, idMap);
           var insertRes = await _supabaseClient.from(tableName).insert(insertData).select('id').single();
-          if (!insertRes.error && insertRes.data) {
+          if (insertRes.error) {
+            console.warn('[Sync] Insert erro em', tableName, ':', insertRes.error.message, '| dados:', JSON.stringify(insertData).slice(0,200));
+          } else if (insertRes.data) {
             idMap[item.id] = insertRes.data.id;
           }
         }
       }
     } catch (e) {
-      // Silenciar erros por tabela para não parar o sync inteiro
+      console.warn('[Sync] Erro na tabela', tableName, ':', e.message || e);
     }
   }
 
@@ -510,9 +573,11 @@ async function _restoreFromTables(userId) {
     // Só pula o restore se local já tem mais dados que o servidor (dados locais mais novos)
     var localFaz = (localDB && localDB.fazendas) ? localDB.fazendas.length : 0;
     var serverFazCnt = (await _supabaseClient.from('fazendas').select('id', { count: 'exact', head: true }).eq('user_id', userId)).count || 0;
-    if (localFaz > 0 && localFaz >= serverFazCnt && localTalhoes >= serverTalhoesCnt) {
-      // Local está em dia ou mais novo — enviar dados locais para o servidor
-      // (sync reverso: local → server) sem sobrescrever localStorage
+    // Verificar se local tem IDs locais (não-UUID) — significa que ainda não foi sincronizado
+    var localHasUnsyncedIds = (localDB && localDB.fazendas || []).some(function(r) { return r.id && !isUUID(r.id); }) ||
+                              (localDB && localDB.safras || []).some(function(r) { return r.id && !isUUID(r.id); });
+    if (localFaz > 0 && localFaz >= serverFazCnt && localTalhoes >= serverTalhoesCnt && !localHasUnsyncedIds) {
+      // Local está em dia e sem IDs locais — enviar dados locais para o servidor
       if (typeof cloudSyncImmediate === 'function') {
         cloudSyncImmediate().catch(function(e) { console.warn('[Restore] sync reverso:', e.message); });
       }
@@ -697,9 +762,48 @@ window.cloudRestore = cloudRestore;
 window.SupaCRUD = SupaCRUD;
 window.seedSupabase = seedSupabase;
 window._updateCloudIndicator = _updateCloudIndicator;
+// Expor hash para permitir reset forçado pelo botão "Sincronizar Agora"
+// Usar try/catch para evitar erro se já definido (ex: hot-reload ou cache)
+try {
+  if (!Object.getOwnPropertyDescriptor(window, '_lastSyncedHash')) {
+    Object.defineProperty(window, '_lastSyncedHash', {
+      get: function() { return _lastSyncedHash; },
+      set: function(v) { _lastSyncedHash = v; },
+      configurable: true,
+      enumerable: true
+    });
+  }
+} catch(e) {
+  window._lastSyncedHash = _lastSyncedHash;
+}
 
 // Inicializar ao carregar
 initSupabase();
 window._supabaseReady = _supabaseReady;
 window._supabaseClient = _supabaseClient;
 window._cloudConnected = _supabaseReady;
+
+// ============================================================
+// _ensureSupabase — garante que o SDK está pronto antes de usar
+// Tenta até 10x com intervalo de 200ms (total 2s de espera)
+// ============================================================
+window._ensureSupabase = function() {
+  return new Promise(function(resolve) {
+    if (isSupabaseReady()) { resolve(true); return; }
+    // Tentar inicializar agora (SDK pode já estar disponível)
+    if (initSupabase()) { resolve(true); return; }
+    var tries = 0;
+    var timer = setInterval(function() {
+      tries++;
+      if (initSupabase() || isSupabaseReady()) {
+        clearInterval(timer);
+        resolve(true);
+        return;
+      }
+      if (tries >= 15) { // 15 x 300ms = 4.5s máximo
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, 300);
+  });
+};

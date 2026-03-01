@@ -1,42 +1,42 @@
-/* ============================================================
-   AGRO PRO — app.js (v20 — CORREÇÕES CHECKLIST COMPLETO)
-   Bugs críticos, segurança, namespace, sync robusto
+/* ===========================================================
+   AGRO PRO — app.js (v8.0 — Planos Free/Pro/Master + CPF/Telefone)
+   Sem trial. Plano Free extremamente limitado (só visualização).
    ============================================================ */
 
-let planoAtual = localStorage.getItem("agro_plano") || "Trial";
+let planoAtual = localStorage.getItem("agro_plano") || "Free";
 let fazendaAtual = localStorage.getItem("agro_fazenda_filtro") || null;
 let userSession = null;
 let userProfile = null;
-let trialInfo = null; // { diasRestantes, expirado, dataFim }
-let userRole = localStorage.getItem("agro_role") || "admin"; // admin, gerente, funcionario
-  // Filtro global de fazenda (persistido)
+let trialInfo = null; // mantido por compatibilidade, não usado
+let userRole = localStorage.getItem("agro_role") || "admin";
 
 // ============================================================
 // SISTEMA DE PERMISSÕES POR PERFIL (ROLES)
 // ============================================================
 
-// Páginas bloqueadas no plano Básico (não aparecem na sidebar)
+// Páginas BLOQUEADAS por plano (não aparecem na sidebar nem podem ser acessadas)
 const PLAN_BLOCKED_PAGES = {
-  'Básico': ['colheitas','manutencao','clima','relatorios','centralgestao'],
-  'Pro': [],
+  'Free':   ['colheitas','manutencao','clima','relatorios','centralgestao','copilot','combustivel','aplicacoes','estoque','equipe','maquinas','insumosbase'],
+  'Pro':    [],
   'Master': [],
-  'Trial': []
+  'Trial':  [] // legado — tratar como Free se aparecer
 };
 
-// Limites por plano
+// Limites de cadastro por plano
 const PLAN_LIMITS = {
-  'Básico': { fazendas: 1, talhoes: 5, maquinas: 4, funcionarios: 8, admins: 1 },
-  'Pro':    { fazendas: 2, talhoes: 9999, maquinas: 9999, funcionarios: 12, admins: 2 },
-  'Master': { fazendas: 8, talhoes: 9999, maquinas: 9999, funcionarios: 9999, admins: 9999 },
-  'Trial':  { fazendas: 2, talhoes: 9999, maquinas: 9999, funcionarios: 12, admins: 2 }
+  'Free':   { fazendas: 1, talhoes: 1, maquinas: 0, funcionarios: 0, admins: 1 },
+  'Pro':    { fazendas: 5, talhoes: 9999, maquinas: 9999, funcionarios: 15, admins: 3 },
+  'Master': { fazendas: 9999, talhoes: 9999, maquinas: 9999, funcionarios: 9999, admins: 9999 },
+  'Trial':  { fazendas: 1, talhoes: 1, maquinas: 0, funcionarios: 0, admins: 1 } // legado → Free
 };
 
 function getPlanLimits() {
-  return PLAN_LIMITS[planoAtual] || PLAN_LIMITS['Básico'];
+  return PLAN_LIMITS[planoAtual] || PLAN_LIMITS['Free'];
 }
 
 function getPlanBlockedPages() {
-  return PLAN_BLOCKED_PAGES[planoAtual] || [];
+  // Free e Trial (legado) têm as mesmas restrições
+  return PLAN_BLOCKED_PAGES[planoAtual] || PLAN_BLOCKED_PAGES['Free'];
 }
 
 const ROLE_PERMISSIONS = {
@@ -142,86 +142,36 @@ function getRoleLabel() {
 }
 
 // ============================================================
-// SISTEMA DE TRIAL — 15 DIAS GRÁTIS COM ACESSO PRO
+// SISTEMA DE PLANOS v8.0 (Free / Pro / Master — sem trial)
 // ============================================================
 
-function getTrialInfo() {
-  const raw = localStorage.getItem("agro_trial");
-  if (!raw) return null;
-  try {
-    const trial = JSON.parse(raw);
-    const agora = new Date();
-    const fim = new Date(trial.trial_ends_at);
-    const diffMs = fim - agora;
-    const diasRestantes = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-    const expirado = diasRestantes <= 0;
-    return { diasRestantes, expirado, dataFim: trial.trial_ends_at, dataInicio: trial.created_at };
-  } catch (e) {
-    return null;
-  }
-}
-
+function getTrialInfo() { return null; } // mantido por compatibilidade
 function iniciarTrial(email, nome) {
-  const agora = new Date();
-  const fim = new Date(agora.getTime() + 15 * 24 * 60 * 60 * 1000);
-  const trialData = {
-    email: email,
-    nome: nome || '',
-    plan_type: 'trial',
-    trial_ends_at: fim.toISOString(),
-    created_at: agora.toISOString()
-  };
-  localStorage.setItem("agro_trial", JSON.stringify(trialData));
-  localStorage.setItem("agro_plano", "Trial");
-  planoAtual = "Trial";
-  return trialData;
+  // Trial removido — novo usuário inicia no plano Free
+  localStorage.setItem("agro_plano", "Free");
+  planoAtual = "Free";
 }
-
-function isTrialExpirado() {
-  const info = getTrialInfo();
-  if (!info) return false; // Sem trial = plano pago ou sem conta
-  return info.expirado;
-}
-
+function isTrialExpirado() { return false; }
 function getPlanoEfetivo() {
-  // Trial = acesso Pro. Se expirado, bloqueia.
-  const plano = localStorage.getItem("agro_plano") || "Trial";
-  if (plano === "Trial") {
-    const info = getTrialInfo();
-    if (info && !info.expirado) return "Pro"; // Trial ativo = Pro
-    return "Expirado";
-  }
-  return plano;
+  return localStorage.getItem("agro_plano") || "Free";
 }
 
+// Banner de aviso somente no plano Free
 function renderTrialBanner() {
-  const info = getTrialInfo();
-  if (!info) return ''; // Plano pago, sem banner
-  const plano = localStorage.getItem("agro_plano");
-  if (plano !== 'Trial') return ''; // Plano pago
-  
-  if (info.expirado) {
+  const p = planoAtual;
+  if (p === 'Free' || p === 'Trial') {
     return `
-      <div id="trialBanner" style="background: linear-gradient(135deg, #dc2626, #991b1b); color: white; padding: 12px 20px; text-align: center; font-size: 14px; font-weight: 600; position: sticky; top: 0; z-index: 9999;">
-        ⚠️ Seu período de teste gratuito expirou! <a href="configuracoes.html" style="color: #fde68a; text-decoration: underline; margin-left: 10px;">Assinar agora →</a>
+      <div id="trialBanner" style="background:linear-gradient(135deg,#dc2626,#b91c1c); color:white; padding:9px 20px; text-align:center; font-size:13px; font-weight:500; position:sticky; top:0; z-index:9999; display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap;">
+        🔒 Plano Free — apenas visualização, 1 fazenda, 1 talhão.
+        <button onclick="pageUpgrade()" style="background:white; color:#dc2626; border:none; border-radius:6px; padding:5px 14px; font-weight:700; font-size:12px; cursor:pointer; white-space:nowrap;">⬆ Ver Planos</button>
       </div>
     `;
   }
-  
-  const cor = info.diasRestantes <= 3 ? '#f59e0b' : '#3b82f6';
-  return `
-    <div id="trialBanner" style="background: linear-gradient(135deg, ${cor}, ${cor}dd); color: white; padding: 10px 20px; text-align: center; font-size: 13px; font-weight: 500; position: sticky; top: 0; z-index: 9999;">
-      🎁 Período de teste: <b>${info.diasRestantes} dia${info.diasRestantes !== 1 ? 's' : ''} restante${info.diasRestantes !== 1 ? 's' : ''}</b> com acesso completo ao Plano Pro.
-      <a href="configuracoes.html" style="color: #fde68a; text-decoration: underline; margin-left: 10px;">Assinar plano →</a>
-    </div>
-  `;
+  return '';
 }
 
 // ============================================================
 // CLOUD SYNC — BACKUP AUTOMÁTICO NA NUVEM (SUPABASE)
-// As funções cloudSync() e cloudRestore() estão definidas em
-// supabase-client.js com sync granular por tabela + backup JSON.
-// Se supabase-client.js não estiver carregado, fallback silencioso.
 // ============================================================
 if (typeof cloudSync === 'undefined') {
   function cloudSync() { /* Supabase não configurado — modo offline */ }
@@ -230,48 +180,96 @@ if (typeof cloudRestore === 'undefined') {
   async function cloudRestore() { return false; /* Supabase não configurado */ }
 }
 
-function pageTrialExpirado() {
+function pageTrialExpirado() { pageUpgrade(); }
+
+// ============================================================
+// PÁGINA DE UPGRADE DE PLANO
+// ============================================================
+function pageUpgrade() {
   const root = document.getElementById("app");
-  root.innerHTML = `
-    <div style="min-height: 100vh; background: linear-gradient(135deg, #0f172a, #1e293b); display: flex; align-items: center; justify-content: center; padding: 20px;">
-      <div style="max-width: 600px; background: white; border-radius: 16px; padding: 40px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-        <div style="font-size: 64px; margin-bottom: 20px;">⏰</div>
-        <h1 style="color: #1e293b; margin-bottom: 10px; font-size: 28px;">Período de Teste Encerrado</h1>
-        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">
-          Seus 15 dias de teste gratuito do <b>Agro Pro</b> chegaram ao fim.<br>
-          Para continuar usando todas as funcionalidades, escolha um plano abaixo.
+  const isMain = document.getElementById("content");
+  const target = isMain || root;
+  const wrapper = isMain ? '' : '';
+
+  const html = `
+    <div style="min-height:${isMain ? '80vh' : '100vh'}; background:${isMain ? '#f8fafc' : 'linear-gradient(135deg,#0f172a,#1e293b)'}; display:flex; align-items:center; justify-content:center; padding:20px;">
+      <div style="max-width:720px; width:100%; background:white; border-radius:16px; padding:36px 32px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.25);">
+        <div style="font-size:48px; margin-bottom:10px;">🌾</div>
+        <h1 style="color:#1e293b; margin-bottom:6px; font-size:24px; font-weight:800;">Agro Pro — Escolha seu Plano</h1>
+        <p style="color:#64748b; font-size:14px; line-height:1.6; margin-bottom:28px;">
+          O plano <b>Free</b> permite apenas visualizar dados existentes.<br>
+          Para cadastrar e usar todas as ferramentas, assine Pro ou Master.
         </p>
-        
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 30px;">
-          <div style="padding: 20px; border-radius: 12px; border: 2px solid #e2e8f0; background: #f8fafc;">
-            <h3 style="margin: 0 0 5px; color: #475569;">Básico</h3>
-            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 100<small style='font-size:12px;'>/mês</small></p>
-            <small style="color: #64748b;">1 fazenda, 5 talhões<br>4 máquinas, 8 funcionários<br>Dashboard + Aplicações + Estoque</small>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:28px; text-align:left;">
+
+          <!-- FREE -->
+          <div style="padding:18px; border-radius:12px; border:2px solid #e2e8f0; background:#f8fafc;">
+            <h3 style="margin:0 0 4px; color:#94a3b8; font-size:14px; font-weight:700;">FREE</h3>
+            <p style="font-size:26px; font-weight:800; margin:4px 0; color:#1e293b;">R$ 0<small style="font-size:11px; font-weight:400; color:#94a3b8;">/mês</small></p>
+            <ul style="margin:10px 0 0; padding-left:16px; color:#94a3b8; font-size:12px; line-height:1.9;">
+              <li>1 fazenda, 1 talhão</li>
+              <li>Apenas visualização</li>
+              <li>Sem máquinas ou estoque</li>
+              <li>Sem aplicações ou colheitas</li>
+              <li>Sem relatórios ou IA</li>
+            </ul>
+            <div style="margin-top:14px; padding:7px; background:#e2e8f0; border-radius:6px; text-align:center; color:#94a3b8; font-size:11px; font-weight:700; letter-spacing:.5px;">PLANO ATUAL</div>
           </div>
-          <div style="padding: 20px; border-radius: 12px; border: 2px solid #10b981; background: #ecfdf5; position: relative;">
-            <div style="position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 2px 12px; border-radius: 12px; font-size: 11px; font-weight: bold;">POPULAR</div>
-            <h3 style="margin: 0 0 5px; color: #065f46;">Pro</h3>
-            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 299<small style='font-size:12px;'>/mês</small></p>
-            <small style="color: #64748b;">2 fazendas, talhões ilimitados<br>12 funcionários + Roles<br>Relatórios + IA Prescritiva</small>
+
+          <!-- PRO -->
+          <div style="padding:18px; border-radius:12px; border:3px solid #10b981; background:#ecfdf5; position:relative;">
+            <div style="position:absolute; top:-12px; left:50%; transform:translateX(-50%); background:#10b981; color:white; padding:3px 14px; border-radius:12px; font-size:10px; font-weight:700; white-space:nowrap; letter-spacing:.5px;">⭐ MAIS POPULAR</div>
+            <h3 style="margin:0 0 4px; color:#065f46; font-size:14px; font-weight:700;">PRO</h3>
+            <p style="font-size:26px; font-weight:800; margin:4px 0; color:#1e293b;">R$ 199<small style="font-size:11px; font-weight:400; color:#047857;">/mês</small></p>
+            <ul style="margin:10px 0 0; padding-left:16px; color:#374151; font-size:12px; line-height:1.9;">
+              <li>5 fazendas, talhões ilimitados</li>
+              <li>Máquinas e equipe (até 15)</li>
+              <li>Aplicações, estoque, combustível</li>
+              <li>Colheitas, clima, manutenções</li>
+              <li>Relatórios completos</li>
+              <li>IA Prescritiva (Copilot)</li>
+            </ul>
+            <a href="https://wa.me/5599991360547?text=Olá!%20Quero%20assinar%20o%20Agro%20Pro%20(Plano%20Pro%20R%24199%2Fmês)" target="_blank"
+               style="display:block; margin-top:14px; padding:10px; background:#10b981; color:white; border-radius:8px; font-weight:700; font-size:13px; text-decoration:none; text-align:center;">
+              💬 Assinar Pro — R$199/mês
+            </a>
           </div>
-          <div style="padding: 20px; border-radius: 12px; border: 2px solid #f59e0b; background: #fffbeb;">
-            <h3 style="margin: 0 0 5px; color: #92400e;">Master</h3>
-            <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1e293b;">R$ 599<small style='font-size:12px;'>/mês</small></p>
-            <small style="color: #64748b;">8 fazendas, tudo ilimitado<br>Roles + Admins ilimitados<br>Suporte prioritário</small>
+
+          <!-- MASTER -->
+          <div style="padding:18px; border-radius:12px; border:2px solid #f59e0b; background:#fffbeb;">
+            <h3 style="margin:0 0 4px; color:#92400e; font-size:14px; font-weight:700;">MASTER</h3>
+            <p style="font-size:26px; font-weight:800; margin:4px 0; color:#1e293b;">R$ 299<small style="font-size:11px; font-weight:400; color:#b45309;">/mês</small></p>
+            <ul style="margin:10px 0 0; padding-left:16px; color:#374151; font-size:12px; line-height:1.9;">
+              <li>Fazendas <b>ilimitadas</b></li>
+              <li>Equipe e admins ilimitados</li>
+              <li>Tudo do Pro incluso</li>
+              <li>Suporte prioritário 24h</li>
+              <li>Sem nenhum limite</li>
+              <li>Multiusuários ilimitados</li>
+            </ul>
+            <a href="https://wa.me/5599991360547?text=Olá!%20Quero%20assinar%20o%20Agro%20Pro%20(Plano%20Master%20R%24299%2Fmês)" target="_blank"
+               style="display:block; margin-top:14px; padding:10px; background:#f59e0b; color:#1e293b; border-radius:8px; font-weight:700; font-size:13px; text-decoration:none; text-align:center;">
+              💬 Assinar Master — R$299/mês
+            </a>
           </div>
         </div>
-        
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <button onclick="window.location.href='mailto:suporteagropro@gmail.com?subject=Assinatura Agro Pro'" style="padding: 14px 30px; background: #10b981; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer;">📧 Assinar Agora</button>
-          <a href="https://wa.me/5599991360547?text=Olá! Quero assinar o Agro Pro" target="_blank" style="padding: 14px 30px; background: #25d366; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none; display: block;">💬 Falar no WhatsApp</a>
-          <button onclick="localStorage.removeItem('agro_session'); localStorage.removeItem('agro_trial'); localStorage.removeItem('agro_plano'); localStorage.removeItem('agro_role'); location.reload();" style="padding: 10px; background: transparent; color: #64748b; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; cursor: pointer;">Sair da conta</button>
+
+        <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+          <a href="mailto:suporteagropro@gmail.com?subject=Assinatura Agro Pro" style="padding:11px 22px; background:#3b82f6; color:white; border-radius:8px; font-weight:600; font-size:13px; text-decoration:none;">📧 E-mail</a>
+          <button onclick="navigate('dashboard')" style="padding:11px 22px; background:#e2e8f0; color:#374151; border:none; border-radius:8px; font-size:13px; cursor:pointer; font-weight:600;">← Voltar</button>
+          <button onclick="localStorage.removeItem('agro_session'); localStorage.removeItem('agro_plano'); localStorage.removeItem('agro_role'); localStorage.removeItem('agro_trial'); location.reload();" style="padding:11px 22px; background:transparent; color:#94a3b8; border:1px solid #e2e8f0; border-radius:8px; font-size:12px; cursor:pointer;">Sair da conta</button>
         </div>
-        
-        <p style="margin-top: 20px; font-size: 12px; color: #94a3b8;">Dúvidas? Entre em contato: suporteagropro@gmail.com | WhatsApp: (99) 99136-0547</p>
-        <p style="font-size: 11px; color: #cbd5e1; margin-top: 5px;">Tiago Santos — Fundador & Desenvolvedor</p>
+        <p style="margin-top:16px; font-size:11px; color:#94a3b8;">suporteagropro@gmail.com · WhatsApp: (99) 99136-0547 · Tiago Santos — Fundador</p>
       </div>
     </div>
   `;
+
+  if (isMain) {
+    isMain.innerHTML = html;
+  } else {
+    root.innerHTML = html;
+  }
 }
 
 const Storage = {
@@ -324,7 +322,8 @@ function escapeHtml(str) {
     .replaceAll("'", "&#039;");
 }
 
-function toast(title, msg) {
+function toast(title, msg, duration) {
+  const dur = (typeof duration === 'number') ? duration : 3200;
   const host = document.getElementById("toastHost") || (() => {
     const h = document.createElement("div");
     h.id = "toastHost";
@@ -340,10 +339,10 @@ function toast(title, msg) {
 
   setTimeout(() => {
     el.classList.add('opacity-0', 'translate-y-6');
-  }, 3200);
+  }, dur);
   setTimeout(() => {
     el.remove();
-  }, 3800);
+  }, dur + 600);
 }
 
 function downloadText(filename, text) {
@@ -607,10 +606,10 @@ function renderShell(pageKey, title, subtitle) {
         <nav class="nav">${nav}</nav>
 
         <div style="margin: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 12px;">
-           <b>Plano ${planoAtual === 'Trial' ? 'Trial (Pro)' : planoAtual}</b>
+           <b>Plano ${planoAtual}</b>
            ${userRole !== 'admin' ? `<br><span style="color: #fbbf24;">Perfil: ${getRoleLabel()}</span>` : ''}<br>
-           ${planoAtual === 'Trial' && trialInfo ? `<span style="color: #93c5fd;">${trialInfo.diasRestantes} dia${trialInfo.diasRestantes !== 1 ? 's' : ''} restante${trialInfo.diasRestantes !== 1 ? 's' : ''}</span><br>` : ''}
-           ${userRole === 'admin' ? `<a href="configuracoes.html" style="color: #4ade80; text-decoration: none;">${planoAtual === 'Trial' ? 'Assinar plano' : 'Fazer Upgrade'} →</a>` : `<span style="color: #94a3b8;">Conta vinculada ao admin</span>`}
+           ${(planoAtual === 'Free' || planoAtual === 'Trial') ? `<span style="color: #fca5a5; font-size: 11px;">Acesso limitado — só visualização</span><br>` : ''}
+           ${userRole === 'admin' ? `<a href="configuracoes.html" style="color: #4ade80; text-decoration: none;">${(planoAtual === 'Free' || planoAtual === 'Trial') ? 'Assinar plano' : 'Gerenciar plano'} →</a>` : `<span style="color: #94a3b8;">Conta vinculada ao admin</span>`}
            
            <button id="btnSairSidebar" style="width: 100%; margin-top: 15px; padding: 8px; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 11px; transition: all 0.2s;">🚪 SAIR DA CONTA</button>
         </div>
@@ -1178,205 +1177,290 @@ function pageSafras() {
 }
 
 
+// ============================================================
+// HELPERS DE FORMATAÇÃO DE CPF E TELEFONE
+// ============================================================
+function formatCPF(v) {
+  return v.replace(/\D/g, '').slice(0,11)
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+}
+function formatPhone(v) {
+  return v.replace(/\D/g, '').slice(0,11)
+    .replace(/^(\d{2})(\d)/, '($1) $2')
+    .replace(/(\d{5})(\d{4})$/, '$1-$2');
+}
+function validateCPF(cpf) {
+  cpf = cpf.replace(/\D/g, '');
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  let s = 0;
+  for (let i = 0; i < 9; i++) s += +cpf[i] * (10 - i);
+  let r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
+  if (r !== +cpf[9]) return false;
+  s = 0;
+  for (let i = 0; i < 10; i++) s += +cpf[i] * (11 - i);
+  r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
+  return r === +cpf[10];
+}
+
+// ============================================================
+// PÁGINA DE LOGIN / CADASTRO v8.0
+// ============================================================
 function pageLogin() {
   const root = document.getElementById("app");
   root.innerHTML = `
-    <div style="min-height: 100vh; background: linear-gradient(135deg, #0f172a, #1e293b); display: flex; align-items: center; justify-content: center; padding: 20px;">
-      <div style="max-width: 420px; width: 100%; background: white; border-radius: 16px; padding: 35px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-        <div style="text-align: center; margin-bottom: 25px;">
-          <div style="width: 50px; height: 50px; background: #4ade80; border-radius: 12px; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 24px;">🌱</div>
-          <h1 style="color: #1e293b; margin-bottom: 5px; font-size: 26px;">Agro Pro</h1>
-          <p style="color: #64748b; font-size: 14px;">Gestão Agrícola Inteligente</p>
-        </div>
-        
-        <div id="loginForm">
-          <div style="margin-bottom: 18px;">
-            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">E-mail</label>
-            <input type="email" id="loginEmail" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="seu@email.com">
-          </div>
-          <div style="margin-bottom: 22px;">
-            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">Senha</label>
-            <input type="password" id="loginPass" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="••••••••">
-          </div>
-          <button id="btnEntrar" style="width: 100%; padding: 14px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 16px; cursor: pointer; transition: background 0.2s;">ENTRAR</button>
-          <p style="text-align: center; margin-top: 18px; font-size: 14px; color: #64748b;">Não tem conta? <a href="#" id="linkCadastro" style="color: #10b981; font-weight: 600;">Teste grátis por 15 dias</a></p>
+    <div style="min-height:100vh; background:linear-gradient(135deg,#0f172a,#1e293b); display:flex; align-items:center; justify-content:center; padding:20px;">
+      <div style="max-width:440px; width:100%; background:white; border-radius:18px; padding:36px 32px; box-shadow:0 24px 64px rgba(0,0,0,.35);">
+
+        <div style="text-align:center; margin-bottom:26px;">
+          <div style="width:52px; height:52px; background:linear-gradient(135deg,#4ade80,#10b981); border-radius:14px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; font-size:26px; box-shadow:0 4px 14px rgba(16,185,129,.35);">🌱</div>
+          <h1 style="color:#1e293b; margin:0 0 4px; font-size:26px; font-weight:800;">Agro Pro</h1>
+          <p style="color:#64748b; font-size:13px; margin:0;">Gestão Agrícola Inteligente</p>
         </div>
 
-        <div id="signupForm" style="display: none;">
-          <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 12px; margin-bottom: 20px; text-align: center;">
-            <p style="margin: 0; font-size: 13px; color: #065f46;">🎁 <b>15 dias grátis</b> com acesso completo ao Plano Pro!</p>
-            <p style="margin: 4px 0 0; font-size: 11px; color: #047857;">Sem cartão de crédito. Cancele quando quiser.</p>
-          </div>
-          <div style="margin-bottom: 15px;">
-            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">Nome Completo</label>
-            <input type="text" id="signName" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="Seu nome completo">
-          </div>
-          <div style="margin-bottom: 15px;">
-            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">E-mail</label>
-            <input type="email" id="signEmail" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="seu@email.com">
-          </div>
-          <div style="margin-bottom: 20px;">
-            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #374151;">Senha</label>
-            <input type="password" id="signPass" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;" placeholder="Mínimo 6 caracteres">
-          </div>
-          <button id="btnCadastrar" style="width: 100%; padding: 14px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 16px; cursor: pointer;">CRIAR CONTA GRÁTIS</button>
-          <p style="text-align: center; margin-top: 18px; font-size: 14px; color: #64748b;">Já tem conta? <a href="#" id="linkLogin" style="color: #10b981; font-weight: 600;">Fazer Login</a></p>
+        <!-- TABS -->
+        <div style="display:flex; background:#f1f5f9; border-radius:10px; padding:4px; margin-bottom:24px; gap:4px;">
+          <button id="tabLogin" onclick="window._loginTab('login')" style="flex:1; padding:9px; border:none; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer; background:#10b981; color:white; transition:all .2s;">Entrar</button>
+          <button id="tabCadastro" onclick="window._loginTab('cadastro')" style="flex:1; padding:9px; border:none; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer; background:transparent; color:#64748b; transition:all .2s;">Criar Conta</button>
         </div>
-        
-        <p style="text-align: center; margin-top: 20px; font-size: 11px; color: #94a3b8;">Tiago Santos — Fundador & Desenvolvedor</p>
+
+        <!-- FORM LOGIN -->
+        <div id="loginForm">
+          <div style="margin-bottom:16px;">
+            <label style="display:block; margin-bottom:5px; font-weight:600; font-size:13px; color:#374151;">E-mail</label>
+            <input type="email" id="loginEmail" style="width:100%; padding:11px 13px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:15px; box-sizing:border-box; outline:none;" placeholder="seu@email.com">
+          </div>
+          <div style="margin-bottom:22px;">
+            <label style="display:block; margin-bottom:5px; font-weight:600; font-size:13px; color:#374151;">Senha</label>
+            <input type="password" id="loginPass" style="width:100%; padding:11px 13px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:15px; box-sizing:border-box; outline:none;" placeholder="••••••••">
+          </div>
+          <button id="btnEntrar" style="width:100%; padding:14px; background:#10b981; color:white; border:none; border-radius:9px; font-weight:800; font-size:16px; cursor:pointer; letter-spacing:.3px;">ENTRAR</button>
+          <p style="text-align:center; margin-top:16px; font-size:13px; color:#94a3b8;">Não tem conta? <a href="#" onclick="window._loginTab('cadastro')" style="color:#10b981; font-weight:700;">Criar conta grátis</a></p>
+        </div>
+
+        <!-- FORM CADASTRO -->
+        <div id="signupForm" style="display:none;">
+          <div style="background:#fef9c3; border:1px solid #fde047; border-radius:9px; padding:11px 14px; margin-bottom:18px; font-size:12px; color:#713f12; line-height:1.5;">
+            ⚠️ <b>Conta gratuita = Plano Free</b><br>
+            Apenas 1 fazenda, 1 talhão e <b>somente visualização</b>. Para criar e editar dados, assine Pro (R$199) ou Master (R$299).
+          </div>
+
+          <div style="margin-bottom:14px;">
+            <label style="display:block; margin-bottom:5px; font-weight:600; font-size:13px; color:#374151;">Nome Completo <span style="color:#ef4444;">*</span></label>
+            <input type="text" id="signName" style="width:100%; padding:11px 13px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; box-sizing:border-box; outline:none;" placeholder="Seu nome completo">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="display:block; margin-bottom:5px; font-weight:600; font-size:13px; color:#374151;">CPF <span style="color:#ef4444;">*</span></label>
+            <input type="text" id="signCPF" maxlength="14" style="width:100%; padding:11px 13px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; box-sizing:border-box; outline:none;" placeholder="000.000.000-00">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="display:block; margin-bottom:5px; font-weight:600; font-size:13px; color:#374151;">Telefone / WhatsApp <span style="color:#ef4444;">*</span></label>
+            <input type="tel" id="signPhone" maxlength="16" style="width:100%; padding:11px 13px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; box-sizing:border-box; outline:none;" placeholder="(99) 99999-9999">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="display:block; margin-bottom:5px; font-weight:600; font-size:13px; color:#374151;">E-mail <span style="color:#ef4444;">*</span></label>
+            <input type="email" id="signEmail" style="width:100%; padding:11px 13px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; box-sizing:border-box; outline:none;" placeholder="seu@email.com">
+          </div>
+          <div style="margin-bottom:20px;">
+            <label style="display:block; margin-bottom:5px; font-weight:600; font-size:13px; color:#374151;">Senha <span style="color:#ef4444;">*</span> <small style="color:#94a3b8; font-weight:400;">(mín. 8 chars, letras+números)</small></label>
+            <input type="password" id="signPass" style="width:100%; padding:11px 13px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; box-sizing:border-box; outline:none;" placeholder="Mínimo 8 caracteres">
+          </div>
+          <button id="btnCadastrar" style="width:100%; padding:14px; background:#10b981; color:white; border:none; border-radius:9px; font-weight:800; font-size:15px; cursor:pointer;">CRIAR CONTA (PLANO FREE)</button>
+          <p style="text-align:center; margin-top:14px; font-size:12px; color:#94a3b8;">Já tem conta? <a href="#" onclick="window._loginTab('login')" style="color:#10b981; font-weight:700;">Fazer login</a></p>
+        </div>
+
+        <p style="text-align:center; margin-top:22px; font-size:11px; color:#cbd5e1;">Tiago Santos — Fundador & Desenvolvedor · Agro Pro v8.0</p>
       </div>
     </div>
   `;
 
-  document.getElementById("linkCadastro").onclick = (e) => {
-    e.preventDefault();
-    document.getElementById("loginForm").style.display = 'none';
-    document.getElementById("signupForm").style.display = 'block';
+  // Formatar CPF e telefone em tempo real
+  document.getElementById('signCPF').addEventListener('input', function() {
+    this.value = formatCPF(this.value);
+  });
+  document.getElementById('signPhone').addEventListener('input', function() {
+    this.value = formatPhone(this.value);
+  });
+
+  // Alternador de tabs
+  window._loginTab = (tab) => {
+    const isLogin = tab === 'login';
+    document.getElementById('loginForm').style.display = isLogin ? 'block' : 'none';
+    document.getElementById('signupForm').style.display = isLogin ? 'none' : 'block';
+    const tL = document.getElementById('tabLogin');
+    const tC = document.getElementById('tabCadastro');
+    tL.style.background = isLogin ? '#10b981' : 'transparent';
+    tL.style.color = isLogin ? 'white' : '#64748b';
+    tC.style.background = isLogin ? 'transparent' : '#10b981';
+    tC.style.color = isLogin ? '#64748b' : 'white';
   };
 
-  document.getElementById("linkLogin").onclick = (e) => {
-    e.preventDefault();
-    document.getElementById("signupForm").style.display = 'none';
-    document.getElementById("loginForm").style.display = 'block';
-  };
-
-  // === LOGIN ===
+  // ===== LOGIN =====
   document.getElementById("btnEntrar").onclick = async () => {
     const email = document.getElementById("loginEmail").value.trim();
-    const pass = document.getElementById("loginPass").value;
-    if (!email || !pass) return toast("Erro", "Preencha todos os campos");
-    
-    toast("Aguarde", "Autenticando...");
-    
-    // Contas de equipe agora devem ser gerenciadas via Supabase Auth.
-    // O login offline via localStorage foi removido por segurança.
-    
-    // 2. Tentar autenticação no Supabase Real
-    if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
-      try {
-        const { data, error } = await AuthService.signIn(email, pass);
-        if (error) {
-          return toast("Erro", "E-mail ou senha incorretos. Se você é novo, use o 'Teste grátis'.");
-        }
-        
-        // Carregar perfil do banco
-        const profile = await AuthService.getUserProfile();
-        const userName = profile?.full_name || email.split('@')[0];
-        const userRole = profile?.user_role || 'admin';
-        
-        localStorage.setItem("agro_session", JSON.stringify({ 
-          user: { 
-            id: data.user.id, 
-            email: data.user.email, 
-            nome: userName, 
-            role: userRole 
-          } 
-        }));
-        localStorage.setItem("agro_role", userRole);
-        
-        // Sincronizar plano/trial do banco para localStorage
-        if (profile?.plan_type) {
-          const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
-          localStorage.setItem("agro_plano", planMap[profile.plan_type] || 'Trial');
-        }
-        if (profile?.trial_ends_at) {
-          const fim = new Date(profile.trial_ends_at);
-          const agora = new Date();
-          const dias = Math.ceil((fim - agora) / (1000 * 60 * 60 * 24));
-          localStorage.setItem("agro_trial", JSON.stringify({
-            email: data.user.email,
-            nome: userName,
-            plan_type: 'trial',
-            trial_ends_at: profile.trial_ends_at,
-            created_at: profile.created_at,
-            dataFim: profile.trial_ends_at,
-            expirado: dias <= 0
-          }));
-        }
+    const pass  = document.getElementById("loginPass").value;
+    if (!email || !pass) return toast("Erro", "Preencha e-mail e senha.");
 
-        // Restaurar dados da nuvem (tabelas individuais + backup JSON)
-        toast("Sincronizando", "Carregando dados da nuvem...");
-        try {
-          const restored = await cloudRestore();
-          if (restored) {
-            
-          } else {
-            // Se não há dados na nuvem, enviar dados locais
-            if (typeof cloudSyncImmediate === 'function') {
-              await cloudSyncImmediate();
-              
-            }
-          }
-        } catch (restoreErr) {
-          console.warn('Login: erro ao restaurar dados:', restoreErr.message);
-        }
-        
-        toast("Bem-vindo", `Login realizado! Olá, ${userName}`);
-        setTimeout(() => location.reload(), 500);
-        return;
-      } catch (err) {
-        console.error("Erro no login Supabase:", err);
-      }
+    toast("Aguarde", "Conectando ao servidor...");
+
+    // Garantir que Supabase está pronto (com retry automático de até 4.5s)
+    const ready = typeof _ensureSupabase === 'function' ? await _ensureSupabase() : (typeof isSupabaseReady === 'function' && isSupabaseReady());
+    if (!ready) {
+      return toast("Erro de conexão", "Não foi possível conectar ao servidor. Verifique sua internet e recarregue a página.");
     }
 
-    // O fallback offline foi removido. A autenticação agora é 100% via Supabase.
-    toast("Aviso", "Não foi possível realizar o login. Verifique sua conexão e tente novamente.");
+    try {
+      const { data, error } = await AuthService.signIn(email, pass);
+      if (error) {
+        const msg = error.message || '';
+        // Tratar erro específico de e-mail não confirmado
+        if (msg.toLowerCase().includes('email not confirmed') || msg.toLowerCase().includes('not confirmed')) {
+          return toast("E-mail não confirmado", "Verifique sua caixa de entrada e confirme o e-mail antes de entrar. Verifique também o spam.");
+        }
+        if (msg.toLowerCase().includes('invalid login') || msg.toLowerCase().includes('invalid credentials')) {
+          return toast("Erro", "E-mail ou senha incorretos.");
+        }
+        return toast("Erro", "Não foi possível entrar: " + msg);
+      }
+
+      if (!data?.user) {
+        return toast("Erro", "Resposta inválida do servidor. Tente novamente.");
+      }
+
+      toast("Aguarde", "Carregando seu perfil...");
+
+      // Buscar perfil com retry (trigger pode levar 1-2s para criar)
+      let profile = null;
+      for (let i = 0; i < 3; i++) {
+        profile = await AuthService.getUserProfile();
+        if (profile) break;
+        await new Promise(r => setTimeout(r, 800));
+      }
+
+      const userName = profile?.full_name || data.user.user_metadata?.full_name || email.split('@')[0];
+      const role = profile?.user_role || 'admin';
+
+      localStorage.setItem("agro_session", JSON.stringify({
+        user: { id: data.user.id, email: data.user.email, nome: userName, role }
+      }));
+      localStorage.setItem("agro_role", role);
+
+      // Sincronizar plano do banco — mapeia legados para Free
+      const planMap = { free: 'Free', trial: 'Free', basico: 'Free', pro: 'Pro', master: 'Master' };
+      const planKey = profile?.plan_type?.toLowerCase() || 'free';
+      localStorage.setItem("agro_plano", planMap[planKey] || 'Free');
+      localStorage.removeItem("agro_trial");
+
+      toast("Sincronizando", "Carregando dados da nuvem...");
+      try {
+        const restored = await cloudRestore();
+        if (!restored && typeof cloudSyncImmediate === 'function') await cloudSyncImmediate();
+      } catch (e) { console.warn('Login restore:', e.message); }
+
+      toast("Bem-vindo!", `Olá, ${userName}!`);
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      console.error("Erro no login:", err);
+      toast("Erro", "Falha no login: " + (err.message || "tente novamente."));
+    }
   };
 
-  // === CADASTRO (SIGNUP) ===
+  // ===== CADASTRO =====
   document.getElementById("btnCadastrar").onclick = async () => {
-    const nome = document.getElementById("signName").value.trim();
+    const nome  = document.getElementById("signName").value.trim();
+    const cpf   = document.getElementById("signCPF").value.trim();
+    const phone = document.getElementById("signPhone").value.trim();
     const email = document.getElementById("signEmail").value.trim();
-    const pass = document.getElementById("signPass").value;
-    if (!nome || !email || !pass) return toast("Erro", "Preencha todos os campos");
-    if (pass.length < 8) return toast("Erro", "A senha deve ter no mínimo 8 caracteres");
-    if (!/[A-Za-z]/.test(pass) || !/[0-9]/.test(pass)) return toast("Erro", "A senha deve conter letras e números");
-    
-    toast("Aguarde", "Criando sua conta...");
-    
-    // 1. Tentar cadastro no Supabase Real
-    if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
-      try {
-        const { data, error } = await AuthService.signUp(email, pass, nome);
-        if (error) {
-          if (error.message.includes("already registered")) {
-            return toast("Erro", "Este e-mail já possui conta. Faça login.");
-          }
-          return toast("Erro", "Falha ao criar conta: " + error.message);
-        }
-        
-        // Iniciar Trial no LocalStorage (o banco já inicia via Trigger SQL)
-        iniciarTrial(email, nome);
-        localStorage.setItem("agro_session", JSON.stringify({ 
-          user: { id: data.user.id, email, nome, role: 'admin' } 
-        }));
-        localStorage.setItem("agro_role", "admin");
-        
-        // Dados iniciais de demonstração removidos a pedido do usuário.
-        // O banco inicia limpo e o usuário cadastra seus próprios dados.
-        
-        // Sincronizar dados locais para a nuvem IMEDIATAMENTE
-        try {
-          if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate();
-          
-        } catch (syncErr) {
-          console.warn('Signup: erro ao sincronizar:', syncErr.message);
-        }
-        
-        toast("Sucesso", "Conta criada! Você tem 15 dias de teste grátis.");
-        setTimeout(() => location.reload(), 1000);
-        return;
-      } catch (err) {
-        console.error("Erro no cadastro Supabase:", err);
-      }
+    const pass  = document.getElementById("signPass").value;
+
+    // Validações locais (sem precisar de servidor)
+    if (!nome || !cpf || !phone || !email || !pass)
+      return toast("Erro", "Preencha todos os campos obrigatórios (*).");
+    if (!validateCPF(cpf))
+      return toast("Erro", "CPF inválido. Verifique o número digitado.");
+    if (phone.replace(/\D/g,'').length < 10)
+      return toast("Erro", "Telefone inválido. Informe DDD + número (ex: (99) 99999-9999).");
+    if (pass.length < 8)
+      return toast("Erro", "A senha deve ter no mínimo 8 caracteres.");
+    if (!/[A-Za-z]/.test(pass) || !/[0-9]/.test(pass))
+      return toast("Erro", "A senha deve conter letras e números.");
+
+    toast("Aguarde", "Conectando ao servidor...");
+
+    // Garantir que Supabase está pronto (com retry automático de até 4s)
+    const ready = typeof _ensureSupabase === 'function' ? await _ensureSupabase() : (typeof isSupabaseReady === 'function' && isSupabaseReady());
+    if (!ready) {
+      return toast("Erro de conexão", "Não foi possível conectar ao servidor. Verifique sua internet e recarregue a página.");
     }
 
-    // 2. Fallback Offline (Apenas se Supabase não estiver configurado)
-    iniciarTrial(email, nome);
-    localStorage.setItem("agro_session", JSON.stringify({ user: { email, nome, role: 'admin' } }));
-    localStorage.setItem("agro_role", "admin");
-    toast("Sucesso", "Conta criada (Modo Offline)");
-    setTimeout(() => location.reload(), 800);
+    toast("Aguarde", "Verificando dados e criando conta...");
+
+    try {
+      // Verificar CPF duplicado
+      const cpfExists = await AuthService.checkCpfExists(cpf.replace(/\D/g,''));
+      if (cpfExists) return toast("Erro", "Este CPF já está cadastrado. Faça login ou recupere o acesso.");
+
+      // Verificar telefone duplicado
+      const phoneExists = await AuthService.checkPhoneExists(phone.replace(/\D/g,''));
+      if (phoneExists) return toast("Erro", "Este telefone já está cadastrado. Faça login ou use outro número.");
+
+      toast("Aguarde", "Criando sua conta...");
+
+      const { data: signUpData, error: signUpError } = await AuthService.signUp(
+        email, pass, nome,
+        cpf.replace(/\D/g,''),
+        phone.replace(/\D/g,'')
+      );
+      if (signUpError) {
+        if (signUpError.message.includes("already registered") || signUpError.message.includes("already been registered"))
+          return toast("Erro", "Este e-mail já possui conta. Faça login.");
+        return toast("Erro", "Falha ao criar conta: " + signUpError.message);
+      }
+
+      // ─── Supabase pode exigir confirmação de e-mail ───────────────────────
+      // Se não voltou sessão (email_confirm ON), fazemos signIn imediato
+      // pois o usuário acabou de digitar as credenciais corretas.
+      // ──────────────────────────────────────────────────────────────────────
+      toast("Aguarde", "Finalizando acesso...");
+
+      let userId = signUpData?.user?.id;
+      let sessionOk = !!(signUpData?.session);
+
+      if (!sessionOk) {
+        // Tenta login imediato para obter sessão
+        const { data: loginData, error: loginError } = await AuthService.signIn(email, pass);
+        if (!loginError && loginData?.session) {
+          sessionOk = true;
+          userId = loginData.user?.id || userId;
+        }
+        // Se ainda falhar (email_confirm bloqueando), salva contexto mínimo e avisa
+        if (!sessionOk) {
+          toast("Conta criada!", "Verifique seu e-mail para confirmar o cadastro antes de entrar.", 8000);
+          return;
+        }
+      }
+
+      // ─── Sessão ativa: salvar dados locais e entrar ───────────────────────
+      iniciarTrial(email, nome); // define Plano Free no localStorage
+      localStorage.setItem("agro_session", JSON.stringify({
+        user: { id: userId, email, nome, role: 'admin' }
+      }));
+      localStorage.setItem("agro_role", "admin");
+
+      // Aguardar trigger SQL criar o perfil (max 2s)
+      await new Promise(r => setTimeout(r, 1200));
+
+      try {
+        if (typeof cloudSyncImmediate === 'function') await cloudSyncImmediate();
+      } catch (e) { console.warn('Signup sync:', e.message); }
+
+      toast("Conta criada!", `Bem-vindo ao Agro Pro, ${nome}! Você está no Plano Free.`);
+      setTimeout(() => location.reload(), 1200);
+    } catch (err) {
+      console.error("Erro no cadastro:", err);
+      toast("Erro", "Não foi possível criar a conta: " + (err.message || "tente novamente."));
+    }
   };
 }
 
@@ -4322,21 +4406,27 @@ function pageAplicacoes() {
 
 // pageRelatorios stub removido - função real abaixo
 
-window.setPlano = async (p) => { 
-  localStorage.setItem("agro_plano", p); 
-  // Se mudou para plano pago, remover dados de trial
-  if (p !== 'Trial') {
-    localStorage.removeItem("agro_trial");
-  }
+window.setPlano = async (p) => {
+  // Sempre limpar dados de trial ao trocar de plano
+  localStorage.removeItem("agro_trial");
+  trialInfo = null;
+
+  localStorage.setItem("agro_plano", p);
+  planoAtual = p;
+
   // Sincronizar plano com o Supabase
   if (typeof AuthService !== 'undefined' && typeof isSupabaseReady === 'function' && isSupabaseReady()) {
     try {
-      const planMap = { 'Básico': 'basico', 'Pro': 'pro', 'Master': 'master', 'Trial': 'trial' };
-      await AuthService.updateProfile({ plan_type: planMap[p] || 'trial' });
-      
-    } catch (e) { console.warn('Erro ao atualizar plano no Supabase:', e.message); }
+      const planMap = { 'Free': 'free', 'Pro': 'pro', 'Master': 'master' };
+      const result = await AuthService.updateProfile({ plan_type: planMap[p] || 'free' });
+      if (result?.error) {
+        console.warn('[Plano] Erro ao salvar no Supabase:', result.error.message);
+      }
+    } catch (e) {
+      console.warn('[Plano] Exceção ao atualizar plano:', e.message);
+    }
   }
-  location.reload(); 
+  location.reload();
 };
 function pageConfiguracoes() {
   const db = getDB();
@@ -4367,39 +4457,37 @@ function pageConfiguracoes() {
     <div class="config-section">
       ${userRole === 'admin' ? `<div class="config-card">
         <h3>💎 Planos e Assinatura</h3>` : '<!-- Planos ocultos para não-admin --><div style="display:none;">'}
-        <p>Seu plano atual: <b>${planoAtual === 'Trial' ? 'Período de Teste (Pro)' : planoAtual}</b></p>
-        ${planoAtual === 'Trial' && trialInfo ? `
-          <div style="background: #dbeafe; border: 1px solid #93c5fd; border-radius: 8px; padding: 12px; margin: 10px 0;">
-            <p style="margin: 0; font-size: 14px; color: #1e40af;">🎁 <b>${trialInfo.diasRestantes} dia${trialInfo.diasRestantes !== 1 ? 's' : ''}</b> restante${trialInfo.diasRestantes !== 1 ? 's' : ''} no período de teste gratuito.</p>
-            <p style="margin: 5px 0 0; font-size: 12px; color: #3b82f6;">Você tem acesso completo ao Plano Pro. Assine antes do término para não perder acesso.</p>
+        <p>Seu plano atual: <b>${planoAtual}</b></p>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-top:16px; text-align:left;">
+          <!-- FREE -->
+          <div style="padding:16px; border-radius:10px; border:${planoAtual==='Free'?'3px solid #64748b':'1px solid #e2e8f0'}; background:${planoAtual==='Free'?'#f1f5f9':'white'};">
+            <h4 style="margin:0 0 4px; color:#64748b; font-size:13px; font-weight:800;">FREE</h4>
+            <p style="font-size:22px; font-weight:800; margin:3px 0; color:#1e293b;">R$ 0<small style="font-size:11px; font-weight:400;">/mês</small></p>
+            <small style="color:#94a3b8; line-height:1.7; display:block;">1 fazenda, 1 talhão<br>Apenas visualização<br>Sem produção ou estoque</small>
+            ${planoAtual==='Free' ? '<div style="margin-top:10px; padding:6px; background:#e2e8f0; border-radius:6px; text-align:center; color:#64748b; font-size:11px; font-weight:700;">PLANO ATUAL</div>' : ''}
           </div>
-        ` : ''}
-        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-top:15px;">
-          <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Básico'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
-            <h4 style="margin:0 0 5px 0;">Básico</h4>
-            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 100<small>/mês</small></p>
-            <small>1 fazenda, 5 talhões<br>4 máquinas, 8 funcionários<br>Dashboard + Aplicações + Estoque</small><br>
-            <button class="btn" style="margin-top:10px;" onclick="setPlano('Básico')">Selecionar</button>
+          <!-- PRO -->
+          <div style="padding:16px; border-radius:10px; border:${planoAtual==='Pro'?'3px solid #10b981':'1px solid #e2e8f0'}; background:${planoAtual==='Pro'?'#ecfdf5':'white'}; position:relative;">
+            ${planoAtual==='Pro' ? '<div style="position:absolute;top:-10px;right:10px;background:#10b981;color:white;padding:2px 10px;border-radius:8px;font-size:10px;font-weight:700;">ATIVO</div>' : ''}
+            <h4 style="margin:0 0 4px; color:#065f46; font-size:13px; font-weight:800;">PRO</h4>
+            <p style="font-size:22px; font-weight:800; margin:3px 0; color:#1e293b;">R$ 199<small style="font-size:11px; font-weight:400;">/mês</small></p>
+            <small style="color:#374151; line-height:1.7; display:block;">5 fazendas, talhões ilimitados<br>Máquinas, equipe (15 membros)<br>Aplicações, estoque, colheitas<br>Relatórios + IA Copilot</small><br>
+            <a href="https://wa.me/5599991360547?text=Quero%20assinar%20o%20Plano%20Pro%20R%24199" target="_blank" style="display:block;margin-top:10px;padding:8px;background:#10b981;color:white;border-radius:7px;font-weight:700;font-size:12px;text-decoration:none;text-align:center;">💬 Assinar — R$199/mês</a>
           </div>
-          <div style="padding:15px; border-radius:8px; border: ${(planoAtual==='Pro'||planoAtual==='Trial')?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:${(planoAtual==='Pro'||planoAtual==='Trial')?'#ecfdf5':'white'}; position: relative;">
-            ${planoAtual === 'Trial' ? '<div style="position:absolute; top:-8px; right:10px; background:#3b82f6; color:white; padding:2px 8px; border-radius:8px; font-size:10px; font-weight:bold;">ATUAL (TESTE)</div>' : ''}
-            <h4 style="margin:0 0 5px 0;">Pro</h4>
-            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 299<small>/mês</small></p>
-            <small>2 fazendas, talhões ilimitados<br>12 funcionários + Roles<br>Relatórios + IA Prescritiva</small><br>
-            <button class="btn primary" style="margin-top:10px;" onclick="setPlano('Pro')">${planoAtual === 'Trial' ? 'Assinar Pro' : 'Selecionar'}</button>
-          </div>
-          <div style="padding:15px; border-radius:8px; border: ${planoAtual==='Master'?'3px solid #4CAF50':'1px solid #e2e8f0'}; background:white;">
-            <h4 style="margin:0 0 5px 0;">Master</h4>
-            <p style="font-size:20px; font-weight:bold; margin:5px 0;">R$ 599<small>/mês</small></p>
-            <small>8 fazendas, tudo ilimitado<br>Roles + Admins ilimitados<br>Suporte prioritário</small><br>
-            <button class="btn" style="margin-top:10px;" onclick="setPlano('Master')">Selecionar</button>
+          <!-- MASTER -->
+          <div style="padding:16px; border-radius:10px; border:${planoAtual==='Master'?'3px solid #f59e0b':'1px solid #e2e8f0'}; background:${planoAtual==='Master'?'#fffbeb':'white'}; position:relative;">
+            ${planoAtual==='Master' ? '<div style="position:absolute;top:-10px;right:10px;background:#f59e0b;color:#1e293b;padding:2px 10px;border-radius:8px;font-size:10px;font-weight:700;">ATIVO</div>' : ''}
+            <h4 style="margin:0 0 4px; color:#92400e; font-size:13px; font-weight:800;">MASTER</h4>
+            <p style="font-size:22px; font-weight:800; margin:3px 0; color:#1e293b;">R$ 299<small style="font-size:11px; font-weight:400;">/mês</small></p>
+            <small style="color:#374151; line-height:1.7; display:block;">Tudo do Pro<br>Fazendas <b>ilimitadas</b><br>Equipe e admins ilimitados<br>Suporte prioritário 24h</small><br>
+            <a href="https://wa.me/5599991360547?text=Quero%20assinar%20o%20Plano%20Master%20R%24299" target="_blank" style="display:block;margin-top:10px;padding:8px;background:#f59e0b;color:#1e293b;border-radius:7px;font-weight:700;font-size:12px;text-decoration:none;text-align:center;">💬 Assinar — R$299/mês</a>
           </div>
         </div>
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
-          <p style="font-size: 13px; color: #64748b;">Para assinar, entre em contato:</p>
-          <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px;">
-            <a href="mailto:suporteagropro@gmail.com?subject=Assinatura Agro Pro" style="padding: 8px 16px; background: #3b82f6; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">📧 E-mail</a>
-            <a href="https://wa.me/5599991360547?text=Olá! Quero assinar o Agro Pro" target="_blank" style="padding: 8px 16px; background: #25d366; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">💬 WhatsApp</a>
+        <div style="margin-top:14px; padding-top:14px; border-top:1px solid #e2e8f0;">
+          <p style="font-size:12px; color:#64748b; margin:0 0 8px;">Para ativar seu plano após pagamento, entre em contato:</p>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <a href="mailto:suporteagropro@gmail.com?subject=Assinatura Agro Pro" style="padding:7px 14px; background:#3b82f6; color:white; border-radius:6px; text-decoration:none; font-size:12px; font-weight:600;">📧 E-mail</a>
+            <a href="https://wa.me/5599991360547?text=Olá!%20Quero%20assinar%20o%20Agro%20Pro" target="_blank" style="padding:7px 14px; background:#25d366; color:white; border-radius:6px; text-decoration:none; font-size:12px; font-weight:600;">💬 WhatsApp</a>
           </div>
         </div>
       </div>
@@ -4609,8 +4697,10 @@ function pageConfiguracoes() {
     }
     toast("Sincronizando", "Enviando dados para a nuvem...");
     try {
+      // Resetar hash para forçar sync completo (mesmo dados sem alteração)
+      if (typeof window._lastSyncedHash !== 'undefined') window._lastSyncedHash = null;
       await cloudSyncImmediate();
-      toast("Sucesso", "Dados sincronizados com a nuvem!");
+      toast("Sucesso", "Dados sincronizados com a nuvem! Verifique o Supabase.");
     } catch(e) {
       toast("Erro", "Falha ao sincronizar: " + e.message);
     }
@@ -7094,11 +7184,12 @@ function boot() {
       .chat-input { padding: 15px; background: white; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; }
       
       .plan-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
+      .plan-free  { background: #e2e8f0; color: #64748b; }
       .plan-basic { background: #e2e8f0; color: #475569; }
       .plan-basico { background: #e2e8f0; color: #475569; }
       .plan-pro { background: #dcfce7; color: #166534; }
       .plan-master { background: #fef9c3; color: #854d0e; }
-      .plan-trial { background: #dbeafe; color: #1e40af; }
+      .plan-trial { background: #e2e8f0; color: #64748b; }
 `;
     document.head.appendChild(s);
   }
@@ -7155,7 +7246,7 @@ function boot() {
           return;
         }
 
-        const planMap = { trial: 'Trial', basico: 'Básico', pro: 'Pro', master: 'Master' };
+        const planMap = { free: 'Free', trial: 'Free', basico: 'Free', pro: 'Pro', master: 'Master' };
 
         userSession = {
           user: { id: session.user.id, email: session.user.email, nome: profile?.full_name || '', role: profile?.user_role || 'admin' }
@@ -7166,16 +7257,13 @@ function boot() {
         localStorage.setItem("agro_role", userRole);
 
         if (profile?.plan_type) {
-          planoAtual = planMap[profile.plan_type] || 'Trial';
+          planoAtual = planMap[profile.plan_type] || 'Free';
           localStorage.setItem("agro_plano", planoAtual);
         }
 
-        if (profile?.trial_ends_at) {
-          const fim = new Date(profile.trial_ends_at);
-          const dias = Math.ceil((fim - new Date()) / (1000*60*60*24));
-          trialInfo = { trial_ends_at: profile.trial_ends_at, created_at: profile.created_at, expirado: dias <= 0, diasRestantes: dias };
-          localStorage.setItem("agro_trial", JSON.stringify(trialInfo));
-        }
+        // Sem trial: sempre limpar dados de trial
+        trialInfo = null;
+        localStorage.removeItem("agro_trial");
 
         _renderPageAfterAuth(pageKey, titles);
       }).catch(() => {
@@ -7185,8 +7273,8 @@ function boot() {
           try {
             userSession = JSON.parse(cached);
             userRole = userSession?.user?.role || localStorage.getItem("agro_role") || 'admin';
-            trialInfo = getTrialInfo();
-            planoAtual = localStorage.getItem("agro_plano") || 'Trial';
+            trialInfo = null;
+            planoAtual = localStorage.getItem("agro_plano") || 'Free';
             _renderPageAfterAuth(pageKey, titles);
           } catch (_e) {
             localStorage.removeItem("agro_session");
@@ -7204,8 +7292,8 @@ function boot() {
         try {
           userSession = JSON.parse(cached);
           userRole = userSession?.user?.role || localStorage.getItem("agro_role") || 'admin';
-          trialInfo = getTrialInfo();
-          planoAtual = localStorage.getItem("agro_plano") || 'Trial';
+          trialInfo = null;
+          planoAtual = localStorage.getItem("agro_plano") || 'Free';
           // Mostrar aviso de modo offline na tela
           window._offlineMode = true;
           _renderPageAfterAuth(pageKey, titles);
