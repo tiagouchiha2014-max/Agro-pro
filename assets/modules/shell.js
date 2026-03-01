@@ -7,7 +7,8 @@ function renderShell(pageKey, title, subtitle) {
   const allowedPages = PAGES.filter(p => canAccessPage(p.key));
   const nav = allowedPages.map(p => {
     const active = (p.key === pageKey) ? "active" : "";
-    return `<a class="${active}" href="${p.href}"><span class="ico">${p.icon}</span> ${escapeHtml(p.label)}${p.badge ? ` <span style="background:#fbbf24; color:#0f172a; font-size:9px; padding:1px 6px; border-radius:8px; font-weight:800; vertical-align:middle; margin-left:4px;">${p.badge}</span>` : ''}</a>`;
+    const ariaCurrent = (p.key === pageKey) ? ' aria-current="page"' : '';
+    return `<a class="${active}" href="${p.href}" role="menuitem"${ariaCurrent}><span class="ico" aria-hidden="true">${p.icon}</span> ${escapeHtml(p.label)}${p.badge ? ` <span style="background:#fbbf24; color:#0f172a; font-size:9px; padding:1px 6px; border-radius:8px; font-weight:800; vertical-align:middle; margin-left:4px;" aria-label="${p.badge}">${p.badge}</span>` : ''}</a>`;
   }).join("");
 
   const safraOptions = db.safras.length > 0
@@ -19,72 +20,83 @@ function renderShell(pageKey, title, subtitle) {
 
   const root = document.getElementById("app");
   root.innerHTML = `
-    <div class="app">
-      <button class="menu-toggle noPrint" id="menuToggle">☰</button>
-      <aside class="sidebar" id="sidebar">
+    <a class="skip-link" href="#content" id="skipLink">Pular para conteúdo principal</a>
+    <div class="app" role="application">
+      <button class="menu-toggle noPrint" id="menuToggle" aria-label="Abrir menu lateral" aria-expanded="false" aria-controls="sidebar">☰</button>
+      <aside class="sidebar" id="sidebar" role="navigation" aria-label="Menu principal">
         <div class="brand">
-          <div class="logo"></div>
+          <div class="logo" role="img" aria-label="Logo Agro Pro"></div>
           <div>
-            <h1>Agro Pro <span class="plan-badge plan-${planoAtual.toLowerCase()}">${planoAtual}</span></h1>
+            <h1>Agro Pro <span class="plan-badge plan-${planoAtual.toLowerCase()}" aria-label="Plano ${planoAtual}">${planoAtual}</span></h1>
             <p>Gestão Agrícola Inteligente</p>
-            ${userRole !== 'admin' ? `<span style="${getRoleBadgeColor()} font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: bold;">${getRoleLabel()}</span>` : ''}
+            ${userRole !== 'admin' ? `<span style="${getRoleBadgeColor()} font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: bold;" role="status" aria-label="Perfil ${getRoleLabel()}">${getRoleLabel()}</span>` : ''}
           </div>
         </div>
 
-        <div class="tenant">
+        <div class="tenant" role="region" aria-label="Filtros de safra e fazenda">
           <div class="row">
-            <span class="badge"><span class="dot"></span> ${planoAtual}</span>
-            <button class="btn noPrint" id="btnBackup">Backup</button>
+            <span class="badge" aria-label="Plano ativo: ${planoAtual}"><span class="dot" aria-hidden="true"></span> ${planoAtual}</span>
+            <button class="btn noPrint" id="btnBackup" aria-label="Fazer backup dos dados">Backup</button>
           </div>
-          <div class="hr"></div>
+          <div class="hr" aria-hidden="true"></div>
           
-          <small>🌱 Safra ativa</small>
-          <select class="select" id="safraSelect" ${db.safras.length === 0 ? 'disabled style="opacity:0.5"' : ''}>${safraOptions}</select>
+          <label for="safraSelect" class="sr-only">Safra ativa</label>
+          <small aria-hidden="true">🌱 Safra ativa</small>
+          <select class="select" id="safraSelect" aria-label="Selecionar safra ativa" ${db.safras.length === 0 ? 'disabled aria-disabled="true" style="opacity:0.5"' : ''}>${safraOptions}</select>
           
-          <small style="margin-top:10px; display:block;">🏡 Filtrar por Fazenda</small>
-          <select class="select" id="fazendaSelect">
+          <label for="fazendaSelect" class="sr-only">Filtrar por fazenda</label>
+          <small style="margin-top:10px; display:block;" aria-hidden="true">🏡 Filtrar por Fazenda</small>
+          <select class="select" id="fazendaSelect" aria-label="Filtrar por fazenda">
             <option value="">Todas as Fazendas</option>
             ${db.fazendas.filter(f => f.safraId === safraId).map(f => `<option value="${f.id}" ${fazendaAtual === f.id ? 'selected' : ''}>${escapeHtml(f.nome)}</option>`).join('')}
           </select>
           
           <div style="margin-top:10px" class="row">
-            <button class="btn primary" id="btnNovaSafra">+ Nova safra</button>
+            <button class="btn primary" id="btnNovaSafra" aria-label="Criar nova safra">+ Nova safra</button>
           </div>
         </div>
 
-        <nav class="nav">${nav}</nav>
+        <nav class="nav" aria-label="Navegação do sistema">${nav}</nav>
 
-        <div style="margin: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 12px;">
+        <div style="margin: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 12px;" role="complementary" aria-label="Informações do plano">
            <b>Plano ${planoAtual}</b>
            ${userRole !== 'admin' ? `<br><span style="color: #fbbf24;">Perfil: ${getRoleLabel()}</span>` : ''}<br>
            ${(planoAtual === 'Free' || planoAtual === 'Trial') ? `<span style="color: rgba(251,191,36,0.85); font-size: 11px;">Acesso limitado — só visualização</span><br>` : ''}
-           ${userRole === 'admin' ? `<a href="configuracoes.html" style="color: #4ade80; text-decoration: none;">${(planoAtual === 'Free' || planoAtual === 'Trial') ? 'Assinar plano' : 'Gerenciar plano'} →</a>` : `<span style="color: #94a3b8;">Conta vinculada ao admin</span>`}
+           ${userRole === 'admin' ? `<a href="configuracoes.html" style="color: #4ade80; text-decoration: none;" aria-label="${(planoAtual === 'Free' || planoAtual === 'Trial') ? 'Assinar plano' : 'Gerenciar plano'}">${(planoAtual === 'Free' || planoAtual === 'Trial') ? 'Assinar plano' : 'Gerenciar plano'} →</a>` : `<span style="color: #94a3b8;">Conta vinculada ao admin</span>`}
            
-           <button id="btnSairSidebar" style="width: 100%; margin-top: 15px; padding: 8px; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.55); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 11px; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">🚪 Sair da conta</button>
+           <button id="btnSairSidebar" aria-label="Sair da conta" style="width: 100%; margin-top: 15px; padding: 8px; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.55); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 11px; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">🚪 Sair da conta</button>
+           <div style="margin-top:8px; text-align:center;">
+             <button id="btnShortcutsHelp" style="background:none; border:none; color:rgba(255,255,255,0.35); font-size:10px; cursor:pointer; padding:2px;" aria-label="Ver atalhos de teclado" title="Atalhos de teclado (?)">
+               ⌨ Atalhos <kbd class="kbd" style="font-size:9px; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.15); color:rgba(255,255,255,0.5);">?</kbd>
+             </button>
+           </div>
         </div>
       </aside>
 
-      <main class="main">
-        <div class="topbar">
+      <main class="main" role="main">
+        <div class="topbar" role="banner">
           <div style="display:flex; align-items:center; gap:15px;">
-            <button class="menu-toggle noPrint" id="menuToggleMain">☰</button>
+            <button class="menu-toggle noPrint" id="menuToggleMain" aria-label="Abrir menu lateral" aria-expanded="false" aria-controls="sidebar">☰</button>
             <div class="title">
               <h2>${escapeHtml(title)}</h2>
               <p>${escapeHtml(subtitle || (safra ? `Safra: ${safra.nome}` : "Selecione uma safra"))}</p>
             </div>
           </div>
           <div class="actions noPrint" id="topActions">
-            <button class="theme-toggle noPrint" id="btnThemeToggle" title="Alternar modo escuro/claro" aria-label="Alternar tema">🌙</button>
+            <button class="theme-toggle noPrint" id="btnThemeToggle" title="Alternar modo escuro/claro (Ctrl+D)" aria-label="Alternar tema claro e escuro">🌙</button>
           </div>
         </div>
 
-        <div id="content" class="content"></div>
+        <div id="content" class="content" role="region" aria-label="Conteúdo principal" tabindex="-1"></div>
       </main>
     </div>
   `;
 
-  // Listeners Mobile
-  const toggle = () => document.getElementById("sidebar").classList.toggle("active");
+  // Listeners Mobile — toggle sidebar + sync aria-expanded
+  const toggle = () => {
+    document.getElementById("sidebar").classList.toggle("active");
+    _syncMenuAria();
+  };
   document.getElementById("menuToggleMain")?.addEventListener("click", toggle);
   if(document.getElementById("menuToggle")) document.getElementById("menuToggle").addEventListener("click", toggle);
 
@@ -92,7 +104,10 @@ function renderShell(pageKey, title, subtitle) {
   const _applyTheme = (dark) => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     const btn = document.getElementById('btnThemeToggle');
-    if (btn) btn.textContent = dark ? '☀️' : '🌙';
+    if (btn) {
+      btn.textContent = dark ? '☀️' : '🌙';
+      btn.setAttribute('aria-label', dark ? 'Ativar modo claro' : 'Ativar modo escuro');
+    }
     localStorage.setItem('agro_theme', dark ? 'dark' : 'light');
   };
   // Apply saved theme on render
@@ -102,6 +117,105 @@ function renderShell(pageKey, title, subtitle) {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     _applyTheme(!isDark);
   });
+
+  // ═══ KEYBOARD SHORTCUTS ═══
+  function _showShortcutsOverlay() {
+    if (document.getElementById('shortcutsOverlay')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'shortcutsOverlay';
+    overlay.className = 'shortcuts-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-label', 'Atalhos de teclado');
+    overlay.innerHTML = `
+      <div class="shortcuts-panel">
+        <h2>⌨ Atalhos de Teclado</h2>
+        <div class="shortcut-row"><span>Dashboard</span><span class="shortcut-keys"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">1</kbd></span></div>
+        <div class="shortcut-row"><span>Propriedade</span><span class="shortcut-keys"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">2</kbd></span></div>
+        <div class="shortcut-row"><span>Aplicações</span><span class="shortcut-keys"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">3</kbd></span></div>
+        <div class="shortcut-row"><span>Colheitas</span><span class="shortcut-keys"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">4</kbd></span></div>
+        <div class="shortcut-row"><span>Relatórios</span><span class="shortcut-keys"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">5</kbd></span></div>
+        <div class="shortcut-row"><span>Copilot IA</span><span class="shortcut-keys"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">6</kbd></span></div>
+        <div class="shortcut-row"><span>Configurações</span><span class="shortcut-keys"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">7</kbd></span></div>
+        <div class="shortcut-row"><span>Alternar tema</span><span class="shortcut-keys"><kbd class="kbd">Ctrl</kbd>+<kbd class="kbd">D</kbd></span></div>
+        <div class="shortcut-row"><span>Abrir/fechar menu</span><span class="shortcut-keys"><kbd class="kbd">Ctrl</kbd>+<kbd class="kbd">M</kbd></span></div>
+        <div class="shortcut-row"><span>Busca rápida (foco na safra)</span><span class="shortcut-keys"><kbd class="kbd">Ctrl</kbd>+<kbd class="kbd">K</kbd></span></div>
+        <div class="shortcut-row"><span>Mostrar atalhos</span><span class="shortcut-keys"><kbd class="kbd">?</kbd></span></div>
+        <div style="margin-top:var(--space-5); text-align:right;">
+          <button class="btn primary" id="closeShortcuts" aria-label="Fechar atalhos">Fechar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.getElementById('closeShortcuts')?.addEventListener('click', () => overlay.remove());
+    document.getElementById('closeShortcuts')?.focus();
+  }
+
+  const _shortcutPages = {
+    '1': 'index.html',
+    '2': 'propriedade.html',
+    '3': 'aplicacoes.html',
+    '4': 'colheitas.html',
+    '5': 'relatorios.html',
+    '6': 'copilot.html',
+    '7': 'configuracoes.html'
+  };
+
+  document.addEventListener('keydown', (e) => {
+    // Ignore shortcuts when typing in inputs
+    const tag = (e.target.tagName || '').toLowerCase();
+    const isInput = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+
+    // ? key — show shortcuts
+    if (e.key === '?' && !isInput) {
+      e.preventDefault();
+      _showShortcutsOverlay();
+      return;
+    }
+    // Escape — close shortcuts overlay or sidebar
+    if (e.key === 'Escape') {
+      const overlay = document.getElementById('shortcutsOverlay');
+      if (overlay) { overlay.remove(); return; }
+      const sb = document.getElementById('sidebar');
+      if (sb && sb.classList.contains('active')) { sb.classList.remove('active'); return; }
+    }
+    // Alt+N — navigate to pages
+    if (e.altKey && _shortcutPages[e.key]) {
+      e.preventDefault();
+      window.location.href = _shortcutPages[e.key];
+      return;
+    }
+    // Ctrl+D — toggle dark mode
+    if (e.ctrlKey && e.key === 'd') {
+      e.preventDefault();
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      _applyTheme(!isDark);
+      return;
+    }
+    // Ctrl+M — toggle mobile menu
+    if (e.ctrlKey && e.key === 'm') {
+      e.preventDefault();
+      document.getElementById('sidebar')?.classList.toggle('active');
+      return;
+    }
+    // Ctrl+K — focus safra selector
+    if (e.ctrlKey && e.key === 'k') {
+      e.preventDefault();
+      document.getElementById('safraSelect')?.focus();
+      return;
+    }
+  });
+
+  // Shortcuts help button
+  document.getElementById('btnShortcutsHelp')?.addEventListener('click', _showShortcutsOverlay);
+
+  // Sidebar toggle aria-expanded sync
+  const _syncMenuAria = () => {
+    const sb = document.getElementById('sidebar');
+    const isOpen = sb?.classList.contains('active') || false;
+    document.getElementById('menuToggle')?.setAttribute('aria-expanded', String(isOpen));
+    document.getElementById('menuToggleMain')?.setAttribute('aria-expanded', String(isOpen));
+  };
 
   document.getElementById("safraSelect").addEventListener("change", (e) => {
     setSafraId(e.target.value);
