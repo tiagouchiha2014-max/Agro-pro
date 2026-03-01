@@ -1,88 +1,32 @@
 function boot() {
+  // Injetar apenas estilos complementares que NÃO existem em style.css
   if (!document.getElementById("globalStyles")) {
     const s = document.createElement("style");
     s.id = "globalStyles";
     s.innerHTML = `
-      :root {
-        --primary: #2e7d32;
-        --primary-dark: #1b5e20;
-        --bg: #f8fafc;
-        --sidebar-bg: #1e293b;
-        --text: #334155;
-      }
-      * { box-sizing: border-box; }
-      body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; }
-      
-      .app { display: flex; min-height: 100vh; }
-      
-      /* Sidebar Responsiva */
-      .sidebar { 
-        width: 260px; background: var(--sidebar-bg); color: white; display: flex; flex-direction: column; 
-        transition: transform 0.3s ease; z-index: 1000;
-      }
-      .sidebar.hidden { transform: translateX(-260px); position: absolute; height: 100%; }
-      
-      .brand { padding: 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-      .logo { width: 32px; height: 32px; background: #4ade80; border-radius: 8px; }
-      .brand h1 { font-size: 18px; margin: 0; }
-      .brand p { font-size: 11px; margin: 0; opacity: 0.6; }
-      
-      .nav { flex: 1; padding: 10px; overflow-y: auto; }
-      .nav a { 
-        display: flex; align-items: center; gap: 10px; padding: 10px 15px; color: #cbd5e1; 
-        text-decoration: none; border-radius: 8px; font-size: 14px; margin-bottom: 2px;
-      }
-      .nav a:hover { background: rgba(255,255,255,0.05); color: white; }
-      .nav a.active { background: var(--primary); color: white; font-weight: 600; }
-      
-      .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-      .topbar { 
-        background: white; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center;
-        border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100;
-      }
-      .topbar h2 { margin: 0; font-size: 20px; color: #0f172a; }
-      
-      .content { padding: 25px; max-width: 1400px; margin: 0 auto; width: 100%; }
-      
-      /* Mobile Menu Button */
-      .menu-toggle { display: none; background: none; border: none; font-size: 24px; cursor: pointer; padding: 5px; }
-      
-      /* Cards e Layout */
-      .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; border: 1px solid #e2e8f0; }
       .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
       
-      /* Tabelas Responsivas */
+      /* Tabelas Responsivas — Mobile card layout */
       @media (max-width: 768px) {
-        .app { flex-direction: column; }
-        .sidebar { width: 100%; height: auto; position: fixed; top: 0; left: 0; bottom: 0; transform: translateX(-100%); }
-        .sidebar.active { transform: translateX(0); }
-        .menu-toggle { display: block; }
-        .topbar { padding: 15px; }
-        .content { padding: 15px; }
-        
         .tableWrap { border: none; }
         table, thead, tbody, th, td, tr { display: block; }
         thead tr { position: absolute; top: -9999px; left: -9999px; }
-        tr { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 10px; background: white; padding: 10px; }
+        tr { border: 1px solid var(--border, #e2e8f0); border-radius: 8px; margin-bottom: 10px; background: var(--surface, white); padding: 10px; }
         td { border: none; position: relative; padding-left: 50%; text-align: right; min-height: 30px; display: flex; align-items: center; justify-content: flex-end; }
-        td:before { content: attr(data-label); position: absolute; left: 10px; width: 45%; padding-right: 10px; white-space: nowrap; text-align: left; font-weight: bold; color: #64748b; }
+        td:before { content: attr(data-label); position: absolute; left: 10px; width: 45%; padding-right: 10px; white-space: nowrap; text-align: left; font-weight: bold; color: var(--text-muted, #64748b); }
       }
       
       /* IA Chat Styles */
-      .chat-container { height: 500px; display: flex; flex-direction: column; background: #f1f5f9; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+      .chat-container { height: 500px; display: flex; flex-direction: column; background: var(--bg-subtle, #f1f5f9); border-radius: var(--radius, 12px); overflow: hidden; border: 1px solid var(--border, #e2e8f0); }
       .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-      .msg { max-width: 80%; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
-      .msg.user { align-self: flex-end; background: var(--primary); color: white; border-bottom-right-radius: 2px; }
-      .msg.bot { align-self: flex-start; background: white; color: var(--text); border-bottom-left-radius: 2px; border: 1px solid #e2e8f0; }
-      .chat-input { padding: 15px; background: white; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; }
+      .msg { max-width: 80%; padding: 12px 16px; border-radius: var(--radius, 12px); font-size: 14px; line-height: 1.5; }
+      .msg.user { align-self: flex-end; background: var(--brand, #2d7d32); color: white; border-bottom-right-radius: 2px; }
+      .msg.bot { align-self: flex-start; background: var(--surface, white); color: var(--text); border-bottom-left-radius: 2px; border: 1px solid var(--border, #e2e8f0); }
+      .chat-input { padding: 15px; background: var(--surface, white); border-top: 1px solid var(--border, #e2e8f0); display: flex; gap: 10px; }
       
-      .plan-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
-      .plan-free  { background: #e2e8f0; color: #64748b; }
-      .plan-basic { background: #e2e8f0; color: #475569; }
-      .plan-basico { background: #e2e8f0; color: #475569; }
-      .plan-pro { background: #dcfce7; color: #166534; }
-      .plan-master { background: #fef9c3; color: #854d0e; }
-      .plan-trial { background: #e2e8f0; color: #64748b; }
+      .plan-basic { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6); }
+      .plan-basico { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6); }
+      .plan-trial { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6); }
 `;
     document.head.appendChild(s);
   }
