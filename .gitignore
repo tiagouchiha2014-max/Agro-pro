@@ -11,3 +11,8 @@ agropro_supabase_v10.0.sql
 supabase_setup.sql
 supabase-migration-v9.6.sql
 supabase-migration-v9.7.sql
+.netlify/
+node_modules/
+package-lock.json
+package.json
+supabase/.temp/
