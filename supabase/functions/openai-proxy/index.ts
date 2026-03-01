@@ -109,6 +109,10 @@ serve(async (req: Request) => {
       );
     }
 
+    // Validar modelo permitido (evita uso indevido de modelos caros)
+    const ALLOWED_MODELS = ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"];
+    const safeModel = ALLOWED_MODELS.includes(model) ? model : "gpt-4o";
+
     // 6. Chamar a OpenAI com a chave segura do servidor
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
     if (!openaiKey) {
@@ -125,7 +129,7 @@ serve(async (req: Request) => {
         "Authorization": `Bearer ${openaiKey}`,
       },
       body: JSON.stringify({
-        model: model || "gpt-4o",
+        model: safeModel,
         messages: messages,
         max_tokens: Math.min(max_tokens || 2000, 4000), // Limitar tokens
         temperature: temperature ?? 0.7,
