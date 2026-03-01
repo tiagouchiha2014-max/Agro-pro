@@ -716,6 +716,10 @@ function pageCopilot() {
     return;
   }
 
+  // Chave OpenAI (deve ser calculada ANTES do innerHTML)
+  const localKey = localStorage.getItem('agro_openai_key') || '';
+  const hasKey   = localKey.startsWith('sk-');
+
   // Gerar alertas automáticos proativos
   const alertasAuto = _gerarAlertasAutomaticos();
 
@@ -797,8 +801,6 @@ function pageCopilot() {
       </div>
     </div>`;
 
-  const localKey = localStorage.getItem('agro_openai_key') || '';
-  const hasKey   = localKey.startsWith('sk-');
   const keyStatus = hasKey
     ? `• 🔑 Chave OpenAI configurada — GPT-4o ativo`
     : `• ⚠️ Sem chave OpenAI — [configurar agora](configuracoes.html) para IA completa`;
