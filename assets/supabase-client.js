@@ -5,8 +5,7 @@
    CORREÇÕES v7.2:
    - _doCloudSync: hash agora ignora IDs locais (não-UUID) para
      forçar sync sempre que houver registros não enviados
-   - _syncGranular: erros de insert/upsert agora logados via
-     console.warn (não mais silenciados)
+   - _syncGranular: erros de insert/upsert silenciados em produção
    - _restoreFromTables: condição de bloqueio de sync reverso
      corrigida para não travar quando local tem IDs locais
    ============================================================ */
@@ -47,7 +46,7 @@ function initSupabase() {
                          null;
 
     if (!createClientFn) {
-      console.warn('[Supabase] SDK não encontrado em window.supabase — CDN pode não ter carregado');
+      /* SDK não encontrado — CDN pode não ter carregado */
       return false;
     }
 
@@ -385,7 +384,7 @@ async function _doCloudSync() {
       .upsert({ user_id: user.id, data: db, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
 
     if (backupResult.error) {
-      console.warn('[Sync] Backup JSON erro');
+      /* Sync: backup JSON erro — silenciado */
     }
 
     // 2. Sync granular
@@ -397,7 +396,7 @@ async function _doCloudSync() {
     _updateCloudIndicator(true);
     return true;
   } catch (e) {
-    console.warn('[Sync] Falha:', e.message);
+    /* Sync falha — silenciado */
     _syncPending = false;
     _updateCloudIndicator(false);
     return false;
@@ -489,14 +488,14 @@ async function _syncGranular(userId, db) {
           var insertData = _prepareForInsert(item, userId, idMap);
           var insertRes = await _supabaseClient.from(tableName).insert(insertData).select('id').single();
           if (insertRes.error) {
-            console.warn('[Sync] Insert erro em', tableName, ':', insertRes.error.message, '| dados:', JSON.stringify(insertData).slice(0,200));
+            /* Sync: insert erro — silenciado */
           } else if (insertRes.data) {
             idMap[item.id] = insertRes.data.id;
           }
         }
       }
     } catch (e) {
-      console.warn('[Sync] Erro na tabela', tableName, ':', e.message || e);
+      /* Sync: erro na tabela — silenciado */
     }
   }
 
@@ -607,7 +606,7 @@ async function _restoreFromTables(userId) {
     if (localFaz > 0 && localFaz >= serverFazCnt && localTalhoes >= serverTalhoesCnt && !localHasUnsyncedIds) {
       // Local está em dia e sem IDs locais — enviar dados locais para o servidor
       if (typeof cloudSyncImmediate === 'function') {
-        cloudSyncImmediate().catch(function(e) { console.warn('[Restore] sync reverso:', e.message); });
+        cloudSyncImmediate().catch(function() { /* silenciado */ });
       }
       return false;
     }

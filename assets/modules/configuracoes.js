@@ -654,7 +654,7 @@ function pageConfiguracoes() {
       };
       setDB(db2);
       if (typeof SupaCRUD !== 'undefined') {
-        try { await SupaCRUD.upsertParametros(db2.parametros); } catch (err) { console.warn('Sync params:', err.message); }
+        try { await SupaCRUD.upsertParametros(db2.parametros); } catch (err) { /* silenciado */ }
       }
       toast("Parâmetros salvos", "Valores atualizados com sucesso.");
     });
@@ -684,7 +684,7 @@ function pageConfiguracoes() {
         if (typeof cloudSyncImmediate === 'function') {
           cloudSyncImmediate()
             .then(() => { toast("Sincronizado", "Backup enviado para a nuvem!"); setTimeout(() => location.reload(), 500); })
-            .catch(err => { console.warn('Sync após import:', err.message); setTimeout(() => location.reload(), 500); });
+            .catch(() => { setTimeout(() => location.reload(), 500); });
         } else {
           setTimeout(() => location.reload(), 500);
         }

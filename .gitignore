@@ -1,3 +1,5 @@
 agropro-v9.5.zip
 auto-deploy.py
-agropro-v9.5.zip
+
+# Legacy monolithic app (replaced by modular assets/modules/)
+assets/app.js
