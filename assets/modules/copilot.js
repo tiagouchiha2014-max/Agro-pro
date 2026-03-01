@@ -741,150 +741,20 @@ async function _sendMessage() {
 // ============================================================================
 
 function pageCopilot() {
-  const db = getDB();
-  const plano = planoAtual || localStorage.getItem('agro_plano') || 'Free';
-
-  // Bloquear para plano Free
-  if (plano === 'Free') {
-    document.getElementById('content').innerHTML = `
-      <div class="card" style="text-align:center; padding:50px 30px;">
-        <div style="font-size:60px; margin-bottom:16px;">🔒</div>
-        <h2 style="margin:0 0 10px;">Agro-Copilot (IA)</h2>
-        <p style="color:var(--text-muted,#64748b); max-width:480px; margin:0 auto 24px; line-height:1.6;">
-          O <b>Agro-Copilot</b> está disponível nos planos <b>Pro</b> e <b>Master</b>.
-          Faça upgrade para conversar com seus dados, receber alertas automáticos e sugestões de manejo personalizadas.
-        </p>
-        <a href="https://wa.me/5599991360547?text=Olá!%20Quero%20assinar%20o%20Agro%20Pro%20(Plano%20Pro%20R%24199%2Fmês)"
-           target="_blank"
-           style="display:inline-block; background:#25d366; color:white; padding:12px 28px; border-radius:10px; font-weight:700; text-decoration:none; font-size:15px;">
-          💬 Assinar Pro — R$199/mês
-        </a>
-      </div>`;
-    return;
-  }
-
-  // IA via Edge Function (servidor seguro)
-  const hasKey = typeof SUPABASE_URL !== 'undefined' && typeof AuthService !== 'undefined';
-
-  // Gerar alertas automáticos proativos
-  const alertasAuto = _gerarAlertasAutomaticos();
-
-  // Resetar histórico para nova sessão
-  _copilotMessages = [];
-
-  // Saudação inicial
-  const safraId  = getSafraId ? getSafraId() : db.session?.safraId;
-  const safra    = db.safras?.find(s => s.id === safraId);
-  const talhoes  = (db.talhoes || []).filter(t => !safraId || t.safraId === safraId);
-  const hora     = new Date().getHours();
-  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
-  const session  = (() => { try { return JSON.parse(localStorage.getItem('agro_session') || '{}'); } catch(_) { return {}; } })();
-  const nome     = session?.user?.nome?.split(' ')[0] || 'Produtor';
-
-  document.getElementById('content').innerHTML = `
-    <div class="section" style="max-width:860px; margin:0 auto;">
-
-      <!-- Header -->
-      <div class="card" style="background:linear-gradient(135deg,#1e3a5f,#2d6a4f); color:white; padding:24px 28px; margin-bottom:0; border-radius:12px 12px 0 0; border:none;">
-        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-          <div style="width:52px; height:52px; background:rgba(255,255,255,.15); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:28px; flex-shrink:0;">🤖</div>
-          <div style="flex:1; min-width:200px;">
-            <h2 style="margin:0 0 2px; font-size:20px; font-weight:800;">Agro-Copilot</h2>
-            <p style="margin:0; opacity:.8; font-size:13px;">Assistente de IA com seus dados completos da safra ${safra ? `"${safra.nome}"` : 'atual'}</p>
-          </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <span style="background:rgba(255,255,255,.2); padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600;">${plano.toUpperCase()}</span>
-            <span style="background:${hasKey ? 'rgba(37,211,102,.3)' : 'rgba(245,158,11,.4)'}; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600;">${hasKey ? '● GPT-4o Ativo' : '⚠ Sem Chave OpenAI'}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Alertas Automáticos -->
-      ${alertasAuto.length > 0 ? `
-      <div style="background:#fffbeb; border:1px solid #f59e0b; border-top:none; padding:14px 20px;">
-        <div style="font-size:13px; font-weight:700; color:#92400e; margin-bottom:8px;">⚡ Alertas Automáticos Detectados:</div>
-        ${alertasAuto.map(a => `<div style="font-size:13px; color:#78350f; margin-bottom:4px;">${a}</div>`).join('')}
-        <button onclick="_sendWhatsAppAlerts()" style="margin-top:10px; background:#25d366; color:white; border:none; border-radius:7px; padding:7px 16px; font-size:12px; font-weight:700; cursor:pointer;">
-          📱 Enviar todos os alertas via WhatsApp
-        </button>
-      </div>` : ''}
-
-      <!-- Sugestões Rápidas -->
-      <div style="background:var(--card-bg,white); border:1px solid var(--border,#e2e8f0); border-top:none; padding:12px 16px; display:flex; gap:8px; flex-wrap:wrap;">
-        <span style="font-size:12px; color:var(--text-muted,#64748b); align-self:center;">Perguntar sobre:</span>
-        ${['💰 Custos','🌦 Clima','📦 Estoque','🔧 Manutenção','🌱 Talhões','📊 Financeiro','🧪 Aplicações','🔬 Solo','⚠️ Alertas'].map(s =>
-          `<button onclick="document.getElementById('copilotInput').value='${s.replace(/['"]/g,'')}'; _sendMessage();"
-            style="background:var(--bg,#f8fafc); border:1px solid var(--border,#e2e8f0); border-radius:20px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .2s;"
-            onmouseover="this.style.background='var(--brand,#2e7d32)'; this.style.color='white';"
-            onmouseout="this.style.background='var(--bg,#f8fafc)'; this.style.color='';"
-          >${s}</button>`
-        ).join('')}
-      </div>
-
-      <!-- Chat Messages -->
-      <div id="copilotMessages" style="height:420px; overflow-y:auto; padding:20px; background:var(--bg,#f8fafc); border:1px solid var(--border,#e2e8f0); border-top:none; display:flex; flex-direction:column; gap:14px; scroll-behavior:smooth;">
-        <!-- Mensagem de boas-vindas inicial -->
-      </div>
-
-      <!-- Input -->
-      <div style="background:var(--card-bg,white); border:1px solid var(--border,#e2e8f0); border-top:none; border-radius:0 0 12px 12px; padding:14px 16px; display:flex; gap:10px; align-items:center;">
-        <input id="copilotInput" type="text" placeholder="Pergunte sobre custos, clima, estoque, manejo..." 
-          style="flex:1; border:1px solid var(--border,#e2e8f0); border-radius:8px; padding:10px 14px; font-size:14px; background:var(--bg,#f8fafc); color:var(--text,#334155); outline:none;"
-          onkeydown="if(event.key==='Enter')_sendMessage();" />
-        <button id="copilotSendBtn" onclick="_sendMessage()"
-          style="background:var(--brand,#2e7d32); color:white; border:none; border-radius:8px; padding:10px 18px; font-size:18px; cursor:pointer; font-weight:700; transition:background .2s;"
-          onmouseover="this.style.background='var(--brand-dark,#1b5e20)';"
-          onmouseout="this.style.background='var(--brand,#2e7d32)';">➤</button>
-        <button onclick="_clearCopilotChat()" title="Limpar conversa"
-          style="background:transparent; border:1px solid var(--border,#e2e8f0); color:var(--text-muted,#64748b); border-radius:8px; padding:10px 14px; font-size:14px; cursor:pointer;">🗑</button>
-      </div>
-
-      <!-- Rodapé informativo -->
-      <div style="text-align:center; font-size:11px; color:var(--text-muted,#94a3b8); margin-top:10px; line-height:1.6;">
-        O Agro-Copilot usa seus dados reais e IA para sugestões agronômicas.
-        Sempre consulte um agrônomo habilitado antes de aplicar defensivos.<br>
-        <b>WhatsApp de suporte:</b> (99) 99136-0547
-      </div>
-    </div>`;
-
-  const keyStatus = hasKey
-    ? `• 🔑 Chave OpenAI configurada — GPT-4o ativo`
-    : `• ⚠️ Sem chave OpenAI — [configurar agora](configuracoes.html) para IA completa`;
-
-  // Mensagem de boas-vindas automática
-  const welcomeText = `${saudacao}, **${nome}**! 👋\n\nSou o **Agro-Copilot**, seu assistente agronômico com acesso a todos os dados da sua propriedade.\n\n**Resumo rápido:**\n• 🌾 ${safra ? `Safra ativa: ${safra.nome}` : 'Nenhuma safra selecionada'}\n• 🌱 ${talhoes.length} talhão(ões) cadastrado(s)\n• 📅 Data: ${new Date().toLocaleDateString('pt-BR', {weekday:'long', day:'numeric', month:'long', year:'numeric'})}\n• 🔒 Plano: ${plano}\n${keyStatus}\n${alertasAuto.length > 0 ? `• ⚡ **${alertasAuto.length} alerta(s) automático(s) detectado(s)**` : '• ✅ Nenhum alerta pendente'}\n\nO que você gostaria de saber hoje?`;
-
-  _addMessage('bot', welcomeText);
-
-  // Auto-query vindo de outra página (ex: Análise de Solo → "Aprofundar no Copilot")
-  const autoQuery = sessionStorage.getItem('_copilotAutoQuery');
-  if (autoQuery) {
-    sessionStorage.removeItem('_copilotAutoQuery');
-    setTimeout(() => {
-      const inp = document.getElementById('copilotInput');
-      if (inp) { inp.value = autoQuery; }
-      _sendMessage();
-    }, 800);
-  }
-
-  // Se não tiver conexão com servidor, mostrar aviso
-  if (!hasKey) {
-    const box = document.getElementById('copilotMessages');
-    if (box) {
-      box.insertAdjacentHTML('beforeend', `
-        <div style="background:#fffbeb; border:1px solid #f59e0b; border-radius:10px; padding:14px 16px; font-size:13px; color:#78350f; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-          <span style="font-size:22px;">📡</span>
-          <div style="flex:1;">
-            <strong>Modo offline ativo.</strong> O Copilot está usando respostas baseadas em regras locais.
-            Conecte-se à internet e faça login para acessar a IA completa (GPT-4o) via servidor seguro.
-          </div>
-        </div>`);
-      _scrollToBottom();
-    }
-  }
-
-  // Foco no input
-  setTimeout(() => { const inp = document.getElementById('copilotInput'); if (inp) inp.focus(); }, 100);
+  // IA temporariamente desativada — Em desenvolvimento
+  document.getElementById('content').innerHTML = _renderIAComingSoon(
+    'Agro-Copilot',
+    'Seu assistente agronômico com IA está sendo aprimorado para entregar ainda mais valor.',
+    [
+      { icon: '💬', title: 'Chat Inteligente', desc: 'Converse sobre sua safra e receba insights em tempo real' },
+      { icon: '🔔', title: 'Alertas Proativos', desc: 'Receba avisos de clima, pragas e janelas de aplicação' },
+      { icon: '📊', title: 'Análise de Dados', desc: 'IA analisa seus dados e sugere melhorias no manejo' },
+      { icon: '📱', title: 'WhatsApp Integrado', desc: 'Receba alertas direto no seu celular via WhatsApp' }
+    ]
+  );
+  return;
+  // [IA desativada temporariamente — todo o código do chat foi preservado abaixo como referência]
+  // Quando reativar, remover o bloco acima e descomentar o código do Copilot original.
 }
 
 // ============================================================================

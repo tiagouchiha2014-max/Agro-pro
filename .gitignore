@@ -4,9 +4,10 @@ auto-deploy.py
 # Legacy monolithic app (replaced by modular assets/modules/)
 assets/app.js
 
-# Stale SQL files (use agropro_supabase_v10.0.sql)
+# Stale SQL files (use agropro_supabase_v10.5.sql)
 agropro_supabase_v7.1.sql
 agropro_supabase_v8.0.sql
+agropro_supabase_v10.0.sql
 supabase_setup.sql
 supabase-migration-v9.6.sql
 supabase-migration-v9.7.sql

@@ -51,14 +51,14 @@ const ROLE_PERMISSIONS = {
     label: 'Administrador'
   },
   gerente: {
-    pages: ['dashboard','copilot','centralgestao','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','folhasalarial','analisesolo','maquinas','relatorios','config','ajuda'],
+    pages: ['dashboard','copilot','centralgestao','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','analisesolo','maquinas','relatorios','ajuda'],
     canCreate: true,
-    canDelete: true,
+    canDelete: false,
     canSeeFinanceiro: false,
     label: 'Gerente'
   },
   funcionario: {
-    pages: ['dashboard','propriedade','insumos','insumosbase','aplicacoes','combustivel','clima','colheitas','manutencao','equipe','maquinas','analisesolo','ajuda'],
+    pages: ['dashboard','propriedade','aplicacoes','combustivel','clima','colheitas','manutencao','maquinas','ajuda'],
     canCreate: false, // default false, override por pagina
     canDelete: false,
     canSeeFinanceiro: false,
@@ -66,21 +66,13 @@ const ROLE_PERMISSIONS = {
     // Permissões específicas por página para funcionário
     pagePerms: {
       dashboard:    { view: true, create: false, delete: false, simplified: true },
-      safras:       { view: true, create: false, delete: false },
-      fazendas:     { view: true, create: false, delete: false },
-      talhoes:      { view: true, create: false, delete: false },
-      produtos:     { view: true, create: false, delete: false },
-      insumos:      { view: true, create: true,  delete: false },  // aba estoque: registrar, sem excluir
-      estoque:      { view: true, create: true,  delete: false },  // Registrar, sem excluir
-      insumosbase:  { view: true, create: false, delete: false },
-      aplicacoes:   { view: true, create: true,  delete: true  },  // CRUD total
+      propriedade:  { view: true, create: false, delete: false },
+      aplicacoes:   { view: true, create: true,  delete: false },  // Registrar aplicações
       combustivel:  { view: true, create: true,  delete: false },  // Registrar abastecimento
       clima:        { view: true, create: false, delete: false },
-      colheitas:    { view: true, create: false, delete: false },
+      colheitas:    { view: true, create: false, delete: false },  // Apenas visualizar
       manutencao:   { view: true, create: true,  delete: false },  // Registrar manutenção
-      equipe:       { view: true, create: false, delete: false },  // Apenas visualizar
       maquinas:     { view: true, create: false, delete: false },
-      analisesolo:  { view: true, create: false, delete: false },
       ajuda:        { view: true, create: false, delete: false }
     }
   }
@@ -91,7 +83,7 @@ function getUserRole() {
 }
 
 function getRolePerms() {
-  return ROLE_PERMISSIONS[getUserRole()] || ROLE_PERMISSIONS.admin;
+  return ROLE_PERMISSIONS[getUserRole()] || ROLE_PERMISSIONS.funcionario;
 }
 
 function canAccessPage(pageKey) {
@@ -535,7 +527,7 @@ function getSafraAtual() {
 /* ------------------ UI shell ------------------ */
 const PAGES = [
   { href: "index.html",         label: "Dashboard",          key: "dashboard",     icon: "📊" },
-  { href: "copilot.html",       label: "Agro-Copilot (IA)",  key: "copilot",       icon: "🤖" },
+  { href: "copilot.html",       label: "Agro-Copilot (IA)",  key: "copilot",       icon: "🤖", badge: "EM BREVE" },
   { href: "centralgestao.html", label: "Central de Gestão",  key: "centralgestao", icon: "🛰️" },
   { href: "propriedade.html",   label: "Minha Propriedade",  key: "propriedade",   icon: "🏡" },
   { href: "insumos.html",       label: "Produtos & Estoque", key: "insumos",       icon: "🧪" },
@@ -553,6 +545,59 @@ const PAGES = [
   { href: "configuracoes.html", label: "Configurações",      key: "config",        icon: "⚙️" },
   { href: "ajuda.html",         label: "Ajuda & Suporte",    key: "ajuda",         icon: "❓" }
 ];
+
+// ============================================================
+// IA COMING SOON — tela de retenção para funcionalidades IA
+// ============================================================
+function _renderIAComingSoon(titulo, descricao, features) {
+  const cards = features.map(f => `
+    <div style="background:var(--bg-card, #f8fafc); border-radius:12px; padding:20px; text-align:center; border:1px solid var(--border, #e2e8f0);">
+      <div style="font-size:36px; margin-bottom:10px;">${f.icon}</div>
+      <h4 style="margin:0 0 6px; font-size:14px; font-weight:700;">${escapeHtml(f.title)}</h4>
+      <p style="margin:0; font-size:12px; color:var(--text-muted, #64748b); line-height:1.4;">${escapeHtml(f.desc)}</p>
+    </div>
+  `).join('');
+
+  return `
+    <div style="max-width:700px; margin:0 auto;">
+      <div class="card" style="text-align:center; padding:40px 30px; background:linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #2d6a4f 100%); color:white; border:none; border-radius:16px; position:relative; overflow:hidden;">
+        <div style="position:absolute; top:-40px; right:-40px; width:120px; height:120px; background:rgba(255,255,255,0.05); border-radius:50%;"></div>
+        <div style="position:absolute; bottom:-30px; left:-30px; width:80px; height:80px; background:rgba(255,255,255,0.03); border-radius:50%;"></div>
+
+        <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(251,191,36,0.2); padding:6px 16px; border-radius:20px; font-size:12px; font-weight:700; color:#fbbf24; margin-bottom:20px; letter-spacing:1px;">
+          <span style="display:inline-block; width:8px; height:8px; background:#fbbf24; border-radius:50%; animation:pulse 2s infinite;"></span>
+          EM DESENVOLVIMENTO
+        </div>
+
+        <h2 style="margin:0 0 12px; font-size:28px; font-weight:800;">${escapeHtml(titulo)}</h2>
+        <p style="margin:0 auto 24px; max-width:500px; opacity:0.85; line-height:1.6; font-size:15px;">${escapeHtml(descricao)}</p>
+
+        <div style="display:inline-flex; align-items:center; gap:10px; background:rgba(255,255,255,0.1); padding:10px 20px; border-radius:10px; font-size:13px;">
+          <span style="font-size:20px;">🚀</span>
+          <span>Previsão de lançamento: <b>em breve</b></span>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-top:16px;">
+        ${cards}
+      </div>
+
+      <div class="card" style="margin-top:16px; text-align:center; padding:24px; border:2px dashed var(--primary, #2d6a4f); background:var(--bg-card, #f0fdf4);">
+        <h3 style="margin:0 0 8px; font-size:16px; color:var(--primary, #2d6a4f);">Quer ser avisado quando lançar?</h3>
+        <p style="margin:0 0 16px; font-size:13px; color:var(--text-muted, #64748b);">Assine o plano Pro e seja o primeiro a ter acesso quando a IA for ativada.</p>
+        <a href="https://wa.me/5599991360547?text=Ol%C3%A1!%20Quero%20saber%20quando%20a%20IA%20do%20Agro%20Pro%20ser%C3%A1%20lan%C3%A7ada!"
+           target="_blank"
+           style="display:inline-block; background:#25d366; color:white; padding:12px 28px; border-radius:10px; font-weight:700; text-decoration:none; font-size:14px; transition:transform 0.2s;"
+           onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+          💬 Quero ser avisado pelo WhatsApp
+        </a>
+      </div>
+    </div>
+    <style>
+      @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    </style>
+  `;
+}
 
 // ============================================================
 // DARK MODE — inicializar antes do primeiro render
